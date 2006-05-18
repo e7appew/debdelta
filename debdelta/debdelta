@@ -1,0 +1,184 @@
+#!/usr/bin/python
+
+__doc__ = """
+   Delta
+       The delta subcommand has the following synopsis:
+
+       debdelta delta [ option...  ] fromfile tofile patchout
+
+       Computes a delta from fromfile to tofile and writes it to patchout
+
+   Patch
+       The patch subcommand has the following synopsis:
+
+       debdelta patch [ option...  ] patchin [ fromfile [ tofile ]]
+
+       Applies patchin to fromfile and produces  a  reconstructed  version  of
+       tofile.
+"""
+
+minigzip='~/bin/minigzip'
+actions =  ('delta','patch')
+
+import sys,os,tempfile , string
+
+from stat    import ST_SIZE
+from os.path import abspath
+from os      import unlink, rmdir
+
+DEBUG =True
+
+#def unlink(a):
+#  print ' unlink ',a
+#def rmdir(a):
+#  print ' rmdir ',a
+
+#should use getopt.gnu_getopt
+
+if len(sys.argv) <= 1 or sys.argv[1] == '--help' :
+  print __doc__
+  sys.exit(0)
+
+action=sys.argv[1]
+
+if action not in actions:
+  print 'wrong action: may be '+repr(actions)
+
+argv=sys.argv[2:]
+
+TD = tempfile.mkdtemp()
+
+if DEBUG :  print 'temporary in '+TD
+
+if action == 'delta' :
+  olddeb = abspath(argv[0])
+  newdeb = abspath(argv[1])
+  newdebsize = os.stat(newdeb)[ST_SIZE]
+  delta = abspath(argv[2])
+  if  os.path.exists(delta) :
+    os.rename(delta,delta+'~')
+  
+  os.mkdir(TD+'/PATCH')
+  pairs = [ ('OLD',olddeb) , ('NEW',newdeb) ]
+elif action == 'patch':
+  olddeb = abspath(argv[1])
+  newdeb = abspath(argv[2])
+  delta = abspath(argv[0]) 
+  pairs = [ ('OLD',olddeb) , ('PATCH',delta) ]
+else:
+  assert(0)
+
+def S(a):
+  if type(a) != type('') :
+    a=string.join(a,' ')
+  ret = os.system(a)
+  if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
+    print ' error , non zero return status ',ret,' for ',a
+    sys.exit(2)
+  
+os.chdir(TD)
+
+arlist = {}
+  
+for (d,f) in pairs :
+  os.chdir(TD)
+  os.mkdir(d)
+  os.chdir(d)
+  assert(os.path.exists(f))
+  arlist[d] = []
+  p=os.popen('ar t '+f,'r')
+  while 1:
+    a=p.readline()
+    if not a : break
+    if a[-1] ==  '\n' :
+      a = a[:-1]
+    arlist[d].append(a)
+    
+  p.close()
+  S('ar xo '+f)
+  os.chdir(TD)
+  
+os.chdir(TD)
+
+if action == 'patch':
+  os.chdir(TD+'/PATCH')
+  S('gunzip patch.sh.gz')
+  S('/bin/sh patch.sh')
+  os.rename('result.deb',newdeb)
+
+elif action == 'delta' :
+  #components of this patch
+  deltaparts=['patch.sh.gz']
+  #start writing script 
+  s=open('PATCH/patch.sh','w')
+  s.write('#!/bin/sh -e\n')
+
+  #process all contents of old vs new .deb
+  
+  for o in arlist['NEW'] :
+    oldsize = os.stat('NEW/'+o)[ST_SIZE]
+    if o not in arlist['OLD'] or oldsize < 128:
+      os.rename('NEW/'+o,'PATCH/'+o)
+      unlink('OLD/'+o)
+      deltaparts.append(o)
+    else:
+      c=''
+      if o[-3:] == '.gz' :
+        #cannot gunzip if there is a link ! os.link('NEW/'+o,'tmp_n')
+        o=o[:-3]
+        S('gunzip -cv NEW/'+o+'.gz > ' + 'NEW/'+o)
+        S('gunzip -cv OLD/'+o+'.gz > ' + 'OLD/'+o)
+        c='.gz'
+      S('xdelta delta -n -V -9 OLD/'+o+' NEW/'+o+' PATCH/'+o+'.xdelta')      
+      deltasize = os.stat('PATCH/'+o+'.xdelta')[ST_SIZE]
+      if deltasize > oldsize  :
+        print 'bello schifo ',deltasize,' > ',oldsize
+      if 1:
+        if c == '.gz':
+          s.write('gunzip ../OLD/'+o+'.gz\n')  
+        deltaparts.append(o+'.xdelta')
+        s.write('xdelta patch '+o+'.xdelta'+' ../OLD/'+o+' '+o+'\n')
+        s.write('rm '+o+'.xdelta ../OLD/'+o+'\n')
+        if c == '.gz' :
+          s.write(minigzip+' -9 '+o+'\n')
+          if DEBUG:
+            pass
+      unlink('NEW/'+o)
+      unlink('OLD/'+o)
+      if c:
+        unlink('NEW/'+o+c)
+        unlink('OLD/'+o+c)
+
+  a='ar qSc result.deb '
+  for o in arlist['NEW'] :
+    a=a+ ' ' + o + ' '
+
+  a='fakeroot sh -c "chown root.root * ; ' + a + ' " '
+  
+  s.write()
+  
+  S(' cd NEW ; ' + a)
+
+  ret=os.system('cmp NEW/result.deb '+newdeb )
+
+  if ret:
+    S('xdelta delta -n -9 '+newdeb+' NEW/result.deb ')
+  #S(['ar','qSc', 'temp.deb',]+ deltaparts)
+  #s.write('xdelta patch '+o+'.xdelta'+' ../OLD/'+o+' '+o+'\n')
+  
+  s.close()
+  S('gzip -9 PATCH/patch.sh')
+  os.chdir(TD+'/PATCH')
+  S(['ar','qSc', delta,]+ deltaparts)
+  for o in deltaparts:
+    unlink(o)
+  os.chdir(TD)
+  rmdir('PATCH')
+  rmdir('OLD')
+  rmdir('NEW')
+  rmdir(TD)
+  
+  deltasize = os.stat(delta)[ST_SIZE]
+  
+  print ' deb delta is  %3.4f'  % ( deltasize * 100. /  newdebsize ) , '% of deb'
+  
