@@ -1,0 +1,6 @@
+debdelta (0.1) experimental; urgency=low
+
+  * first alpha
+  * it works on two debs with gzip compression
+
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 19 May 2006 19:19:54 +0200

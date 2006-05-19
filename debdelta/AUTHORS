@@ -1,0 +1,6 @@
+debdelta is 
+Copyright (C) 2006 Andrea Mennucci <mennucc1@debian.org>
+
+minigzip.c -- simulate gzip using the zlib compression library
+Copyright (C) 1995-2002 Jean-loup Gailly <jloup@gzip.org>
+For conditions of distribution and use, see copyright notice in minigzip.c

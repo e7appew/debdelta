@@ -1,0 +1,10 @@
+debdelta is an application program designed to compute changes between
+Debian packages. These changes (deltas) are similar to the output of
+the "diff" program in that they may be used to store and transmit only
+the changes between Debian packages.
+
+debdelta is free software.  See the file COPYING for copying conditions.
+
+minigzip is copyleft. See minigzip.c , or debian/copyright
+
+A. Mennucci
