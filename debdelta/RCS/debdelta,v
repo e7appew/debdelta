@@ -1,10 +1,19 @@
-head	1.2;
+head	1.4;
 access;
 symbols;
-locks
-	debdev:1.2; strict;
+locks; strict;
 comment	@# @;
 
+
+1.4
+date	2006.05.20.11.05.43;	author debdev;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2006.05.19.19.36.52;	author debdev;	state Exp;
+branches;
+next	1.2;
 
 1.2
 date	2006.05.19.12.25.14;	author debdev;	state Exp;
@@ -21,41 +30,42 @@ desc
 @@
 
 
-1.2
+1.4
 log
-@this works, it creates deltas that can rebuild the exact .deb
+@Added getopt support.
+Reorganized code.
+Be careful of cwd when using os.path.abspath.
+Add parameters to patch.sh , in particular,
+ support for '#unpack-old' keyword
+Graduated verbosity.
 @
 text
 @#!/usr/bin/python
 
-__doc__ = """
-   debelta
-       The debdelta command has the following synopsis:
+"""debdelta [ option...  ] fromfile tofile patchout
+  Computes a delta from fromfile to tofile and writes it to patchout
 
-       debdelta [ option...  ] fromfile tofile patchout
+debpatch [ option...  ] patchin  fromfile  tofile 
+  Applies patchin to fromfile and produces  a  reconstructed  version of tofile.
 
-       Computes a delta from fromfile to tofile and writes it to patchout
-
-   debpatch
-       The debpatch command has the following synopsis:
-
-       debpatch [ option...  ] patchin  fromfile  tofile 
-
-       Applies patchin to fromfile and produces  a  reconstructed  version  of
-       tofile.
+Options for debpatch:
+  --fs    TODO
+          create a (larger) patch that can be used to recreate the new .deb
+          from the old deb that is installed in the host.
+          In this case, when using 'debpatch', use '/' for fromfile.
+  -d      debug : add md5sums to patch
+Options for both:
+  -v      verbose
+  -k      keep temporary files
+  --info  print info on two Debian files
 """
 
-minigzip='/home/andrea/bin/minigzip'
+minigzip='/usr/lib/debdelta/minigzip'
 
-DEBUG   = True
-VERBOSE = 1
-KEEP    = False 
-
-actions =  ('delta','patch')
 
 ####################################################################
 
-import sys , os , tempfile , string
+import sys , os , tempfile , string ,getopt
 
 from stat    import ST_SIZE
 from os.path import abspath
@@ -63,6 +73,44 @@ from os      import unlink, rmdir
 
 ####################################################################
 
+action=(os.path.basename(sys.argv[0]))[3:]
+actions =  ('delta','patch')
+if action not in actions:
+  print 'wrong filename: should be "deb" + '+repr(actions)
+  sys.exit(0)
+
+( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhd' ,
+                               ('help','info','fs') )
+
+cwd = os.getcwd()
+
+DEBUG   = 0
+VERBOSE = 1
+KEEP    = False
+INFO    = False
+FS      = False
+
+for  o , v  in  opts :
+  if o == '-v' : VERBOSE += 1
+  elif o == '-d' and action == 'delta' : DEBUG += 1
+  elif o == '-k' : KEEP = True
+  elif o == '--fs' and action == 'delta' : FS = True  
+  elif o == '--info' : INFO = True  
+  elif o ==  '--help' or o ==  '-h':
+    print __doc__
+    sys.exit(0)
+  else:
+    print ' option ',o,'is unknown, try --help'
+    sys.exit(1)
+
+
+#should use getopt.gnu_getopt
+
+if len(argv) != 3  :  
+  print ' need 3 filenames ;  try --help'
+  sys.exit(0)
+
+######################################################################
 def system(a):
   if type(a) != type('') :
     a=string.join(a,' ')
@@ -85,7 +133,33 @@ def check_diff(f):
     sys.exit(1)
   p.close()
 
-ALLOWED = '. abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+def de_n(a):
+  if a[-1] ==  '\n' :
+    a = a[:-1]
+  return a
+
+def unpack(d,f):
+  "unpacks 'ar' file f in directory d"
+  assert(os.path.exists(f))
+
+  os.symlink(f,TD+'/'+d+'.file')
+  
+  arlist[d] = []
+  p=os.popen('ar t '+f,'r')
+  while 1:
+    a=p.readline()
+    if not a : break
+    a=de_n(a)
+    arlist[d].append(a)    
+  p.close()
+
+  cwd = os.getcwd()
+  os.chdir(TD+'/'+d)
+  system('ar xo '+f)
+  os.chdir(cwd)
+
+
+ALLOWED = '<>()[]{}.,;:!_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 def prepare_for_echo(s):
   r=''
@@ -105,21 +179,71 @@ if KEEP:
   def rmdir(a):
     if VERBOSE : print ' would rmdir ',a
 
-#should use getopt.gnu_getopt
 
-if len(sys.argv) <= 1 or sys.argv[1] == '--help' or sys.argv[1] == '-h' :
-  print __doc__
-  sys.exit(0)
+TD = abspath(tempfile.mkdtemp())
+for i in 'OLD','NEW','PATCH' :
+  os.mkdir(TD+'/'+i)
+if DEBUG :  print 'temporary in '+TD
 
-action=sys.argv[0][-5:]
+arlist = {}
+  
+#################################################################### apply patch
 
-if action not in actions:
-  print 'wrong action: may be '+repr(actions)
+if action == 'patch':
+  newdeb = abspath(argv[2])
+  if  os.path.exists(newdeb) :
+    os.rename(newdeb,newdeb+'~')
+  
+  delta = abspath(argv[0])
+  check_diff(delta)
+  
+  olddeb = abspath(argv[1])
+  check_deb(olddeb)
 
-argv=sys.argv[1:]
+  unpack ('PATCH',delta)
 
+  #from here on, we live in the temp dir
+  os.chdir(TD)
 
-if action == 'delta' :
+  os.symlink(minigzip,'minigzip')
+
+  if 'patch.sh.gz' in  arlist['PATCH']:
+    system('gunzip PATCH/patch.sh.gz')
+  elif 'patch.sh.bz2' in  arlist['PATCH']:
+    system('bunzip2 PATCH/patch.sh.bz2')
+
+  #lets see what it does and what it requires
+  params={}
+  p=open('PATCH/patch.sh')
+  s=p.readline()
+  while s and s[0] == '#':
+    s=de_n(s)[1:]    
+    if ':' in s:
+      i=s.index(':')
+      params[s[:i]] = s[i+1:]
+    else:
+      params[s] = True
+    s=p.readline()
+  p.close()
+
+  if VERBOSE : print ' info:',repr(params)
+
+  if 'unpack-old' in params:
+    unpack ('OLD',olddeb)
+  
+  system('/bin/sh -e PATCH/patch.sh')
+
+  os.rename('NEW.file',newdeb)
+
+  for o in  'PATCH/patch.sh','PATCH.file','minigzip','OLD.file':
+    if os.path.exists(o):
+      unlink(o)
+  for o in os.listdir('OLD'):
+    if DEBUG: print ' deleting OLD/',o
+    unlink('OLD/'+o)
+
+##################################################### compute delta
+elif action == 'delta' :
   olddeb = abspath(argv[0])
   check_deb(olddeb)
 
@@ -131,66 +255,12 @@ if action == 'delta' :
   if  os.path.exists(delta) :
     os.rename(delta,delta+'~')
   
-  pairs = [ ('OLD',olddeb) , ('NEW',newdeb) ]
-  
-elif action == 'patch':
-  olddeb = abspath(argv[1])
-  check_deb(olddeb)
-  
+  unpack('OLD',olddeb)
+  unpack('NEW',newdeb)
 
-  newdeb = abspath(argv[2])
-  if  os.path.exists(newdeb) :
-    os.rename(newdeb,newdeb+'~')
-  
-  delta = abspath(argv[0])
-  check_diff(delta)
-  pairs = [ ('OLD',olddeb) , ('PATCH',delta) ]
-else:
-  assert(0)
-
-TD = abspath(tempfile.mkdtemp())
-if DEBUG :  print 'temporary in '+TD
-#from here on, we live in the temp dir
-os.chdir(TD)
-
-arlist = {}
-
-##################
-for (d,f) in pairs :
-  assert(os.path.exists(f))
-
-  #os.symlink(f,TD+'/'+d+'.file')
-  
-  arlist[d] = []
-  p=os.popen('ar t '+f,'r')
-  while 1:
-    a=p.readline()
-    if not a : break
-    if a[-1] ==  '\n' :
-      a = a[:-1]
-    arlist[d].append(a)    
-  p.close()
-
-  os.mkdir(d)  
-  os.chdir(d)
-  system('ar xo '+f)
+  #from here on, we live in the temp dir
   os.chdir(TD)
-  
-################# compute patch
 
-if action == 'patch':
-  os.symlink(minigzip,'minigzip')
-  
-  os.mkdir(TD+'/NEW')
-  
-  system('gunzip PATCH/patch.sh.gz')
-  system('/bin/sh -e PATCH/patch.sh')
-
-  os.rename('NEW.file',newdeb)
-
-############## compute delta
-elif action == 'delta' :
-  os.mkdir(TD+'/PATCH')
   #components of this patch
   deltaparts=['patch.sh.gz']
 
@@ -198,10 +268,32 @@ elif action == 'delta' :
   script=open('PATCH/patch.sh','w')
   script.write('#!/bin/sh -e\n')
 
+  ##### write parameters
+  if DEBUG or INFO:
+    for o in 'OLD', 'NEW' :
+      if INFO : print o
+      system('tar xzf '+o+'/control.tar.gz ./control')
+      p=open('control')
+      a=p.readline()
+      while a:
+        a=de_n(a)
+        if a[:3] in ('Pac','Ver','Arc'):
+          if DEBUG : script.write('#'+o+':'+a+'\n')
+          if INFO : print ' ' , a
+        a=p.readline()
+      p.close()
+    unlink('control')
+
   def append(s):
     s=prepare_for_echo(s)
     script.write("echo -n -e '"+ s +"' >> NEW.file\n")
 
+
+  #this delta needs the old deb , unpacked in 'OLD'
+  script.write('#unpack-old\n')
+  
+  ############# start scanning the new deb
+    
   newdeb_file=open(newdeb)
   # pop the "!<arch>\n"
   s = newdeb_file.readline()
@@ -212,10 +304,10 @@ elif action == 'delta' :
     
   for o in arlist['NEW'] :
     oldsize = os.stat('NEW/'+o)[ST_SIZE]
-    if VERBOSE: print 'studying ',o,' of len ',oldsize
+    if VERBOSE > 1: print 'studying ',o,' of len ',oldsize
     #add 'ar' structure
     s = newdeb_file.read(60)
-    if VERBOSE > 1: print 'ar line: ',repr(s)
+    if VERBOSE > 2: print 'ar line: ',repr(s)
     assert( s[:len(o)] == o and s[-2] == '`' and s[-1] == '\n' )
     append(s)
     #sometimes there is an extra \n, depending if the previous was odd length
@@ -236,6 +328,7 @@ elif action == 'delta' :
       os.rename('NEW/'+o,'PATCH/'+o)
       deltaparts.append(o)
       script.write('echo PATCH/'+o+' >> NEW.file')
+      if DEBUG: script.write('rm PATCH/'+o+'\n')
     else:
       #file is long, and has old version ; lets compute a delta
       c=''
@@ -255,7 +348,7 @@ elif action == 'delta' :
       unlink('OLD/'+o)
       ## how did we fare ?
       deltasize = os.stat('PATCH/'+o+'.xdelta')[ST_SIZE]
-      if VERBOSE :
+      if VERBOSE > 1 :
         print ' delta is  %3.4f'  % ( deltasize * 100. /  oldsize ) , '% of ',o
       elif  (deltasize > oldsize  and DEBUG): 
         print 'this sucks: deltasize ',deltasize,' > oldsize ',oldsize
@@ -274,7 +367,7 @@ elif action == 'delta' :
       append(extrachar)
   # put in script any leftover
   s = newdeb_file.read()
-  if VERBOSE: print 'leftover: ',repr(s)
+  if VERBOSE > 2: print ' ar leftover character: ',repr(s)
   if s:
     append(s)
 
@@ -285,21 +378,32 @@ elif action == 'delta' :
   script.close()  
   system('gzip -9 -n PATCH/patch.sh')
   #create final debdelta
-  os.chdir(TD+'/PATCH')
+  os.chdir(TD+'/PATCH')  
   system(['ar','qSc', delta,]+ deltaparts)
   for o in deltaparts:
     unlink(o)
-  os.chdir(TD)
-  rmdir('PATCH')
-  rmdir('OLD')
-  rmdir('NEW')
-  rmdir(TD)
-  
-  deltasize = os.stat(delta)[ST_SIZE]
-  
-  print ' deb delta is  %3.4f'  % ( deltasize * 100. /  newdebsize ) , '% of deb'
-  
 
+  os.chdir(TD)
+    
+  deltasize = os.stat(delta)[ST_SIZE]
+  unlink('NEW.file')
+  unlink('OLD.file')
+
+  if VERBOSE:
+    print ' deb delta is  %3.1f'  % \
+          ( deltasize * 100. /  newdebsize ) ,    '% of deb'
+    print ' that is, %dkB would be saved ' % (( newdebsize -deltasize  ) / 1024)
+####################################
+else:
+  #unimplemented action
+  assert(0)
+
+#cleanup
+os.chdir(TD)
+rmdir('PATCH')
+rmdir('OLD')
+rmdir('NEW')
+rmdir(TD)
 
 
 ##   a='ar qSc result.deb '
@@ -321,6 +425,210 @@ elif action == 'delta' :
 ##   #S(['ar','qSc', 'temp.deb',]+ deltaparts)
 ##   #s.write('xdelta patch '+o+'.xdelta'+' ../OLD/'+o+' '+o+'\n')
   
+@
+
+
+1.3
+log
+@can build diff of two .debs and patch one to get the other
+(debian version 0.1)
+@
+text
+@d3 2
+a4 3
+__doc__ = """
+   debelta
+       The debdelta command has the following synopsis:
+d6 2
+a7 1
+       debdelta [ option...  ] fromfile tofile patchout
+d9 10
+a18 9
+       Computes a delta from fromfile to tofile and writes it to patchout
+
+   debpatch
+       The debpatch command has the following synopsis:
+
+       debpatch [ option...  ] patchin  fromfile  tofile 
+
+       Applies patchin to fromfile and produces  a  reconstructed  version  of
+       tofile.
+a22 5
+DEBUG   = True
+VERBOSE = 1
+KEEP    = False 
+
+actions =  ('delta','patch')
+d26 1
+a26 1
+import sys , os , tempfile , string
+d34 38
+d113 2
+a114 1
+  
+d117 1
+a117 1
+  os.chdir(TD)
+d120 1
+a120 1
+ALLOWED = '<>()[]{}.,;:_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+a139 12
+#should use getopt.gnu_getopt
+
+if len(sys.argv) <= 1 or sys.argv[1] == '--help' or sys.argv[1] == '-h' :
+  print __doc__
+  sys.exit(0)
+
+action=(os.path.basename(sys.argv[0]))[3:]
+
+if action not in actions:
+  print 'wrong action: may be '+repr(actions)
+
+argv=sys.argv[1:]
+a156 2
+
+  unpack ('PATCH',delta)
+d161 2
+d230 1
+a230 1
+  if DEBUG:
+d232 1
+d239 2
+a240 1
+          script.write('#'+o+a+'\n')
+a244 4
+  #this delta needs the old deb , unpacked in 'OLD'
+  script.write('#unpack-old\n')
+
+  
+d249 4
+d265 1
+a265 1
+    if VERBOSE: print 'studying ',o,' of len ',oldsize
+d268 1
+a268 1
+    if VERBOSE > 1: print 'ar line: ',repr(s)
+d309 1
+a309 1
+      if VERBOSE :
+d328 1
+a328 1
+  if VERBOSE: print 'leftover: ',repr(s)
+d351 1
+a351 1
+    print ' deb delta is  %3.4f'  % \
+d353 1
+@
+
+
+1.2
+log
+@this works, it creates deltas that can rebuild the exact .deb
+@
+text
+@d20 1
+a20 1
+minigzip='/home/andrea/bin/minigzip'
+d60 26
+a85 1
+ALLOWED = '. abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+d111 1
+a111 1
+action=sys.argv[0][-5:]
+d118 4
+d123 1
+a123 17
+if action == 'delta' :
+  olddeb = abspath(argv[0])
+  check_deb(olddeb)
+
+  newdeb = abspath(argv[1])
+  check_deb(newdeb)
+  newdebsize = os.stat(newdeb)[ST_SIZE]
+  
+  delta = abspath(argv[2])
+  if  os.path.exists(delta) :
+    os.rename(delta,delta+'~')
+  
+  pairs = [ ('OLD',olddeb) , ('NEW',newdeb) ]
+  
+elif action == 'patch':
+  olddeb = abspath(argv[1])
+  check_deb(olddeb)
+d125 1
+d127 1
+a133 3
+  pairs = [ ('OLD',olddeb) , ('PATCH',delta) ]
+else:
+  assert(0)
+d135 4
+a138 4
+TD = abspath(tempfile.mkdtemp())
+if DEBUG :  print 'temporary in '+TD
+#from here on, we live in the temp dir
+os.chdir(TD)
+d140 2
+a141 1
+arlist = {}
+d143 1
+a143 3
+##################
+for (d,f) in pairs :
+  assert(os.path.exists(f))
+d145 17
+a161 10
+  #os.symlink(f,TD+'/'+d+'.file')
+  
+  arlist[d] = []
+  p=os.popen('ar t '+f,'r')
+  while 1:
+    a=p.readline()
+    if not a : break
+    if a[-1] ==  '\n' :
+      a = a[:-1]
+    arlist[d].append(a)    
+d164 1
+a164 6
+  os.mkdir(d)  
+  os.chdir(d)
+  system('ar xo '+f)
+  os.chdir(TD)
+  
+################# compute patch
+d166 2
+a167 4
+if action == 'patch':
+  os.symlink(minigzip,'minigzip')
+  
+  os.mkdir(TD+'/NEW')
+a168 1
+  system('gunzip PATCH/patch.sh.gz')
+d173 8
+a180 1
+############## compute delta
+d182 17
+a198 1
+  os.mkdir(TD+'/PATCH')
+d206 18
+d228 2
+d264 1
+d314 1
+a314 1
+  os.chdir(TD+'/PATCH')
+d318 1
+d320 1
+a320 5
+  rmdir('PATCH')
+  rmdir('OLD')
+  rmdir('NEW')
+  rmdir(TD)
+  
+d322 10
+a331 3
+  
+  print ' deb delta is  %3.4f'  % ( deltasize * 100. /  newdebsize ) , '% of deb'
+  
+d333 6
 @
 
 

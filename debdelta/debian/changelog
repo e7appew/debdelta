@@ -1,3 +1,12 @@
+debdelta (0.2) experimental; urgency=low
+
+  * Addded getopt support.  Reorganized code.
+  * Be careful of cwd when using os.path.abspath.
+  * Add parameters to patch.sh , in particular, support for '#unpack-old' keyword
+  * Graduated verbosity.
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sat, 20 May 2006 14:06:23 +0200
+
 debdelta (0.1) experimental; urgency=low
 
   * first alpha
