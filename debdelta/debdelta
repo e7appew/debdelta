@@ -1,33 +1,29 @@
 #!/usr/bin/python
 
-__doc__ = """
-   debelta
-       The debdelta command has the following synopsis:
+"""debdelta [ option...  ] fromfile tofile patchout
+  Computes a delta from fromfile to tofile and writes it to patchout
 
-       debdelta [ option...  ] fromfile tofile patchout
+debpatch [ option...  ] patchin  fromfile  tofile 
+  Applies patchin to fromfile and produces  a  reconstructed  version of tofile.
 
-       Computes a delta from fromfile to tofile and writes it to patchout
-
-   debpatch
-       The debpatch command has the following synopsis:
-
-       debpatch [ option...  ] patchin  fromfile  tofile 
-
-       Applies patchin to fromfile and produces  a  reconstructed  version  of
-       tofile.
+Options for debpatch:
+  --fs    TODO
+          create a (larger) patch that can be used to recreate the new .deb
+          from the old deb that is installed in the host.
+          In this case, when using 'debpatch', use '/' for fromfile.
+  -d      debug : add md5sums to patch
+Options for both:
+  -v      verbose
+  -k      keep temporary files
+  --info  print info on two Debian files
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
 
-DEBUG   = True
-VERBOSE = 1
-KEEP    = False 
-
-actions =  ('delta','patch')
 
 ####################################################################
 
-import sys , os , tempfile , string
+import sys , os , tempfile , string ,getopt
 
 from stat    import ST_SIZE
 from os.path import abspath
@@ -35,6 +31,44 @@ from os      import unlink, rmdir
 
 ####################################################################
 
+action=(os.path.basename(sys.argv[0]))[3:]
+actions =  ('delta','patch')
+if action not in actions:
+  print 'wrong filename: should be "deb" + '+repr(actions)
+  sys.exit(0)
+
+( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhd' ,
+                               ('help','info','fs') )
+
+cwd = os.getcwd()
+
+DEBUG   = 0
+VERBOSE = 1
+KEEP    = False
+INFO    = False
+FS      = False
+
+for  o , v  in  opts :
+  if o == '-v' : VERBOSE += 1
+  elif o == '-d' and action == 'delta' : DEBUG += 1
+  elif o == '-k' : KEEP = True
+  elif o == '--fs' and action == 'delta' : FS = True  
+  elif o == '--info' : INFO = True  
+  elif o ==  '--help' or o ==  '-h':
+    print __doc__
+    sys.exit(0)
+  else:
+    print ' option ',o,'is unknown, try --help'
+    sys.exit(1)
+
+
+#should use getopt.gnu_getopt
+
+if len(argv) != 3  :  
+  print ' need 3 filenames ;  try --help'
+  sys.exit(0)
+
+######################################################################
 def system(a):
   if type(a) != type('') :
     a=string.join(a,' ')
@@ -76,13 +110,14 @@ def unpack(d,f):
     a=de_n(a)
     arlist[d].append(a)    
   p.close()
-  
+
+  cwd = os.getcwd()
   os.chdir(TD+'/'+d)
   system('ar xo '+f)
-  os.chdir(TD)
+  os.chdir(cwd)
 
 
-ALLOWED = '<>()[]{}.,;:_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+ALLOWED = '<>()[]{}.,;:!_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 def prepare_for_echo(s):
   r=''
@@ -102,18 +137,6 @@ if KEEP:
   def rmdir(a):
     if VERBOSE : print ' would rmdir ',a
 
-#should use getopt.gnu_getopt
-
-if len(sys.argv) <= 1 or sys.argv[1] == '--help' or sys.argv[1] == '-h' :
-  print __doc__
-  sys.exit(0)
-
-action=(os.path.basename(sys.argv[0]))[3:]
-
-if action not in actions:
-  print 'wrong action: may be '+repr(actions)
-
-argv=sys.argv[1:]
 
 TD = abspath(tempfile.mkdtemp())
 for i in 'OLD','NEW','PATCH' :
@@ -131,11 +154,11 @@ if action == 'patch':
   
   delta = abspath(argv[0])
   check_diff(delta)
-
-  unpack ('PATCH',delta)
   
   olddeb = abspath(argv[1])
   check_deb(olddeb)
+
+  unpack ('PATCH',delta)
 
   #from here on, we live in the temp dir
   os.chdir(TD)
@@ -204,27 +227,29 @@ elif action == 'delta' :
   script.write('#!/bin/sh -e\n')
 
   ##### write parameters
-  if DEBUG:
+  if DEBUG or INFO:
     for o in 'OLD', 'NEW' :
+      if INFO : print o
       system('tar xzf '+o+'/control.tar.gz ./control')
       p=open('control')
       a=p.readline()
       while a:
         a=de_n(a)
         if a[:3] in ('Pac','Ver','Arc'):
-          script.write('#'+o+a+'\n')
+          if DEBUG : script.write('#'+o+':'+a+'\n')
+          if INFO : print ' ' , a
         a=p.readline()
       p.close()
     unlink('control')
 
-  #this delta needs the old deb , unpacked in 'OLD'
-  script.write('#unpack-old\n')
-
-  
   def append(s):
     s=prepare_for_echo(s)
     script.write("echo -n -e '"+ s +"' >> NEW.file\n")
 
+
+  #this delta needs the old deb , unpacked in 'OLD'
+  script.write('#unpack-old\n')
+  
   ############# start scanning the new deb
     
   newdeb_file=open(newdeb)
@@ -237,10 +262,10 @@ elif action == 'delta' :
     
   for o in arlist['NEW'] :
     oldsize = os.stat('NEW/'+o)[ST_SIZE]
-    if VERBOSE: print 'studying ',o,' of len ',oldsize
+    if VERBOSE > 1: print 'studying ',o,' of len ',oldsize
     #add 'ar' structure
     s = newdeb_file.read(60)
-    if VERBOSE > 1: print 'ar line: ',repr(s)
+    if VERBOSE > 2: print 'ar line: ',repr(s)
     assert( s[:len(o)] == o and s[-2] == '`' and s[-1] == '\n' )
     append(s)
     #sometimes there is an extra \n, depending if the previous was odd length
@@ -281,7 +306,7 @@ elif action == 'delta' :
       unlink('OLD/'+o)
       ## how did we fare ?
       deltasize = os.stat('PATCH/'+o+'.xdelta')[ST_SIZE]
-      if VERBOSE :
+      if VERBOSE > 1 :
         print ' delta is  %3.4f'  % ( deltasize * 100. /  oldsize ) , '% of ',o
       elif  (deltasize > oldsize  and DEBUG): 
         print 'this sucks: deltasize ',deltasize,' > oldsize ',oldsize
@@ -300,7 +325,7 @@ elif action == 'delta' :
       append(extrachar)
   # put in script any leftover
   s = newdeb_file.read()
-  if VERBOSE: print 'leftover: ',repr(s)
+  if VERBOSE > 2: print ' ar leftover character: ',repr(s)
   if s:
     append(s)
 
@@ -323,8 +348,9 @@ elif action == 'delta' :
   unlink('OLD.file')
 
   if VERBOSE:
-    print ' deb delta is  %3.4f'  % \
+    print ' deb delta is  %3.1f'  % \
           ( deltasize * 100. /  newdebsize ) ,    '% of deb'
+    print ' that is, %dkB would be saved ' % (( newdebsize -deltasize  ) / 1024)
 ####################################
 else:
   #unimplemented action
