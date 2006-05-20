@@ -141,7 +141,7 @@ if KEEP:
 TD = abspath(tempfile.mkdtemp())
 for i in 'OLD','NEW','PATCH' :
   os.mkdir(TD+'/'+i)
-if DEBUG :  print 'temporary in '+TD
+if DEBUG or VERBOSE > 1 :  print 'temporary in '+TD
 
 arlist = {}
   
@@ -174,11 +174,13 @@ if action == 'patch':
   params={}
   p=open('PATCH/patch.sh')
   s=p.readline()
+  s=p.readline()
   while s and s[0] == '#':
     s=de_n(s)[1:]    
     if ':' in s:
-      i=s.index(':')
-      params[s[:i]] = s[i+1:]
+      (a , b) = s.split(':')
+      b = b[1:] 
+      params[a] = b      
     else:
       params[s] = True
     s=p.readline()
@@ -221,6 +223,8 @@ elif action == 'delta' :
 
   #components of this patch
   deltaparts=['patch.sh.gz']
+  #counter for numbered files
+  deltacount = 0 
 
   #start writing script 
   script=open('PATCH/patch.sh','w')
@@ -298,14 +302,12 @@ elif action == 'delta' :
         c='.gz'
       elif  o[-3:] == '.bz2' :
         print 'WARNING ! ',o,' is in BZIP2 format ! please fixme !'
-      s= '-n'
-      if DEBUG: s=''
-      system('xdelta delta '+s+' -9 OLD/'+o+' NEW/'+o+' PATCH/'+o+'.xdelta')
-      deltaparts.append(o+'.xdelta')
+      system('bsdiff  OLD/'+o+' NEW/'+o+' PATCH/'+o+'.bsdiff')
+      deltaparts.append(o+'.bsdiff')
       unlink('NEW/'+o)
       unlink('OLD/'+o)
       ## how did we fare ?
-      deltasize = os.stat('PATCH/'+o+'.xdelta')[ST_SIZE]
+      deltasize = os.stat('PATCH/'+o+'.bsdiff')[ST_SIZE]
       if VERBOSE > 1 :
         print ' delta is  %3.4f'  % ( deltasize * 100. /  oldsize ) , '% of ',o
       elif  (deltasize > oldsize  and DEBUG): 
@@ -313,8 +315,8 @@ elif action == 'delta' :
       ## and prepare the script consequently
       if c == '.gz':
         script.write('gunzip OLD/'+o+'.gz\n')  
-      script.write('xdelta patch PATCH/'+o+'.xdelta OLD/'+o+' NEW/'+o+'\n')
-      script.write('rm PATCH/'+o+'.xdelta OLD/'+o+'\n')
+      script.write('bspatch OLD/'+o+' NEW/'+o+' PATCH/'+o+'.bsdiff\n')
+      script.write('rm PATCH/'+o+'.bsdiff OLD/'+o+'\n')
       if c == '.gz' :
         script.write('minigzip -9 NEW/'+o+'\n')
       if DEBUG:
