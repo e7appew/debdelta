@@ -11,7 +11,7 @@ Usage: debpatch --info  patch
   Write info on patch.
 
 Options for debdelta:
-  --fs    TODO: create a (larger) patch that can be used to recreate the new .deb
+  --fs    create a (larger) patch that can be used to recreate the new .deb
           from the old deb that is installed in the host.
           In this case, when using 'debpatch', use '/' for fromfile.
   -d      debug : add md5sums to patch
@@ -70,9 +70,15 @@ for  o , v  in  opts :
     print ' option ',o,'is unknown, try --help'
     sys.exit(1)
 
-if len(argv) != 3  :  
+if INFO and action == 'patch' :
+  if  len(argv) > 1 and VERBOSE :
+    print '(printing info - extra arguments are ignored)'
+  elif  len(argv) == 0  :
+    print ' need a  filename ;  try --help'
+    sys.exit(1)
+elif len(argv) != 3  or ( len(argv) != 3   ):  
   print ' need 3 filenames ;  try --help'
-  sys.exit(0)
+  sys.exit(1)
 
 ######################################################################
 def system(a):
@@ -223,9 +229,10 @@ if action == 'patch':
 
   for o in  'PATCH/patch.sh','PATCH.file','minigzip','OLD.file':
     if os.path.exists(o):
+      if VERBOSE > 5 : print ' deleting ',o
       unlink(o)
   for o in os.listdir('OLD'):
-    if DEBUG: print ' deleting OLD/',o
+    if VERBOSE > 5 : print ' deleting OLD/',o
     unlink('OLD/'+o)
 
 ##################################################### compute delta
@@ -243,14 +250,9 @@ elif action == 'delta' :
   if  os.path.exists(delta) :
     os.rename(delta,delta+'~')
   
-  #unpack('OLD',olddeb)
-  #unpack('NEW',newdeb)
-
   #from here on, we live in the temp dir
   os.chdir(TD)
 
-  #components of this patch
-  deltaparts=['patch.sh.gz']
   #counter for numbered files
   global deltacount
   deltacount = 0 
@@ -322,7 +324,6 @@ elif action == 'delta' :
     deltacount += 1
     pp=str(deltacount)
     p = 'PATCH/'+pp
-    #deltaparts.append(str(deltacount))
     ## bsdiff uses memory equal to 17 times the size of oldfile
     try:
       a=os.statvfs(TD)
@@ -395,7 +396,7 @@ elif action == 'delta' :
       deltacount += 1
       p = 'PATCH/'+str(deltacount)
       os.rename(n,p)
-      deltaparts.append(p)
+      patch_append(p)
       script.write('echo PATCH/'+o+' >> NEW.file')
       if DEBUG: script.write('rm PATCH/'+o+'\n')
     else:
