@@ -1,9 +1,15 @@
-head	1.4;
+head	1.5;
 access;
 symbols;
-locks; strict;
+locks
+	debdev:1.5; strict;
 comment	@# @;
 
+
+1.5
+date	2006.05.20.15.34.38;	author debdev;	state Exp;
+branches;
+next	1.4;
 
 1.4
 date	2006.05.20.11.05.43;	author debdev;	state Exp;
@@ -30,14 +36,9 @@ desc
 @@
 
 
-1.4
+1.5
 log
-@Added getopt support.
-Reorganized code.
-Be careful of cwd when using os.path.abspath.
-Add parameters to patch.sh , in particular,
- support for '#unpack-old' keyword
-Graduated verbosity.
+@This version uses bspatch / bsdiff ... but it uses too much memory.
 @
 text
 @#!/usr/bin/python
@@ -183,7 +184,7 @@ if KEEP:
 TD = abspath(tempfile.mkdtemp())
 for i in 'OLD','NEW','PATCH' :
   os.mkdir(TD+'/'+i)
-if DEBUG :  print 'temporary in '+TD
+if DEBUG or VERBOSE > 1 :  print 'temporary in '+TD
 
 arlist = {}
   
@@ -216,11 +217,13 @@ if action == 'patch':
   params={}
   p=open('PATCH/patch.sh')
   s=p.readline()
+  s=p.readline()
   while s and s[0] == '#':
     s=de_n(s)[1:]    
     if ':' in s:
-      i=s.index(':')
-      params[s[:i]] = s[i+1:]
+      (a , b) = s.split(':')
+      b = b[1:] 
+      params[a] = b      
     else:
       params[s] = True
     s=p.readline()
@@ -263,6 +266,8 @@ elif action == 'delta' :
 
   #components of this patch
   deltaparts=['patch.sh.gz']
+  #counter for numbered files
+  deltacount = 0 
 
   #start writing script 
   script=open('PATCH/patch.sh','w')
@@ -340,14 +345,12 @@ elif action == 'delta' :
         c='.gz'
       elif  o[-3:] == '.bz2' :
         print 'WARNING ! ',o,' is in BZIP2 format ! please fixme !'
-      s= '-n'
-      if DEBUG: s=''
-      system('xdelta delta '+s+' -9 OLD/'+o+' NEW/'+o+' PATCH/'+o+'.xdelta')
-      deltaparts.append(o+'.xdelta')
+      system('bsdiff  OLD/'+o+' NEW/'+o+' PATCH/'+o+'.bsdiff')
+      deltaparts.append(o+'.bsdiff')
       unlink('NEW/'+o)
       unlink('OLD/'+o)
       ## how did we fare ?
-      deltasize = os.stat('PATCH/'+o+'.xdelta')[ST_SIZE]
+      deltasize = os.stat('PATCH/'+o+'.bsdiff')[ST_SIZE]
       if VERBOSE > 1 :
         print ' delta is  %3.4f'  % ( deltasize * 100. /  oldsize ) , '% of ',o
       elif  (deltasize > oldsize  and DEBUG): 
@@ -355,8 +358,8 @@ elif action == 'delta' :
       ## and prepare the script consequently
       if c == '.gz':
         script.write('gunzip OLD/'+o+'.gz\n')  
-      script.write('xdelta patch PATCH/'+o+'.xdelta OLD/'+o+' NEW/'+o+'\n')
-      script.write('rm PATCH/'+o+'.xdelta OLD/'+o+'\n')
+      script.write('bspatch OLD/'+o+' NEW/'+o+' PATCH/'+o+'.bsdiff\n')
+      script.write('rm PATCH/'+o+'.bsdiff OLD/'+o+'\n')
       if c == '.gz' :
         script.write('minigzip -9 NEW/'+o+'\n')
       if DEBUG:
@@ -425,6 +428,41 @@ rmdir(TD)
 ##   #S(['ar','qSc', 'temp.deb',]+ deltaparts)
 ##   #s.write('xdelta patch '+o+'.xdelta'+' ../OLD/'+o+' '+o+'\n')
   
+@
+
+
+1.4
+log
+@Added getopt support.
+Reorganized code.
+Be careful of cwd when using os.path.abspath.
+Add parameters to patch.sh , in particular,
+ support for '#unpack-old' keyword
+Graduated verbosity.
+@
+text
+@d144 1
+a144 1
+if DEBUG :  print 'temporary in '+TD
+d177 1
+d181 3
+a183 2
+      i=s.index(':')
+      params[s[:i]] = s[i+1:]
+d226 2
+d305 2
+a306 4
+      s= '-n'
+      if DEBUG: s=''
+      system('xdelta delta '+s+' -9 OLD/'+o+' NEW/'+o+' PATCH/'+o+'.xdelta')
+      deltaparts.append(o+'.xdelta')
+d310 1
+a310 1
+      deltasize = os.stat('PATCH/'+o+'.xdelta')[ST_SIZE]
+d318 2
+a319 2
+      script.write('xdelta patch PATCH/'+o+'.xdelta OLD/'+o+' NEW/'+o+'\n')
+      script.write('rm PATCH/'+o+'.xdelta OLD/'+o+'\n')
 @
 
 

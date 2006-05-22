@@ -1,3 +1,10 @@
+debdelta (0.3) experimental; urgency=low
+
+  * use bsdiff when memory does not exceed 50Mb, and free disk space is enough
+  * ' debpatch --info  patch' to just know info on a patch
+
+ -- A Mennucc1 <mennucc1@debian.org>  Mon, 22 May 2006 10:34:06 +0200
+
 debdelta (0.2) experimental; urgency=low
 
   * Addded getopt support.  Reorganized code.
