@@ -1,21 +1,27 @@
 #!/usr/bin/python
 
-"""debdelta [ option...  ] fromfile tofile patchout
+"""\
+Usage: debdelta [ option...  ] fromfile tofile patchout
   Computes a delta from fromfile to tofile and writes it to patchout
 
-debpatch [ option...  ] patchin  fromfile  tofile 
+Usage: debpatch [ option...  ] patchin  fromfile  tofile 
   Applies patchin to fromfile and produces  a  reconstructed  version of tofile.
 
-Options for debpatch:
-  --fs    TODO
-          create a (larger) patch that can be used to recreate the new .deb
+Usage: debpatch --info  patch
+  Write info on patch.
+
+Options for debdelta:
+  --fs    TODO: create a (larger) patch that can be used to recreate the new .deb
           from the old deb that is installed in the host.
           In this case, when using 'debpatch', use '/' for fromfile.
   -d      debug : add md5sums to patch
+ --noinfo do not insert in patch the info on two Debian files
+  -M Mb   maximum memory (decides between using 'bsdiff' or 'xdelta')
+Options for debpatch:
+ --info  print info on two Debian files, and exists
 Options for both:
-  -v      verbose
+  -v      verbose (can be added multiple times
   -k      keep temporary files
-  --info  print info on two Debian files
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
@@ -37,32 +43,32 @@ if action not in actions:
   print 'wrong filename: should be "deb" + '+repr(actions)
   sys.exit(0)
 
-( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhd' ,
+( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
                                ('help','info','fs') )
 
 cwd = os.getcwd()
 
+MAXMEMORY = 1024 * 1024 * 50
 DEBUG   = 0
-VERBOSE = 1
+VERBOSE = 0
 KEEP    = False
-INFO    = False
+INFO    = action == 'delta'
 FS      = False
 
 for  o , v  in  opts :
   if o == '-v' : VERBOSE += 1
   elif o == '-d' and action == 'delta' : DEBUG += 1
   elif o == '-k' : KEEP = True
-  elif o == '--fs' and action == 'delta' : FS = True  
-  elif o == '--info' : INFO = True  
+  elif o == '--fs' and action == 'delta' : FS = True
+  elif o == '-M' and action == 'delta' :    MAXMEMORY = 1024 * 1024 * int(v)
+  elif o == '--info' : INFO = True
+  elif o == '--noinfo' : INFO = False 
   elif o ==  '--help' or o ==  '-h':
     print __doc__
     sys.exit(0)
   else:
     print ' option ',o,'is unknown, try --help'
     sys.exit(1)
-
-
-#should use getopt.gnu_getopt
 
 if len(argv) != 3  :  
   print ' need 3 filenames ;  try --help'
@@ -78,6 +84,8 @@ def system(a):
     sys.exit(2)
 
 def check_deb(f):
+  if not  os.path.isfile(f) :
+    print f , ' does not exists '
   p=open(f)
   if p.read(21) != "!<arch>\ndebian-binary" :
     print f , ' does not seem to be a Debian package '
@@ -85,6 +93,8 @@ def check_deb(f):
   p.close()
 
 def check_diff(f):
+  if not  os.path.isfile(f) :
+    print f , ' does not exists '
   p=open(f)
   if p.read(8) != "!<arch>\n" :
     print f , ' does not seem to be a Debian delta '
@@ -96,21 +106,23 @@ def de_n(a):
     a = a[:-1]
   return a
 
-def unpack(d,f):
-  "unpacks 'ar' file f in directory d"
-  assert(os.path.exists(f))
 
-  os.symlink(f,TD+'/'+d+'.file')
-  
-  arlist[d] = []
+def list_ar(f):
+  assert(os.path.exists(f))
+  ar_list = []
   p=os.popen('ar t '+f,'r')
   while 1:
     a=p.readline()
     if not a : break
     a=de_n(a)
-    arlist[d].append(a)    
+    ar_list.append(a)    
   p.close()
+  return ar_list
 
+
+def unpack(d,f):
+  "unpacks 'ar' file f in directory d"
+  assert(os.path.exists(f))
   cwd = os.getcwd()
   os.chdir(TD+'/'+d)
   system('ar xo '+f)
@@ -143,57 +155,71 @@ for i in 'OLD','NEW','PATCH' :
   os.mkdir(TD+'/'+i)
 if DEBUG or VERBOSE > 1 :  print 'temporary in '+TD
 
-arlist = {}
+
   
 #################################################################### apply patch
 
-if action == 'patch':
-  newdeb = abspath(argv[2])
-  if  os.path.exists(newdeb) :
-    os.rename(newdeb,newdeb+'~')
-  
+if action == 'patch':  
   delta = abspath(argv[0])
   check_diff(delta)
-  
-  olddeb = abspath(argv[1])
-  check_deb(olddeb)
 
-  unpack ('PATCH',delta)
-
+  if INFO:
+    os.chdir(TD+'/PATCH')
+    system('ar x  '+delta+' patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null')
+  else:
+    newdeb = abspath(argv[2])
+    if  os.path.exists(newdeb) :
+      os.rename(newdeb,newdeb+'~')
+    
+    olddeb = abspath(argv[1])
+    if olddeb != '/':
+      check_deb(olddeb)
+    
+    unpack ('PATCH',delta)
   #from here on, we live in the temp dir
   os.chdir(TD)
-
+    
   os.symlink(minigzip,'minigzip')
 
-  if 'patch.sh.gz' in  arlist['PATCH']:
+  if os.path.exists('PATCH/patch.sh.gz'):
     system('gunzip PATCH/patch.sh.gz')
-  elif 'patch.sh.bz2' in  arlist['PATCH']:
-    system('bunzip2 PATCH/patch.sh.bz2')
+  elif os.path.exists('PATCH/patch.sh.bz2'):
+    system('bunzip2 PATCH/patch.sh.bz2')  
 
   #lets see what it does and what it requires
   params={}
   p=open('PATCH/patch.sh')
-  s=p.readline()
+  s=p.readline()#skip #!/bin/sh
   s=p.readline()
   while s and s[0] == '#':
-    s=de_n(s)[1:]    
+    s=de_n(s)[1:]
+    if VERBOSE or INFO : print ' info: ',s
     if ':' in s:
-      (a , b) = s.split(':')
-      b = b[1:] 
-      params[a] = b      
+      i=s.index(':')  
+      params[s[:i]] = s[i+1:]
     else:
       params[s] = True
     s=p.readline()
   p.close()
 
-  if VERBOSE : print ' info:',repr(params)
 
-  if 'unpack-old' in params:
-    unpack ('OLD',olddeb)
-  
-  system('/bin/sh -e PATCH/patch.sh')
+  if not INFO:
+    if 'unpack-old' in params:
+      if olddeb == '/':
+        raise 'needs old version Debian package'
+      unpack ('OLD',olddeb)
+      os.symlink(olddeb,TD+'/OLD.file')
+    
+    if 'needs-old' in params:
+      if olddeb == '/':
+        raise 'needs old version Debian package'
+      os.symlink(olddeb,TD+'/OLD.file')
 
-  os.rename('NEW.file',newdeb)
+    a=''
+    if VERBOSE > 2 : a = '-v'
+    system('/bin/sh -e '+a+' PATCH/patch.sh')
+
+    os.rename('NEW.file',newdeb)
 
   for o in  'PATCH/patch.sh','PATCH.file','minigzip','OLD.file':
     if os.path.exists(o):
@@ -206,17 +232,19 @@ if action == 'patch':
 elif action == 'delta' :
   olddeb = abspath(argv[0])
   check_deb(olddeb)
-
+  os.symlink(olddeb,TD+'/OLD.file')
+  
   newdeb = abspath(argv[1])
   check_deb(newdeb)
+  os.symlink(newdeb,TD+'/NEW.file')
   newdebsize = os.stat(newdeb)[ST_SIZE]
   
   delta = abspath(argv[2])
   if  os.path.exists(delta) :
     os.rename(delta,delta+'~')
   
-  unpack('OLD',olddeb)
-  unpack('NEW',newdeb)
+  #unpack('OLD',olddeb)
+  #unpack('NEW',newdeb)
 
   #from here on, we live in the temp dir
   os.chdir(TD)
@@ -224,6 +252,7 @@ elif action == 'delta' :
   #components of this patch
   deltaparts=['patch.sh.gz']
   #counter for numbered files
+  global deltacount
   deltacount = 0 
 
   #start writing script 
@@ -234,13 +263,13 @@ elif action == 'delta' :
   if DEBUG or INFO:
     for o in 'OLD', 'NEW' :
       if INFO : print o
-      system('tar xzf '+o+'/control.tar.gz ./control')
+      system('ar p  '+o+'.file control.tar.gz | tar xzf - ./control')
       p=open('control')
       a=p.readline()
       while a:
         a=de_n(a)
         if a[:3] in ('Pac','Ver','Arc'):
-          if DEBUG : script.write('#'+o+':'+a+'\n')
+          if DEBUG : script.write('#'+o+'/'+a+'\n')
           if INFO : print ' ' , a
         a=p.readline()
       p.close()
@@ -252,10 +281,82 @@ elif action == 'delta' :
 
 
   #this delta needs the old deb , unpacked in 'OLD'
-  script.write('#unpack-old\n')
-  
-  ############# start scanning the new deb
+  #script.write('#unpack-old\n')
+  #this delta needs the old deb 
+  script.write('#needs-old\n')
+
+  ############### some routines  to prepare delta of two files
+
+  def patch_append(f):
+    os.chdir(TD+'/PATCH')
+    system(['ar','qSc', delta,f])
+    unlink(f)
+    os.chdir(TD)
     
+  def unzip(f):
+    c=''
+    if f[-3:] == '.gz' :
+      system('gunzip '+f)
+      if f[:3] != 'NEW' :
+        script.write('gunzip '+f+'\n')
+      f=f[:-3]
+      c='.gz'
+    elif  f[-3:] == '.bz2' :
+      print 'WARNING ! ',f,' is in BZIP2 format ! please fixme !'
+    return (f,c)
+
+  def script_zip(n,cn):
+    if cn == '.gz' :
+      script.write('minigzip -9 '+n+'\n')
+    elif  cn == '.bz2' :
+      print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
+      
+  def delta_files(o,n):
+    " compute delta of two files , and prepare the script consequently"
+    if VERBOSE > 3 : print '   compute delta for  ',o,' and ',n
+    nsize = os.stat(n)[ST_SIZE]
+    osize = os.stat(o)[ST_SIZE]
+    (o,co) = unzip(o)
+    (n,cn) = unzip(n)
+    global deltacount
+    deltacount += 1
+    pp=str(deltacount)
+    p = 'PATCH/'+pp
+    #deltaparts.append(str(deltacount))
+    ## bsdiff uses memory equal to 17 times the size of oldfile
+    try:
+      a=os.statvfs(TD)
+      freespace= a[0] * a[4]
+    except a:
+      if VERBOSE : print ' statvfs error ',a
+      freespace = MAXMEMORY * 16
+    if osize < MAXMEMORY / 17 and osize * 8 < freespace   :
+      system('bsdiff  '+o+' '+n+' '+p)
+      script.write('bspatch '+o+' '+n+' '+p+'\n')
+    else:
+      if VERBOSE > 2 : print '  fallback on xdelta instead of bsdiff' 
+      system('xdelta delta -n -9 '+o+' '+n+' '+p)
+      script.write('xdelta patch '+p+' '+o+' '+n+'\n')
+    ## clean up
+    script.write('rm '+p+' '+o+'\n')
+    script_zip(n,cn)
+    ## how did we fare ?
+    deltasize = os.stat(p)[ST_SIZE]
+    if VERBOSE > 1 :
+      print '  delta is  %3.4f'  % ( deltasize * 100. /  nsize ) , '% of ',n
+
+    #save it
+    patch_append(pp)
+    #clean up
+    unlink(o)
+    unlink(n)
+    if DEBUG:
+      pass #implement MD5
+
+  ############# start scanning the new deb
+  #this following is actually
+  #def delta_debs_using_old(old,new):
+
   newdeb_file=open(newdeb)
   # pop the "!<arch>\n"
   s = newdeb_file.readline()
@@ -263,87 +364,71 @@ elif action == 'delta' :
   append(s)
 
   #process all contents of old vs new .deb
-    
-  for o in arlist['NEW'] :
-    oldsize = os.stat('NEW/'+o)[ST_SIZE]
-    if VERBOSE > 1: print 'studying ',o,' of len ',oldsize
+
+  ar_list_old= list_ar('OLD.file')
+  ar_list_new= list_ar('NEW.file')
+
+  for name in ar_list_new :
+    n = 'NEW/'+name
+    system('ar p NEW.file '+name+' >> '+n)
+
+    newsize = os.stat(n)[ST_SIZE]
+    if VERBOSE > 1: print ' studying ' , name , ' of len ' , newsize
     #add 'ar' structure
     s = newdeb_file.read(60)
-    if VERBOSE > 2: print 'ar line: ',repr(s)
-    assert( s[:len(o)] == o and s[-2] == '`' and s[-1] == '\n' )
+    if VERBOSE > 2: print '  ar line: ',repr(s)
+    assert( s[:len(name)] == name and s[-2] == '`' and s[-1] == '\n' )
     append(s)
     #sometimes there is an extra \n, depending if the previous was odd length
-    newdeb_file.seek(oldsize  ,1)
-    if oldsize & 1 :
+    newdeb_file.seek(newsize  ,1)
+    if newsize & 1 :
       extrachar = newdeb_file.read(1)
     else:
       extrachar = ''
     #add file to debdelta
-    if oldsize < 128:      #file is too short to compute a delta,
-      p=open('NEW/'+o)
-      append( p.read(oldsize))
+    if newsize < 128:      #file is too short to compute a delta,
+      p=open(n)
+      append( p.read(newsize))
       p.close()
-      unlink('NEW/'+o)
-      if o in arlist['OLD'] :
-        unlink('OLD/'+o)
-    elif  o not in arlist['OLD'] :       #or it is not in old deb
-      os.rename('NEW/'+o,'PATCH/'+o)
-      deltaparts.append(o)
+      unlink(n)
+    elif  name not in ar_list_old :       #or it is not in old deb
+      deltacount += 1
+      p = 'PATCH/'+str(deltacount)
+      os.rename(n,p)
+      deltaparts.append(p)
       script.write('echo PATCH/'+o+' >> NEW.file')
       if DEBUG: script.write('rm PATCH/'+o+'\n')
     else:
       #file is long, and has old version ; lets compute a delta
-      c=''
-      if o[-3:] == '.gz' :
-        #cannot gunzip if there is a link ! os.link('NEW/'+o,'tmp_n')
-        o=o[:-3]
-        system('gunzip  NEW/'+o+'.gz')
-        system('gunzip  OLD/'+o+'.gz')
-        c='.gz'
-      elif  o[-3:] == '.bz2' :
-        print 'WARNING ! ',o,' is in BZIP2 format ! please fixme !'
-      system('bsdiff  OLD/'+o+' NEW/'+o+' PATCH/'+o+'.bsdiff')
-      deltaparts.append(o+'.bsdiff')
-      unlink('NEW/'+o)
-      unlink('OLD/'+o)
-      ## how did we fare ?
-      deltasize = os.stat('PATCH/'+o+'.bsdiff')[ST_SIZE]
-      if VERBOSE > 1 :
-        print ' delta is  %3.4f'  % ( deltasize * 100. /  oldsize ) , '% of ',o
-      elif  (deltasize > oldsize  and DEBUG): 
-        print 'this sucks: deltasize ',deltasize,' > oldsize ',oldsize
-      ## and prepare the script consequently
-      if c == '.gz':
-        script.write('gunzip OLD/'+o+'.gz\n')  
-      script.write('bspatch OLD/'+o+' NEW/'+o+' PATCH/'+o+'.bsdiff\n')
-      script.write('rm PATCH/'+o+'.bsdiff OLD/'+o+'\n')
-      if c == '.gz' :
-        script.write('minigzip -9 NEW/'+o+'\n')
-      if DEBUG:
-        pass #implement MD5
-      script.write('cat NEW/'+o+c+' >> NEW.file\n')
-      script.write('rm NEW/'+o+c+'\n')
+      o = 'OLD/'+name
+      system('ar p OLD.file '+name+' >> '+o)
+      script.write('ar p OLD.file '+name+' >> '+o+'\n')
+      delta_files(o,n)
+      script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
+    #pad new deb
     if extrachar :
       append(extrachar)
   # put in script any leftover
   s = newdeb_file.read()
-  if VERBOSE > 2: print ' ar leftover character: ',repr(s)
   if s:
+    if VERBOSE > 2: print '  ar leftover character: ',repr(s)
     append(s)
 
   if DEBUG:
-    pass #implement MD5
+    # add a MD5 check to script
+    p=os.popen('md5sum NEW.file')
+    a=p.readline()
+    p.read()
+    p.close
+    a=de_n(a)
+    if VERBOSE > 2 : print '   ',a
+    script.write('echo "'+a+'" | md5sum -c > /dev/null')
 
   #script is done
   script.close()  
   system('gzip -9 -n PATCH/patch.sh')
-  #create final debdelta
-  os.chdir(TD+'/PATCH')  
-  system(['ar','qSc', delta,]+ deltaparts)
-  for o in deltaparts:
-    unlink(o)
-
-  os.chdir(TD)
+  
+  patch_append('patch.sh.gz')
     
   deltasize = os.stat(delta)[ST_SIZE]
   unlink('NEW.file')
@@ -385,3 +470,27 @@ rmdir(TD)
 ##   #S(['ar','qSc', 'temp.deb',]+ deltaparts)
 ##   #s.write('xdelta patch '+o+'.xdelta'+' ../OLD/'+o+' '+o+'\n')
   
+##   def a(p,k,v):
+##     if  p == None:
+##       p = {}
+##     if len(k) > 1  :
+##       p[k[0]] = a(p.get(k[0]) , k[1:] ,v  )
+##     else:
+##       p[k[0]] = v
+##       return p    
+
+##     if '/' in s:
+##       s=s.split('/')
+##       if (len (s) == 2) :
+##         ( a,  v ) = s
+##         if '/' in s:
+##           ....
+##         params[ a  ] = v
+
+##       elif (len (s) == 3) :
+##         ( a, b, v ) = s
+##         if a not in params :
+##           params[a] ={}
+##         params[ a ][b] = v
+##       else:
+##         print 'internal error on parm ', repr(s)
