@@ -33,7 +33,7 @@ minigzip='/usr/lib/debdelta/minigzip'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time
 
 from stat    import ST_SIZE
 from os.path import abspath
@@ -41,6 +41,9 @@ from os      import unlink, rmdir
 from shutil  import rmtree
 
 ####################################################################
+
+start_sec = time.time()
+
 
 action=(os.path.basename(sys.argv[0]))[3:]
 actions =  ('delta','patch')
@@ -112,23 +115,6 @@ def symlink_w_parents(f,d):
   d += '/'+s[-1]
   os.symlink(f,d)
 
-def check_deb(f):
-  if not  os.path.isfile(f) :
-    print f , ' does not exists '
-  p=open(f)
-  if p.read(21) != "!<arch>\ndebian-binary" :
-    print f , ' does not seem to be a Debian package '
-    sys.exit(1)
-  p.close()
-
-def check_diff(f):
-  if not  os.path.isfile(f) :
-    print f , ' does not exists '
-  p=open(f)
-  if p.read(8) != "!<arch>\n" :
-    print f , ' does not seem to be a Debian delta '
-    sys.exit(1)
-  p.close()
 
 def de_n(a):
   if a[-1] ==  '\n' :
@@ -213,6 +199,22 @@ def system(a):
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
     die('Error , non zero return status '+str(ret)+' for command "'+a+'"')
 
+def check_deb(f):
+  if not  os.path.isfile(f) :
+    die('Error: '+f + ' does not exists.')
+  p=open(f)
+  if p.read(21) != "!<arch>\ndebian-binary" :
+    die('Error: '+f+ 'does not seem to be a Debian package ')
+  p.close()
+
+def check_diff(f):
+  if not  os.path.isfile(f) :
+    print f , ' does not exists '
+  p=open(f)
+  if p.read(8) != "!<arch>\n" :
+    die('Error: '+f+ ' does not seem to be a Debian delta ')
+  p.close()
+
 #################################################################### apply patch
 
 if action == 'patch':  
@@ -222,14 +224,14 @@ if action == 'patch':
   if INFO:
     os.chdir(TD+'/PATCH')
     system('ar x  '+delta+' patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null')
-  else:
-    newdeb = abspath(argv[2])
-    if  os.path.exists(newdeb) :
-      os.rename(newdeb,newdeb+'~')
-    
+  else:    
     olddeb = abspath(argv[1])
     if olddeb != '/':
       check_deb(olddeb)
+
+    newdeb = abspath(argv[2])
+    if  os.path.exists(newdeb) :
+      os.rename(newdeb,newdeb+'~')
     
     unpack ('PATCH',delta)
   #from here on, we live in the temp dir
@@ -328,7 +330,12 @@ if action == 'patch':
     if VERBOSE > 2 : a = '-v'
     system('/bin/sh -e '+a+' PATCH/patch.sh')
     shutil.move('NEW.file',newdeb)
-    
+
+    if VERBOSE > 1:
+      newdebsize = os.stat(newdeb)[ST_SIZE]
+      end_sec = time.time()
+      a=(end_sec - start_sec)
+      print ' time: %dsec, speed:  %dkB per second ' % (a,(newdebsize / 1024 /  (a+1)))
 
 ##################################################### compute delta
 elif action == 'delta' :
@@ -591,7 +598,12 @@ elif action == 'delta' :
   if VERBOSE:
     print ' deb delta is  %3.1f'  % \
           ( deltasize * 100. /  newdebsize ) ,    '% of deb'
-    print ' that is, %dkB would be saved ' % (( newdebsize -deltasize  ) / 1024)
+    print '  that is, %dkB would be saved ' % (( newdebsize -deltasize ) / 1024)
+    if VERBOSE > 1:
+      end_sec = time.time()
+      a=(end_sec - start_sec)
+      print '  time: %dsec, speed: %dkB per second ' % (a,newdebsize / 1024 / (a+1))
+
 ####################################
 else:
   #unimplemented action
