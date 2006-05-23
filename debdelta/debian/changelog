@@ -1,3 +1,12 @@
+debdelta (0.4) unstable; urgency=low
+
+  * 'debpatch' can use a delta to create the new .deb, even if 
+    the old debian package file is not available, provided that 
+    it is installed in the host
+  * code cleanup
+
+ -- A Mennucc1 <mennucc1@debian.org>  Tue, 23 May 2006 15:59:08 +0200
+
 debdelta (0.3) experimental; urgency=low
 
   * use bsdiff when memory does not exceed 50Mb, and free disk space is enough
