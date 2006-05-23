@@ -209,7 +209,7 @@ def check_deb(f):
 
 def check_diff(f):
   if not  os.path.isfile(f) :
-    print f , ' does not exists '
+    die('Error: '+f + ' does not exists ')
   p=open(f)
   if p.read(8) != "!<arch>\n" :
     die('Error: '+f+ ' does not seem to be a Debian delta ')
