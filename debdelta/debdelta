@@ -75,7 +75,8 @@ __doc__ = doc[action] + doc_common
 
 
 MAXMEMORY = 1024 * 1024 * 50
-MAX_DELTA_PERCENT = 40
+
+MAX_DELTA_PERCENT = 50
 
 DEBUG   = 1
 VERBOSE = 0
@@ -91,7 +92,11 @@ for  o , v  in  opts :
   elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
   elif o == '-M' and action == 'delta' :    MAXMEMORY = 1024 * 1024 * int(v)
   elif o == '--info' and action == 'patch' : INFO = True
-  elif o == '--dir'    and action == 'deltas' : DIR = v
+  elif o == '--dir'  and action == 'deltas' :
+    DIR = v
+    if not os.path.isdir(DIR):
+      print 'Error: --dir ',DIR,' does not exist.'
+      sys.exit(3)
   elif o ==  '--help' or o ==  '-h':
     print __doc__
     sys.exit(0)
@@ -118,8 +123,6 @@ if KEEP:
   def rmtree(a):
     if VERBOSE : print ' would rm -r ',a
 
-
-
 #################################################### various routines
 
 def freespace(w):
@@ -143,7 +146,7 @@ def scan_control(p,params,prefix=None,script=None,stdout = None):
   a=p.readline()
   while a:
     a=de_n(a)
-    if a[:3] in ('Pac','Ver','Arc','Sta'):
+    if a[:4] in ('Pack','Vers','Arch','Stat','Inst'):
       if script : script.write('#'+prefix+a+'\n')
       if stdout : stdout.write(' ' + a)
       i=a.index(':')
@@ -154,7 +157,7 @@ def scan_control(p,params,prefix=None,script=None,stdout = None):
 def make_parents(f):
   assert(f[0] == '/')
   s=f.split('/')
-  d='/'
+  d=''
   for a in s[:-1] :
     if a:
       d=d+'/'+a
@@ -232,9 +235,11 @@ def tempo():
 ##########
 
 
-
 class DebDeltaError:
-  pass
+  def __init__(self,s):
+    self.__str = s
+  def __str__(self,s):
+    return __str
 
 def die(s=None):
   if s : sys.stderr.write(s+'\n')
@@ -317,6 +322,12 @@ def do_patch(delta,olddeb,newdeb,TD):
     s=p.readline()
   p.close()
 
+  if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
+    free=freespace(TD)
+    instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
+    if free and free < instsize * 1024  :
+      die(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
+          ( int(free/1024) , instsize ) )
 
   ## really we will apply the patch
   if not INFO:
@@ -343,7 +354,7 @@ def do_patch(delta,olddeb,newdeb,TD):
           die('Error: package %s is not installed, status is %s.'
             % ( b , dpkg_params['OLD/Status'] ) )
       for a in  params:
-        if a[:3] == 'OLD':
+        if a[:3] == 'OLD' and a != 'OLD/Installed-Size':
           if a not in dpkg_params:
             die('Error parsing old control file , parameter %s not found' % a)
           elif  params[a] != dpkg_params[a] :
@@ -368,20 +379,24 @@ def do_patch(delta,olddeb,newdeb,TD):
         p=os.popen('env -i dpkg -L '+pa)
         a=p.readline()
         while a:
+          a=de_n(a)
           if s and a[:11] == 'diverted by':
             orig,divert=s.pop()
             #support diversions
             i = a.index(':')
             divert = a[i+2:]
-            s.append(orig,divert)
+            s.append( (orig,divert) )
           else:
             s.append( (a,a) )
           a=p.readline()
         p.close()        
-        for orig,divert in s:
-          if os.path.isfile(divert) and not os.path.islink(divert) :
+        for orig,divert in s:          
+          if os.path.isfile(divert) and not os.path.islink(divert) :            
             a=make_parents(TD+'/OLD/DATA'+orig)
+            if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
             os.symlink(divert, a)
+          else:
+            if VERBOSE > 4 : print '    not symlinking ',divert,' to ',orig
       else:
         system('ar p OLD.file data.tar.gz | tar -x -z -f - -C OLD/DATA')
 
@@ -464,6 +479,13 @@ def do_delta(olddeb,newdeb,delta,TD):
       scan_control(p,params,o,script,s)
       p.close()
       if s: print
+  
+  if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
+    free=freespace(TD)  
+    instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
+    if free and free < instsize * 1024  :
+      die(' Not enough disk space (%dkB) for creating delta (needs %dkB).' % \
+          ( int(free/1024) , instsize ) )
 
   ## check for conffiles 
   a=TD+'/OLD/CONTROL/conffiles'
@@ -715,7 +737,7 @@ def do_deltas(argv):
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,info_by_file[f])
       p.close()
-      info_by_file[f]['File'] = abspath(f)
+      info_by_file[f]['File'] = f
       pa=info_by_file[f]['Package']
       ar=info_by_file[f]['Architecture']
       if  (pa,ar) not in  info_by_pack_arch :
@@ -747,17 +769,17 @@ def do_deltas(argv):
         old=info_by_pack_arch[ (pa,ar) ][l]
         new=info_by_pack_arch[ (pa,ar) ][l+1]
 
-
-        if os.stat(new['File'])[ST_SIZE] < 16 * 1024 :
-          if VERBOSE > 2:     print 'Skip , too small: ', new['File']
+        newdebsize=os.stat(new['File'])[ST_SIZE]
+        if newdebsize <= 20 * 1024 :
+          if VERBOSE :     print 'Skip , too small: ', new['File']
           break
         
         assert( old['Package'] == pa and pa == new['Package'] )
         deltabasename = pa +'_'+  old['Version'] +'_'+ new['Version'] +'_'+ar+'.debdelta'
         if DIR:
           if DIR[-2:] == '//' :
-            a=os.path.dirname(new['File'])+'/'+deltabasename
-            delta=make_parents(a,DIR)
+            a=DIR+'/'+os.path.dirname(new['File'])+'/'+deltabasename
+            delta=make_parents(a)
           else:
             delta = DIR+'/'+deltabasename
         else:
@@ -769,9 +791,8 @@ def do_deltas(argv):
           if VERBOSE > 2:     print 'Skip , tried and too big: ',delta
           break
 
-
         free=freespace(os.path.dirname(delta))
-        if free and free < 2 ** 20 :
+        if free and free < newdebsize /2 + 1024 :
           if VERBOSE : print ' Not enough disk space for',delta
           break
         
@@ -780,19 +801,25 @@ def do_deltas(argv):
         T=tempo()          
         try:
           ret=do_delta(old['File'],new['File'], delta,T)
-          os.chdir(original_cwd)
-        except DebDeltaError:
-          os.unlink(delta)
-          print 'Creation of ',delta,' failed.'
-        except:
-          os.unlink(delta)
+        except KeyboardInterrupt:
           raise
-          rmtree(T)
+        except DebDeltaError:
+          os.chdir(original_cwd)
+          if os.path.exists(delta):
+            os.unlink(delta)
+          print ' Creation of ',delta,' failed.'
+        except:
+          os.chdir(original_cwd)
+          if os.path.exists(delta):
+            os.unlink(delta)
+          raise
+        os.chdir(original_cwd)
+        rmtree(T)
 
         if ret and MAX_DELTA_PERCENT:
           if ret[1] > MAX_DELTA_PERCENT:
             os.unlink(delta)
-            if VERBOSE : print 'Error, too big:',delta
+            if VERBOSE : print ' Error, too big:',delta
             p=open(delta+'-too-big','w')
             p.close()
             ret = None
@@ -801,17 +828,21 @@ def do_deltas(argv):
           T=tempo()
           try:
             do_patch(delta,old['File'],None ,T)
+          except KeyboardInterrupt:
+            raise
+          except DebDeltaError:
+            print ' Error: testing of delta failed: ',delta
             os.chdir(original_cwd)
+            if os.path.exists(delta):
+              os.unlink(delta)
           except:
-            print "Unexpected error:", sys.exc_info()[0]
-            print 'Error: applying of delta failed: ',delta
+            os.chdir(original_cwd)
+            print " Unexpected error while testing delta:", sys.exc_info()[0]
             os.unlink(delta)
             raise
+          os.chdir(original_cwd)
           rmtree(T)
-        
 
-
-  
 ################################################# main program, do stuff
 
 if action == 'patch':
@@ -820,11 +851,13 @@ if action == 'patch':
   try:
     do_patch(abspath(argv[0]), abspath(argv[1]), newdeb ,T)
   except DebDeltaError:
-    os.unlink(newdeb)
+    if os.path.exists(newdeb):
+      os.unlink(newdeb)
     rmtree(T)
     sys.exit(2)
   except:
-    os.unlink(newdeb)
+    if os.path.exists(newdeb):
+      os.unlink(newdeb)
     raise
   rmtree(T)
   
@@ -835,10 +868,12 @@ elif action == 'delta' :
     do_delta(abspath(argv[0]), abspath(argv[1]), delta ,T)  
   except DebDeltaError:
     rmtree(T)
-    os.unlink(delta)
+    if os.path.exists(delta):
+      os.unlink(delta)
     sys.exit(2)
   except:
-    os.unlink(delta)
+    if os.path.exists(delta):
+      os.unlink(delta)
     raise
   rmtree(T)
   
