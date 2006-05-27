@@ -44,6 +44,7 @@ binary-arch:	checkroot build
 	cp  debdelta $(D)/usr/bin/debdelta
 	chmod +x  $(D)/usr/bin/debdelta
 	ln -s debdelta  $(D)/usr/bin/debpatch
+	ln -s debdelta  $(D)/usr/bin/debdeltas
 	cp -a NEWS debian/copyright debian/changelog $(docdir)
 	cd $(docdir) && gzip -9 changelog
 	dpkg-shlibdeps $(D)/usr/lib/debdelta/minigzip

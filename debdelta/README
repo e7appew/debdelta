@@ -1,10 +1,117 @@
-debdelta is an application program designed to compute changes between
+----------- Introduction, copyright, license
+
+debdelta is an application suite designed to compute changes between
 Debian packages. These changes (deltas) are similar to the output of
 the "diff" program in that they may be used to store and transmit only
 the changes between Debian packages.
 
+debdelta is  Copyright (C) 2006 Andrea Mennucci
+
 debdelta is free software.  See the file COPYING for copying conditions.
 
-minigzip is copyleft. See minigzip.c , or debian/copyright
 
-A. Mennucci
+debdelta uses 'minizgip', that is a simplified version of
+  /usr/share/doc/zlib1g-dev/examples/minigzip.c.gz
+
+minigzip is released with a permissive license,
+(see minigzip.c , or debian/copyright)
+
+minigzip is Copyright (C) 1995-2002 Jean-loup Gailly
+
+---------- Description
+
+The debdelta  application suite is really composed of different applications.
+
+---- debdelta
+
+'debdelta'  computes the delta, that is, a file that encodes the difference
+between two Debian packages.
+
+Example:
+
+$ a=/var/cache/apt/archives 
+$ debdelta -v $a/emacs-snapshot-common_1%3a20060512-1_all.deb $a/emacs-snapshot-common_1%3a20060518-1_all.deb /tmp/emacs.debdelta
+
+the result is:
+ deb delta is  12.5% of deb ; that is, 15452kB would be saved
+
+---- debpatch
+
+'debpatch' can use the delta file and a copy of the old Debian package to
+recreate the new Debian package. If the old Debian package is not available,
+but is installed in the host, it can use the installed data; in this
+case, '/' is used in lieu of the old .deb.
+
+Example:
+
+$ debpatch  /tmp/emacs.debdelta / /tmp/emacs.deb
+
+----- debdeltas
+
+'debdeltas' can be used to generate deltas for many debs at once.
+It will generate delta files with names such as
+ package_old-version_new-version_architecture.debdelta
+and put them in the directory where the new .deb is.
+If the delta exceeds 50% of the deb, 'debdeltas' will delete it
+and leave a stamp of the form
+ package_old-version_new-version_architecture.debdelta-too-big
+
+Example :
+
+$ ./debdeltas -v /var/cache/apt/archives/*deb
+
+With the --dir argument, it will put the deltas in a different tree
+(this is necessary if you use 'debmirror' , since 'debmirror' will
+ destroy any file that it does not recognize)
+
+Example:
+
+$ m=where_your_mirror_is
+$ d=where_to_put_deltas
+$ cd $m/pool 
+$ find  -type d -mtime -1   |  xargs -r -n 8 debdeltas --dir $d// 
+
+The // means that the pool directory tree will be mimicked in the deltas
+directory tree.
+
+-------------- Statistics
+
+I am currently running 'debdeltas' in a mirror that mirrors 'sarge'
+and 'etch'.  I am running 'debdelta' blindly on it (so it is also
+computing differences between packages in 'sarge' and etch'; but most
+are too big, and are then deleted).  It stores deltas in
+http://tonelli.sns.it/mirror/debian-deltas
+
+It results that  ~42 % of deltas are <=50% of original .deb.
+
+Of those, the average percent is that a delta is ~20%  original .deb.
+
+This means that, in its current setting, 'debdeltas' potentially asks for 
+a +20% disk space on a mirror. (This would be probably lower 
+if I would teach 'debdelta' not too delta debs from different releases).
+
+-------------- Speed
+
+On a desktop with CPU  Athlon64 3000 and a average hard disk,
+
+$ debdelta mozilla-browser_1.7.8-1sarge3_i386.deb  mozilla-browser_1.7.8-1sarge6_i386.deb /tmp/m-b.debdelta
+
+processes the 10Mb of mozilla-browser in ~11sec, 
+that is a speed of ~900kB per second.
+
+Then  debpatch applies the above delta in  16sec,
+at a speed of  ~600kB per second.
+
+Numbers drop in a old PC, or in a notebook (like mine, that has a
+Athlon 1600MHz and slow disks), where data are chewed at ~200kB per
+second.
+
+In my case, for example, since I have a ADSL line that downloads at
+max 80kB per second, I would have a benefit downloading deltas, even
+on my slow notebook: indeed, to download a 80MB package, it would take
+1000seconds; whereas to download a delta that is 20% of 80MB it would
+take 200seconds, and then 80MB / (200kB/sec) = 400seconds to apply it,
+for a total of 600seconds.
+
+Of course the above is even better for people with fast disks and/or
+slow modems.
