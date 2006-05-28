@@ -69,10 +69,12 @@ if action not in actions:
 
 __doc__ = doc[action] + doc_common
 
-( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
-                               ('help','info','needsold','dir=') )
-
-
+try: 
+  ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
+                                 ('help','info','needsold','dir=') )
+except getopt.GetoptError,a:
+  sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
+  sys.exit(2)
 
 MAXMEMORY = 1024 * 1024 * 50
 
@@ -770,7 +772,9 @@ def do_deltas(argv):
         new=info_by_pack_arch[ (pa,ar) ][l+1]
 
         newdebsize=os.stat(new['File'])[ST_SIZE]
-        if newdebsize <= 20 * 1024 :
+        #very small packages cannot be effectively delta-ed
+        if newdebsize <= 4 * 1024 :
+          #this actually affects 1 every 60 packages in the archives
           if VERBOSE :     print 'Skip , too small: ', new['File']
           break
         
