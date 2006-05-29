@@ -12,17 +12,19 @@ Options:
 
 
 doc['deltas']="""\
-Usage: debdeltas [ option...  ] debs
-  Computes all missing deltas for debs
+Usage: debdeltas [ option...  ] deb_files
+  Computes all missing deltas for Debian files deb_files
 
 Options:
 --dir DIR   force saving of deltas in this DIR
             (otherwise they go in the dir of the newer deb)
-            if DIR ends in // , then the dirname of the arguments will be used as well
---search    search in the directory of the above debs for older versions
+            if DIR ends in // , then the dirname of deb_file
+            the  will be used as well
 --needsold  create a patch that can only be used if the old .deb is available
   -M Mb     maximum memory (to decide if using 'bsdiff' or 'xdelta')
 """
+
+## implement : --search    search in the directory of the above debs for older versions
 
 doc['patch']="""\
 Usage: debpatch [ option...  ] patchin  fromfile  tofile 
@@ -36,6 +38,15 @@ Usage: debpatch --info  patch
 
 Options:
 """
+
+doc['delta-upgrade']="""\
+Usage: debdelta-upgrade
+  Downloads all deltas that may be used to 'apt-get upgrade', and apply them
+
+Options:
+--dir DIR   directory where to save results (default: /tmp/archive)
+"""
+
 
 doc_common="""
   -v      verbose (can be added multiple times)
@@ -60,22 +71,6 @@ from shutil  import rmtree
 ################################################# main program, read options
 
 
-
-action=(os.path.basename(sys.argv[0]))[3:]
-actions =  ('delta','patch','deltas')
-if action not in actions:
-  print 'wrong filename: should be "deb" + '+repr(actions)
-  sys.exit(0)
-
-__doc__ = doc[action] + doc_common
-
-try: 
-  ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
-                                 ('help','info','needsold','dir=') )
-except getopt.GetoptError,a:
-  sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
-  sys.exit(2)
-
 MAXMEMORY = 1024 * 1024 * 50
 
 MAX_DELTA_PERCENT = 50
@@ -87,34 +82,45 @@ INFO    = False
 NEEDSOLD= False
 DIR     = None
 
-for  o , v  in  opts :
-  if o == '-v' : VERBOSE += 1
-  elif o == '-d' : DEBUG += 1
-  elif o == '-k' : KEEP = True
-  elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
-  elif o == '-M' and action == 'delta' :    MAXMEMORY = 1024 * 1024 * int(v)
-  elif o == '--info' and action == 'patch' : INFO = True
-  elif o == '--dir'  and action == 'deltas' :
-    DIR = v
-    if not os.path.isdir(DIR):
-      print 'Error: --dir ',DIR,' does not exist.'
-      sys.exit(3)
-  elif o ==  '--help' or o ==  '-h':
-    print __doc__
+if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
+  action = None
+else:
+  action=(os.path.basename(sys.argv[0]))[3:]
+  actions =  ('delta','patch','deltas','delta-upgrade')
+  
+  if action not in actions:
+    print 'wrong filename: should be "deb" + '+repr(actions)
     sys.exit(0)
-  else:
-    print ' option ',o,'is unknown, try --help'
-    sys.exit(1)
 
-if INFO  :
-  if  len(argv) > 1 and VERBOSE :
-    print '(printing info - extra arguments are ignored)'
-  elif  len(argv) == 0  :
-    print ' need a  filename ;  try --help'
-    sys.exit(1)
-elif action != 'deltas' and len(argv) != 3 :  
-  print ' need 3 filenames ;  try --help'
-  sys.exit(1)
+  __doc__ = doc[action] + doc_common
+
+  try: 
+      ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
+                                     ('help','info','needsold','dir=') )
+  except getopt.GetoptError,a:
+      sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
+      sys.exit(2)
+
+
+  for  o , v  in  opts :
+    if o == '-v' : VERBOSE += 1
+    elif o == '-d' : DEBUG += 1
+    elif o == '-k' : KEEP = True
+    elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
+    elif o == '-M' and action == 'delta' :    MAXMEMORY = 1024 * 1024 * int(v)
+    elif o == '--info' and action == 'patch' : INFO = True
+    elif o == '--dir'  and action == 'deltas' :
+      DIR = v
+      if not os.path.isdir(DIR):
+        print 'Error: --dir ',DIR,' does not exist.'
+        sys.exit(3)
+    elif o ==  '--help' or o ==  '-h':
+      print __doc__
+      sys.exit(0)
+    else:
+      print ' option ',o,'is unknown, try --help'
+      sys.exit(1)
+
 
 
 if KEEP:
@@ -225,7 +231,13 @@ def prepare_for_echo(s):
       r += "\\" + ( '0000' +oct(ord(a)))[-4:]
   return r
 
+from string import join
 
+def version_mangle(v):
+  if  ':' in v :
+    return join(v.split(':'),'%3a')
+  else:
+    return v
 
 def tempo():
   TD = abspath(tempfile.mkdtemp())
@@ -779,7 +791,8 @@ def do_deltas(argv):
           break
         
         assert( old['Package'] == pa and pa == new['Package'] )
-        deltabasename = pa +'_'+  old['Version'] +'_'+ new['Version'] +'_'+ar+'.debdelta'
+        deltabasename = pa +'_'+  version_mangle(old['Version']) +\
+                        '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
         if DIR:
           if DIR[-2:] == '//' :
             a=DIR+'/'+os.path.dirname(new['File'])+'/'+deltabasename
@@ -823,7 +836,7 @@ def do_deltas(argv):
         if ret and MAX_DELTA_PERCENT:
           if ret[1] > MAX_DELTA_PERCENT:
             os.unlink(delta)
-            if VERBOSE : print ' Error, too big:',delta
+            if VERBOSE : print ' Error, too big!'
             p=open(delta+'-too-big','w')
             p.close()
             ret = None
@@ -850,6 +863,16 @@ def do_deltas(argv):
 ################################################# main program, do stuff
 
 if action == 'patch':
+  if INFO  :
+    if  len(argv) > 1 and VERBOSE :
+      print '(printing info - extra arguments are ignored)'
+    elif  len(argv) == 0  :
+      print ' need a  filename ;  try --help'
+      sys.exit(1)
+  elif len(argv) != 3 :  
+    print ' need 3 filenames ;  try --help'
+    sys.exit(1)
+  
   newdeb=abspath(argv[2])
   T=tempo()
   try:
@@ -865,7 +888,11 @@ if action == 'patch':
     raise
   rmtree(T)
   
-elif action == 'delta' :  
+elif action == 'delta' :
+  if len(argv) != 3 :  
+    print ' need 3 filenames ;  try --help'
+    sys.exit(1)
+    
   T=tempo()
   delta=abspath(argv[2])
   try:
@@ -887,6 +914,193 @@ elif action == 'deltas' :
   except DebDeltaError:
     sys.exit(2)
 
-
+##################################################### delta-upgrade
     
+elif action == 'delta-upgrade' :
+
+  p=os.popen('dpkg --print-architecture')
+  arch=de_n(p.read())
+  p.close()
+  
+  original_cwd = os.getcwd() 
+  import httplib
+  conn=httplib.HTTPConnection("tonelli.sns.it")
+  delta_http_base='/mirror/debian-deltas/pool/'
+  
+  import  apt, apt_pkg
+  apt_pkg.init()
+
+  cache=apt.Cache()
+  cache.upgrade()
+
+  if DIR == None:
+    DIR='/tmp/archives'
+  if not os.path.exists(DIR):    
+    os.mkdir(DIR)
+
+  print 'Recreated debs are saved in ',DIR
+  
+  for p in cache :
+    if p.isInstalled and  p.markedUpgrade \
+           and p.candidateOrigin[0].origin == 'Debian':
+
+      newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
+      if os.path.exists(DIR+'/'+newdeb) or \
+             os.path.exists('/var/cache/apt/archives/'+newdeb):
+        if VERBOSE: print  'Already downloaded: ',newdeb
+        continue
+
+      if VERBOSE:
+        print 'Looking for a delta for %s from %s to %s ' % \
+              ( p.name, p.installedVersion, p.candidateVersion )
+
+      newdeb = DIR+'/'+newdeb
+      
+      #delta name
+      delta_name=p.name+'_'+version_mangle(p.installedVersion)+\
+                  '_'+ version_mangle(p.candidateVersion)+'_i386.debdelta'
+      ## FIXME : how do I get the URI out of python-apt ??
+      if p.sourcePackageName[:3] == 'lib':
+        b=p.sourcePackageName[:4]
+      else:
+        b=p.sourcePackageName[0]
+      c=p.candidateOrigin[0].component
+      ## rely on usual pool structure....
+      uri=delta_http_base+c+'/'+b+'/'+p.sourcePackageName +'/'+delta_name
+      if VERBOSE > 2: print ' uri ',uri
+
+      conn.connect()
+      conn.request("GET", uri)
+      r = conn.getresponse()
+      if r.status != 200:
+        if VERBOSE: print '  delta is not available',repr(r.status), r.reason
+        data1 = r.read()
+        continue
+      (delta_fd, tmp_delta) = tempfile.mkstemp()
+      j=0
+      s=r.read(1024)
+      while s:
+        os.write(delta_fd,s)
+        j += 1
+        sys.stderr.write(" %5d kB for %s \r" % ( j , delta_name))
+        s=r.read(1024)        
+      os.close(delta_fd)
+      conn.close()
+      sys.stderr.write(" " * 70 + '\r')
+      T=tempo()
+      try:
+        ret=do_patch(tmp_delta,'/',newdeb ,T)
+      except DebDeltaError:
+        print ' Error: applying of delta failed: ',delta
+        os.unlink(newdeb)
+      unlink(tmp_delta)
+      os.chdir(original_cwd)
+      rmtree(T)
+
+  
+##################################################### apt method
+### still work in progress
+      
+elif  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
+  import os,sys, select, fcntl, apt, thread, threading, time
+
+  apt_cache=apt.Cache()
+  
+  log=open('/tmp/log','a')
+  log.write('  --- here we go\n')
+  
+  ( hi, ho , he) = os.popen3('/usr/lib/apt/methods/http.distrib','b',2)
+
+  nthreads=3
+
+  class cheat_apt_gen:
+    def __init__(self):
+      self.uri=None
+      self.filename=None
+      self.acquire=False
+    def process(self,cmd):
+      if self.uri:
+        self.filename=cmd[10:-1]
+        log.write(' download %s for %s\n' % (repr(self.uri),repr(self.filename)))
+        self.uri=None
+        self.filename=None
+        self.acquire=False
+        return cmd
+      elif self.acquire:
+        self.uri=cmd[5:-1]
+        return cmd
+      elif cmd[:3] == '600' :
+        self.acquire=True
+      else:
+        return cmd
+  
+  def copyin():
+    bufin=''
+    while 1:
+      #print ' o'
+      s=os.read(ho.fileno(),1)
+      bufin += s
+      if log and bufin and (s == '' or s == '\n') :
+        log.write( ' meth ' +repr(bufin)+'\n' )
+        bufin=''
+      if s == '':
+        thread.interrupt_main(   )
+        global nthreads
+        if nthreads:
+          nthreads-=1
+        #log.write( ' in closed \n' )
+        #return
+      os.write(1,s)
+
+
+  def copyerr():
+    buferr=''
+    while 1:
+      s=os.read(he.fileno(),1)
+      buferr += s
+      if log and buferr and (s == '' or s == '\n') :
+        log.write( ' err ' +repr(buferr)+'\n' )
+        buferr=''
+      if s == '':
+        thread.interrupt_main(   )
+        global nthreads
+        if nthreads:
+          nthreads-=1
+        log.write( ' err closed \n' )
+        #return
+      os.write(2,s)
+
+  def copyout():
+    gen=cheat_apt_gen()
+    bufout=''
+    while 1:
+      s=os.read(0,1)
+      bufout += s
+      if log and bufout and (s == '' or s == '\n') :
+        log.write( ' apt ' +repr(bufout)+'\n' )
+
+        bufout=gen.process(bufout) 
+        
+        bufout=''
+      if s == '':
+        thread.interrupt_main()
+        global nthreads
+        if nthreads:
+          nthreads-=1
+        #log.write( ' out closed \n' )
+        #return
+      os.write(hi.fileno(),(s))
+
+        
+  tin=thread.start_new_thread(copyin,())
+  tout=thread.start_new_thread(copyout,())
+  terr=thread.start_new_thread(copyerr,())
+  while nthreads>0 :
+    log.write( ' nthreads %d \n' % nthreads )
+    try:
+      while nthreads>0 :
+        time.sleep(1)      
+    except KeyboardInterrupt:
+      pass
+  sys.exit(0)
 
