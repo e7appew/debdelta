@@ -74,6 +74,15 @@ $ find  -type d -mtime -1   |  xargs -r -n 8 debdeltas --dir $d//
 The // means that the pool directory tree will be mimicked in the deltas
 directory tree.
 
+----------- debdelta-upgrade
+
+This command will download necessary patches from my mirror
+and use them to create debs for an 'apt-get upgrade'
+
+This is currently an ugly hack; it should be replaced by an APT method
+(this is work in progress); but for this I need help from APT and python-apt
+authors.
+
 -------------- Statistics
 
 I am currently running 'debdeltas' in a mirror that mirrors 'sarge'
@@ -82,7 +91,7 @@ computing differences between packages in 'sarge' and etch'; but most
 are too big, and are then deleted).  It stores deltas in
 http://tonelli.sns.it/mirror/debian-deltas
 
-It results that  ~42 % of deltas are <=50% of original .deb.
+Preliminary statistics show that  ~40% of deltas are <=50% of original .deb.
 
 Of those, the average percent is that a delta is ~20%  original .deb.
 
@@ -115,3 +124,13 @@ for a total of 600seconds.
 
 Of course the above is even better for people with fast disks and/or
 slow modems.
+
+Moreover, delta downloading and delta patching can be done in parallel:
+if 4 packages as above have to be downloaded, then the total
+time for straight downloading would be 4000seconds, while the time
+for  parallel-download-patch may be as low as 1400seconds.
+
+Actually, an apt delta method may do a smart decision 
+of how many deltas to download, and in which order,
+to optimize the result, (given the deltas size, the packages size,
+the downloading speed and the patching speed).
