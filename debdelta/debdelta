@@ -154,7 +154,7 @@ def scan_control(p,params,prefix=None,script=None,stdout = None):
   a=p.readline()
   while a:
     a=de_n(a)
-    if a[:4] in ('Pack','Vers','Arch','Stat','Inst'):
+    if a[:4] in ('Pack','Vers','Arch','Stat','Inst','File'):
       if script : script.write('#'+prefix+a+'\n')
       if stdout : stdout.write(' ' + a)
       i=a.index(':')
@@ -252,11 +252,11 @@ def tempo():
 class DebDeltaError:
   def __init__(self,s):
     self.__str = s
-  def __str__(self,s):
-    return __str
+  def __str__(self):
+    return self.__str
 
 def die(s=None):
-  if s : sys.stderr.write(s+'\n')
+  #if s : sys.stderr.write(s+'\n')
   raise DebDeltaError,s
 
   
@@ -327,7 +327,7 @@ def do_patch(delta,olddeb,newdeb,TD):
   while s :
     if s[0] == '#' :
       s=de_n(s)[1:]
-      if VERBOSE or INFO : print ' info: ',s
+      if VERBOSE > 1 or (VERBOSE and action != 'deltas' ) or INFO : print ' info: ',s
       if ':' in s:
         i=s.index(':')  
         params[s[:i]] = s[i+2:]
@@ -429,7 +429,7 @@ def do_patch(delta,olddeb,newdeb,TD):
     if newdeb:
       shutil.move('NEW.file',newdeb)
 
-    if VERBOSE > 1:
+    if VERBOSE :
       if newdeb:
         debsize = os.stat(newdeb)[ST_SIZE]
       else:
@@ -723,7 +723,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   if VERBOSE:
     print ' deb delta is  %3.1f%% of deb ; that is, %dkB would be saved' \
           % ( percent , (( newdebsize -deltasize ) / 1024) )
-    if VERBOSE > 1:
+    if VERBOSE :
       print '  delta time: %dsec, speed: %dkB per second ' %  \
             (elaps, newdebsize / 1024 / (elaps+1))
   return (delta, percent, elaps)
@@ -810,7 +810,7 @@ def do_deltas(argv):
 
         free=freespace(os.path.dirname(delta))
         if free and free < newdebsize /2 + 1024 :
-          if VERBOSE : print ' Not enough disk space for',delta
+          if VERBOSE : print 'Not enough disk space for storing ',delta
           break
         
         if VERBOSE: print 'Creating :',delta
@@ -820,11 +820,12 @@ def do_deltas(argv):
           ret=do_delta(old['File'],new['File'], delta,T)
         except KeyboardInterrupt:
           raise
-        except DebDeltaError:
+        except DebDeltaError,s:
           os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
-          print ' Creation of ',delta,' failed.'
+          if not VERBOSE: print 'Creating: ',delta
+          print ' Creation of delta failed, reason: ',str(s)
         except:
           os.chdir(original_cwd)
           if os.path.exists(delta):
@@ -834,9 +835,9 @@ def do_deltas(argv):
         rmtree(T)
 
         if ret and MAX_DELTA_PERCENT:
-          if ret[1] > MAX_DELTA_PERCENT:
+          if ret[1] > MAX_DELTA_PERCENT and os.stat(delta)[ST_SIZE] >= 4*1024 :
             os.unlink(delta)
-            if VERBOSE : print ' Error, too big!'
+            if VERBOSE : print ' Warning, too big!'
             p=open(delta+'-too-big','w')
             p.close()
             ret = None
@@ -847,8 +848,8 @@ def do_deltas(argv):
             do_patch(delta,old['File'],None ,T)
           except KeyboardInterrupt:
             raise
-          except DebDeltaError:
-            print ' Error: testing of delta failed: ',delta
+          except DebDeltaError,s:
+            print ' Error: testing of delta failed: ',str(s)
             os.chdir(original_cwd)
             if os.path.exists(delta):
               os.unlink(delta)
@@ -877,7 +878,8 @@ if action == 'patch':
   T=tempo()
   try:
     do_patch(abspath(argv[0]), abspath(argv[1]), newdeb ,T)
-  except DebDeltaError:
+  except DebDeltaError,s:
+    print 'Failed: ',str(s)
     if os.path.exists(newdeb):
       os.unlink(newdeb)
     rmtree(T)
@@ -897,7 +899,8 @@ elif action == 'delta' :
   delta=abspath(argv[2])
   try:
     do_delta(abspath(argv[0]), abspath(argv[1]), delta ,T)  
-  except DebDeltaError:
+  except DebDeltaError,s:
+    print 'Failed: ',str(s)
     rmtree(T)
     if os.path.exists(delta):
       os.unlink(delta)
@@ -911,7 +914,8 @@ elif action == 'delta' :
 elif action == 'deltas' :
   try:
     do_deltas(argv)
-  except DebDeltaError:
+  except DebDeltaError,s:
+    print 'Failed: ',str(s)
     sys.exit(2)
 
 ##################################################### delta-upgrade
@@ -925,7 +929,7 @@ elif action == 'delta-upgrade' :
   original_cwd = os.getcwd() 
   import httplib
   conn=httplib.HTTPConnection("tonelli.sns.it")
-  delta_http_base='/mirror/debian-deltas/pool/'
+  delta_http_base='/mirror/debian-deltas'
   
   import  apt, apt_pkg
   apt_pkg.init()
@@ -939,7 +943,9 @@ elif action == 'delta-upgrade' :
     os.mkdir(DIR)
 
   print 'Recreated debs are saved in ',DIR
-  
+  start_sec = time.time()
+  len_newdebs=0
+
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
            and p.candidateOrigin[0].origin == 'Debian':
@@ -955,18 +961,30 @@ elif action == 'delta-upgrade' :
               ( p.name, p.installedVersion, p.candidateVersion )
 
       newdeb = DIR+'/'+newdeb
-      
+
+      ## FIXME : how do I get the URI and/or architecture out of python-apt ??
+      #if p.sourcePackageName[:3] == 'lib':
+      #  b=p.sourcePackageName[:4]
+      #else:
+      #  b=p.sourcePackageName[0]
+      #c=p.candidateOrigin[0].component
+      ## rely on usual pool structure....
+      #u=c+'/'+b+'/'+p.sourcePackageName
+      ##this sucks... it is so slow..., but it works
+      dpkg_params={}
+      pip=os.popen('env -i dpkg -p '+p.name)
+      scan_control(pip,dpkg_params)
+      pip.close()
+      a=dpkg_params['Architecture']
+      u=dpkg_params['Filename']
+      assert(dpkg_params['Version'] == p.installedVersion )
       #delta name
       delta_name=p.name+'_'+version_mangle(p.installedVersion)+\
-                  '_'+ version_mangle(p.candidateVersion)+'_i386.debdelta'
-      ## FIXME : how do I get the URI out of python-apt ??
-      if p.sourcePackageName[:3] == 'lib':
-        b=p.sourcePackageName[:4]
-      else:
-        b=p.sourcePackageName[0]
-      c=p.candidateOrigin[0].component
-      ## rely on usual pool structure....
-      uri=delta_http_base+c+'/'+b+'/'+p.sourcePackageName +'/'+delta_name
+                  '_'+ version_mangle(p.candidateVersion)+'_'+\
+                  a+'.debdelta'
+
+      uri=delta_http_base+'/'+os.path.dirname(u)+'/'+delta_name
+
       if VERBOSE > 2: print ' uri ',uri
 
       conn.connect()
@@ -990,14 +1008,17 @@ elif action == 'delta-upgrade' :
       T=tempo()
       try:
         ret=do_patch(tmp_delta,'/',newdeb ,T)
-      except DebDeltaError:
-        print ' Error: applying of delta failed: ',delta
+        len_newdebs += os.stat(newdeb)[ST_SIZE]
+      except DebDeltaError,s:
+        print ' Error: applying of delta failed: ',str(s)
         os.unlink(newdeb)
       unlink(tmp_delta)
       os.chdir(original_cwd)
       rmtree(T)
-
-  
+  elaps =  time.time() - start_sec
+  if VERBOSE:
+    print 'Delta-upgrade download and patch time: %dsec; virtual speed: %dkB per second.' %  \
+          (elaps, len_newdebs / 1024 / (elaps+1))
 ##################################################### apt method
 ### still work in progress
       
