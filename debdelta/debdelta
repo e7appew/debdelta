@@ -556,15 +556,17 @@ def do_delta(olddeb,newdeb,delta,TD):
     deltacount += 1
     pp=str(deltacount)
     p = 'PATCH/'+pp
+    ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
+    ## but , in my experiments, this number is more like 12
     free=freespace(TD)
     if free == None :
       free = MAXMEMORY * 16
-    if osize < MAXMEMORY / 17 and osize * 8 < free  :
+    if ( osize < (MAXMEMORY / 12)) and (osize < (free / 8)) :
       system('bsdiff  '+o+' '+n+' '+p)
       script.write('bspatch '+o+' '+n+' '+p+'\n')
     else:
-      if VERBOSE > 4 : print '  fallback on xdelta instead of bsdiff' 
+      if VERBOSE > 3 : print '   fallback on xdelta instead of bsdiff' 
       system('xdelta delta -n -9 '+o+' '+n+' '+p)
       script.write('xdelta patch '+p+' '+o+' '+n+'\n')
     ## clean up
@@ -598,9 +600,9 @@ def do_delta(olddeb,newdeb,delta,TD):
         if oldtarinfo.isreg() :
           if VERBOSE > 4 : print '  use old file ', name
           oldtar.extract(oldtarinfo.name,"OLD/"+w )
-          system('cat OLD/'+w+'/'+name+' >> OLD/mega_cat')
+          system("cat 'OLD/"+w+"/"+name+"' >> OLD/mega_cat")
           unlink('OLD/'+w+'/'+name)
-          script.write('cat OLD/'+w+'/'+name+'  >> OLD/mega_cat ; rm OLD/'+w+'/'+name+'\n')
+          script.write("cat 'OLD/"+w+"/"+name+"'  >> OLD/mega_cat ; rm 'OLD/"+w+"/"+name+"'\n")
       elif VERBOSE > 4 : print '  not diffable from old : ', name
 
     if os.path.exists('OLD/mega_cat'):
@@ -787,7 +789,7 @@ def do_deltas(argv):
         #very small packages cannot be effectively delta-ed
         if newdebsize <= 4 * 1024 :
           #this actually affects 1 every 60 packages in the archives
-          if VERBOSE :     print 'Skip , too small: ', new['File']
+          if VERBOSE > 1:     print 'Skip , too small: ', new['File']
           break
         
         assert( old['Package'] == pa and pa == new['Package'] )
@@ -819,6 +821,10 @@ def do_deltas(argv):
         try:
           ret=do_delta(old['File'],new['File'], delta,T)
         except KeyboardInterrupt:
+          os.chdir(original_cwd)
+          if os.path.exists(delta):
+            os.unlink(delta)
+          rmtree(T)
           raise
         except DebDeltaError,s:
           os.chdir(original_cwd)
@@ -847,6 +853,10 @@ def do_deltas(argv):
           try:
             do_patch(delta,old['File'],None ,T)
           except KeyboardInterrupt:
+            os.chdir(original_cwd)
+            if os.path.exists(delta):
+              os.unlink(delta)
+            rmtree(T)
             raise
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
@@ -854,9 +864,11 @@ def do_deltas(argv):
             if os.path.exists(delta):
               os.unlink(delta)
           except:
-            os.chdir(original_cwd)
             print " Unexpected error while testing delta:", sys.exc_info()[0]
-            os.unlink(delta)
+            os.chdir(original_cwd)
+            if os.path.exists(delta):
+              os.unlink(delta)
+            rmtree(T)
             raise
           os.chdir(original_cwd)
           rmtree(T)
@@ -884,6 +896,9 @@ if action == 'patch':
       os.unlink(newdeb)
     rmtree(T)
     sys.exit(2)
+  except KeyboardInterrupt:
+    if os.path.exists(newdeb):
+      os.unlink(newdeb)
   except:
     if os.path.exists(newdeb):
       os.unlink(newdeb)
@@ -905,6 +920,9 @@ elif action == 'delta' :
     if os.path.exists(delta):
       os.unlink(delta)
     sys.exit(2)
+  except KeyboardInterrupt:
+    if os.path.exists(delta):
+      os.unlink(delta)
   except:
     if os.path.exists(delta):
       os.unlink(delta)
