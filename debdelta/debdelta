@@ -66,7 +66,7 @@ import sys , os , tempfile , string ,getopt , tarfile , shutil , time
 from stat    import ST_SIZE
 from os.path import abspath
 from os      import unlink, rmdir
-from shutil  import rmtree
+import shutil
 
 ################################################# main program, read options
 
@@ -131,6 +131,12 @@ if KEEP:
     if VERBOSE : print ' would rmdir ',a
   def rmtree(a):
     if VERBOSE : print ' would rm -r ',a
+else:
+  def rmtree(a):
+    try:
+      shutil.rmtree(a)
+    except OSError,s:
+      print ' Warning! when trying to remove ',repr(a),'got OSError',repr(str(s))
 
 #################################################### various routines
 
@@ -176,8 +182,15 @@ def make_parents(f):
   return d
 
 def de_n(a):
-  if a[-1] ==  '\n' :
+  if a and a[-1] ==  '\n' :
     a = a[:-1]
+  return a
+
+def de_bar(a):
+  if a and a[:2] == './' :
+    a=a[2:]
+  if a and a[0] == '/' :
+    a=a[1:]
   return a
 
 def list_ar(f):
@@ -491,7 +504,43 @@ def do_delta(olddeb,newdeb,delta,TD):
       scan_control(p,params,o,script,s)
       p.close()
       if s: print
-  
+      del s,p
+
+  # uses MD5 to detect identical files (even when renamed)
+  data_identical={}
+  if os.path.exists(TD+'/NEW/CONTROL/md5sums') and \
+     os.path.exists(TD+'/OLD/CONTROL/md5sums') :
+    f=open(TD+'/OLD/CONTROL/md5sums')
+    do={}
+    a=de_n(f.readline())
+    while a:
+      m , n = a[:32] ,  de_bar( a[34:] )
+      do[ m ] = n
+      a=de_n(f.readline())
+    f.close()
+    f=open(TD+'/NEW/CONTROL/md5sums')
+    dn={}
+    mul={}
+    us={}
+    r=None
+    a=de_n(f.readline())
+    while a:
+      m , n = a[:32] ,  de_bar( a[34:] )
+      if m in do:
+         #sometimes there are multiple occurences of the same file...
+         # ( as in    tetex-doc_3.0-18_all.deb    )
+         r=do[m]
+         if r in us:
+           mul[r] = True
+         us[ r ] = True
+         dn[ n ] = r
+      a=de_n(f.readline())
+    f.close()
+    for n in dn:
+      data_identical[ n ] = ( dn[ n ], mul.get( dn[ n ] ) )
+    del f,dn,do,a,mul,n,m,r,us
+
+    
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)  
     instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
@@ -587,30 +636,60 @@ def do_delta(olddeb,newdeb,delta,TD):
     (o,co) = unzip(o,False)
     (n,cn) = unzip(n)
     oldtar = tarfile.open(o, "r")
-    oldnames = oldtar.getnames()
+    oldnames = oldtar.getnames() #map( de_bar , oldtar.getnames() )
+    oldused={}
     if VERBOSE > 3 : print '   scanning ',n
     newtar = tarfile.open(n, "r")
     for newtarinfo in newtar:
-      name = newtarinfo.name
+      name = de_bar( newtarinfo.name )
+      if not newtarinfo.isreg():
+        if VERBOSE > 4 : print '  not regular in new : ', name
+        continue
+      multiple = False
       if name in renames:
-        oldname = renames[name]
+        ( oldname , multiple ) = renames[name]
+        if VERBOSE >3 : print '   identical!  ', oldname, name, multiple
       else:
         oldname = name
-      if  (('/'+name) in  skip ) or ( name in skip ):
-        if VERBOSE > 3 : print '   skip using old file ', name
-      elif name in oldnames and  newtarinfo.isreg() :
-        oldtarinfo = oldtar.getmember(newtarinfo.name)
-        if oldtarinfo.isreg() :
-          if VERBOSE > 4 : print '  use old file ', name
-          oldtar.extract(oldtarinfo.name,"OLD/"+w )
-          system("cat 'OLD/"+w+"/"+name+"' >> OLD/mega_cat")
-          unlink('OLD/'+w+'/'+name)
-          script.write("cat 'OLD/"+w+"/"+name+"'  >> OLD/mega_cat ; rm 'OLD/"+w+"/"+name+"'\n")
-      elif VERBOSE > 4 : print '  not diffable from old : ', name
 
+      if   oldname in skip :
+        if VERBOSE > 3 : print '   skip using old file ', name
+        continue
+      
+      if oldname in oldnames  :
+        oldtarinfo = oldtar.getmember(oldname)        
+        assert( oldtarinfo.name == oldname )
+        if oldtarinfo.isreg() :
+          if VERBOSE > 4 : print '  use old file ', oldname
+          oldused[oldname] = name
+          del name
+          oldtar.extract(oldname,"OLD/"+w )
+          system("cat 'OLD/"+w+"/"+oldname+"' >> OLD/mega_cat")
+          unlink('OLD/'+w+'/'+oldname)          
+          script.write("cat 'OLD/"+w+"/"+oldname+"'  >> OLD/mega_cat\n")
+          if not multiple:
+            script.write("rm 'OLD/"+w+"/"+oldname+"'\n")
+        elif VERBOSE > 4 : print '  not regular in old : ', name
+      elif VERBOSE > 4 : print '  not present in old : ', name
+
+    #there may be files that have been renamed and edited...
+    for oldname in oldnames :
+      if (oldname not in oldused) and  (oldname not in skip) :
+        oldtarinfo = oldtar.getmember(oldname)
+        assert( oldtarinfo.name == oldname )
+        if oldtarinfo.isreg() :
+          if VERBOSE > 4 : print ' provide also old file ', oldname
+          oldtar.extract(oldname,"OLD/"+w )
+          system("cat 'OLD/"+w+"/"+oldname+"' >> OLD/mega_cat")
+          unlink('OLD/'+w+'/'+oldname)
+          script.write("cat 'OLD/"+w+"/"+oldname+"'  >> OLD/mega_cat ; rm 'OLD/"+w+"/"+oldname+"'\n")
+    
     if os.path.exists('OLD/mega_cat'):
       rmtree('OLD/'+w)
       delta_files('OLD/mega_cat',n)
+      if os.path.exists('OLD/mega_cat'):
+        # if -k is given, still we need to delete it...
+        os.unlink('OLD/mega_cat')
     else:
       p=verbatim(n)
       script.write('mv '+p+' '+n+ '\n')
@@ -677,7 +756,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write('#old-data-tree\n')
       o = 'OLD/'+name
       system('ar p OLD.file '+name+' >> '+o)
-      delta_tar(o,n,'DATA',old_conffiles)
+      delta_tar(o,n,'DATA',old_conffiles,data_identical)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
       p=verbatim(n)
@@ -874,7 +953,8 @@ def do_deltas(argv):
             rmtree(T)
             raise
           os.chdir(original_cwd)
-          rmtree(T)
+          if os.path.exists(T):
+            rmtree(T)
 
 ################################################# main program, do stuff
 
