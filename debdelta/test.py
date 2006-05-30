@@ -1,11 +1,30 @@
 
 import os,sys, select, fcntl
 
+
+
+class DebDeltaError:
+  def __init__(self,s):
+    self.__str = s
+  def __str__(self):
+    return self.__str
+def die(s=None):
+  if s : sys.stderr.write(s+'\n')
+  raise DebDeltaError,s
+
+try:
+    die('ciao')
+except  DebDeltaError,s:
+    print type(s)
+    print ' Creation of delta failed, reason:',str(s)
+sys.exit(2)
+
+
 def g(t):
     a=t
     while 1:
         a+=t
-        b=yield a
+        yield a
         print b
 
 gen=g(1)
