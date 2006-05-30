@@ -107,7 +107,7 @@ else:
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
     elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
-    elif o == '-M' and action == 'delta' :    MAXMEMORY = 1024 * 1024 * int(v)
+    elif o == '-M' :    MAXMEMORY = 1024 * 1024 * int(v)
     elif o == '--info' and action == 'patch' : INFO = True
     elif o == '--dir'  and action == 'deltas' :
       DIR = v
@@ -327,7 +327,9 @@ def do_patch(delta,olddeb,newdeb,TD):
   while s :
     if s[0] == '#' :
       s=de_n(s)[1:]
-      if VERBOSE > 1 or (VERBOSE and action != 'deltas' ) or INFO : print ' info: ',s
+      if VERBOSE > 2 or (VERBOSE and action != 'deltas' and \
+                         action != 'delta-upgrade' ) or INFO :
+        print ' info: ',s
       if ':' in s:
         i=s.index(':')  
         params[s[:i]] = s[i+2:]
@@ -1029,7 +1031,8 @@ elif action == 'delta-upgrade' :
         len_newdebs += os.stat(newdeb)[ST_SIZE]
       except DebDeltaError,s:
         print ' Error: applying of delta failed: ',str(s)
-        os.unlink(newdeb)
+        if os.path.exists(newdeb):
+          os.unlink(newdeb)
       unlink(tmp_delta)
       os.chdir(original_cwd)
       rmtree(T)
