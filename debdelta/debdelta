@@ -109,7 +109,7 @@ else:
     elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
     elif o == '-M' :    MAXMEMORY = 1024 * 1024 * int(v)
     elif o == '--info' and action == 'patch' : INFO = True
-    elif o == '--dir'  and action == 'deltas' :
+    elif o == '--dir'  :
       DIR = v
       if not os.path.isdir(DIR):
         print 'Error: --dir ',DIR,' does not exist.'
@@ -121,7 +121,8 @@ else:
       print ' option ',o,'is unknown, try --help'
       sys.exit(1)
 
-
+def dummy(): #otherwise the python mode for emacs fails to index my routines
+  pass
 
 if KEEP:
   def unlink(a):
@@ -174,15 +175,10 @@ def make_parents(f):
   d=d+'/'+s[-1]
   return d
 
-#def symlink_w_parents(f,d):
-#  d=make_parents(fd)
-#  os.symlink(f,d)
-
 def de_n(a):
   if a[-1] ==  '\n' :
     a = a[:-1]
   return a
-
 
 def list_ar(f):
   assert(os.path.exists(f))
@@ -586,7 +582,8 @@ def do_delta(olddeb,newdeb,delta,TD):
     if DEBUG:
       pass #implement MD5
 
-  def delta_tar(o,n,w,skip=()):
+  def delta_tar(o,n,w,skip=(),renames={}):
+    " compute delta of two tar files, and prepare the script consequently"
     (o,co) = unzip(o,False)
     (n,cn) = unzip(n)
     oldtar = tarfile.open(o, "r")
@@ -595,6 +592,10 @@ def do_delta(olddeb,newdeb,delta,TD):
     newtar = tarfile.open(n, "r")
     for newtarinfo in newtar:
       name = newtarinfo.name
+      if name in renames:
+        oldname = renames[name]
+      else:
+        oldname = name
       if  (('/'+name) in  skip ) or ( name in skip ):
         if VERBOSE > 3 : print '   skip using old file ', name
       elif name in oldnames and  newtarinfo.isreg() :
@@ -938,9 +939,10 @@ elif action == 'deltas' :
     print 'Failed: ',str(s)
     sys.exit(2)
 
+  
 ##################################################### delta-upgrade
     
-elif action == 'delta-upgrade' :
+def delta_upgrade(DIR):
   import  thread , pickle
 
   original_cwd = os.getcwd() 
@@ -962,10 +964,11 @@ elif action == 'delta-upgrade' :
   print 'Recreated debs are saved in ',DIR
   start_sec = time.time()
   len_newdebs=0
+  len_deltas=0
 
   (qout,qin)=os.pipe()
   #qoutf=os.fdopen(qout)
-  def thread_do_patch(qout,qin):
+  def thread_do_patch(qout,threads):
       if VERBOSE>=2 : print ' Patching thread started. '
       while 1:
         s=os.read(qout,1)
@@ -976,7 +979,7 @@ elif action == 'delta-upgrade' :
         if c == '\t' or c == '': break
         (name,tmp_delta , newdeb) = pickle.loads(c)      
         if VERBOSE>=2 : print ' Now patching for: ',name
-        # my fault... echo do_patch() wants its own CWD!
+        # my fault...  do_patch() wants its own CWD!
         pid=os.fork()
         if pid == 0:
           T=tempo()
@@ -1001,13 +1004,12 @@ elif action == 'delta-upgrade' :
         global len_newdebs
         if len_newdebs != None and os.path.exists(newdeb):
           len_newdebs += os.stat(newdeb)[ST_SIZE]
-      if VERBOSE>=2 : print ' Patching thread loop ended. '
-      s=os.write(qin,'\t')
-      s=os.read(qout,2)
+      threads.pop()
       if VERBOSE>=2 : print ' Patching thread ended , bye bye. '
       return
 
-  thread_patch=thread.start_new_thread(thread_do_patch  ,(qout,qin))
+  threads=[]
+  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads) ) )
 
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
@@ -1078,8 +1080,8 @@ elif action == 'delta-upgrade' :
   #terminate queue
   os.write(qin,'\t\t\t')
   if VERBOSE>=2 : print ' Downloading done, waiting for patching thread. '
-  os.read(qout,1)
-  #while thread_patch:    time.sleep(1)
+  while threads:
+    time.sleep(0.2)
 
   elaps =  time.time() - start_sec
   if VERBOSE:
@@ -1087,8 +1089,12 @@ elif action == 'delta-upgrade' :
           (elaps, len_newdebs / 1024 / (elaps+1)) 
 ##################################################### apt method
 ### still work in progress
+if action == 'delta-upgrade':
+  import warnings
+  warnings.simplefilter("ignore",FutureWarning)
+  delta_upgrade(DIR)
       
-elif  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
+if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   import os,sys, select, fcntl, apt, thread, threading, time
 
   apt_cache=apt.Cache()
