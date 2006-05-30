@@ -426,7 +426,7 @@ def do_patch(delta,olddeb,newdeb,TD):
 
     ##then , really execute the patch
     a=''
-    if VERBOSE > 2 : a = '-v'
+    if VERBOSE >= 4 : a = '-v'
     system('/bin/sh -e '+a+' PATCH/patch.sh')
     if newdeb:
       shutil.move('NEW.file',newdeb)
@@ -941,16 +941,13 @@ elif action == 'deltas' :
 ##################################################### delta-upgrade
     
 elif action == 'delta-upgrade' :
+  import  thread , pickle
 
-  p=os.popen('dpkg --print-architecture')
-  arch=de_n(p.read())
-  p.close()
-  
   original_cwd = os.getcwd() 
   import httplib
   conn=httplib.HTTPConnection("tonelli.sns.it")
   delta_http_base='/mirror/debian-deltas'
-  
+
   import  apt, apt_pkg
   apt_pkg.init()
 
@@ -966,21 +963,55 @@ elif action == 'delta-upgrade' :
   start_sec = time.time()
   len_newdebs=0
 
+  (qout,qin)=os.pipe()
+  #qoutf=os.fdopen(qout)
+  def thread_do_patch(qout,qin):
+      if VERBOSE>=2 : print ' Patching thread started. '
+      while 1:
+        s=os.read(qout,1)
+        c=''
+        while s != '\t' :
+          c+=s
+          s=os.read(qout,1)
+        if c == '\t' or c == '': break
+        (name,tmp_delta , newdeb) = pickle.loads(c)      
+        if VERBOSE>=2 : print ' Now patching for: ',name
+        # my fault... echo do_patch() wants its own CWD!
+        pid=os.fork()
+        if pid == 0:
+          T=tempo()
+          try:
+            ret=do_patch(tmp_delta,'/',newdeb ,T)
+            if VERBOSE : print '   for ',name
+          except DebDeltaError,s:
+            print ' Error: applying of delta for ',name,'failed: ',str(s)
+            if os.path.exists(newdeb):
+              os.unlink(newdeb)
+          except:
+            print " Error while applying delta for ",name,":",sys.exc_info()
+            if os.path.exists(newdeb):
+              os.unlink(newdeb)
+          if os.path.exists(tmp_delta):
+            unlink(tmp_delta)
+          os.chdir(original_cwd)
+          if os.path.exists(T):
+            rmtree(T)
+        else:
+          os.waitpid(pid,0)
+        global len_newdebs
+        if len_newdebs != None and os.path.exists(newdeb):
+          len_newdebs += os.stat(newdeb)[ST_SIZE]
+      if VERBOSE>=2 : print ' Patching thread loop ended. '
+      s=os.write(qin,'\t')
+      s=os.read(qout,2)
+      if VERBOSE>=2 : print ' Patching thread ended , bye bye. '
+      return
+
+  thread_patch=thread.start_new_thread(thread_do_patch  ,(qout,qin))
+
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
            and p.candidateOrigin[0].origin == 'Debian':
-
-      newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
-      if os.path.exists(DIR+'/'+newdeb) or \
-             os.path.exists('/var/cache/apt/archives/'+newdeb):
-        if VERBOSE: print  'Already downloaded: ',newdeb
-        continue
-
-      if VERBOSE:
-        print 'Looking for a delta for %s from %s to %s ' % \
-              ( p.name, p.installedVersion, p.candidateVersion )
-
-      newdeb = DIR+'/'+newdeb
 
       ## FIXME : how do I get the URI and/or architecture out of python-apt ??
       #if p.sourcePackageName[:3] == 'lib':
@@ -995,15 +1026,29 @@ elif action == 'delta-upgrade' :
       pip=os.popen('env -i dpkg -p '+p.name)
       scan_control(pip,dpkg_params)
       pip.close()
-      a=dpkg_params['Architecture']
-      u=dpkg_params['Filename']
+      arch=dpkg_params['Architecture']
+      deb_uri=dpkg_params['Filename']
       assert(dpkg_params['Version'] == p.installedVersion )
+
+
+      newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
+      if os.path.exists(DIR+'/'+newdeb) or \
+             os.path.exists('/var/cache/apt/archives/'+newdeb):
+        if VERBOSE: print  'Already downloaded: ',newdeb
+        continue
+
+      if VERBOSE:
+        print 'Looking for a delta for %s from %s to %s ' % \
+              ( p.name, p.installedVersion, p.candidateVersion )
+
+      newdeb = DIR+'/'+newdeb
+
       #delta name
       delta_name=p.name+'_'+version_mangle(p.installedVersion)+\
                   '_'+ version_mangle(p.candidateVersion)+'_'+\
-                  a+'.debdelta'
+                  arch+'.debdelta'
 
-      uri=delta_http_base+'/'+os.path.dirname(u)+'/'+delta_name
+      uri=delta_http_base+'/'+os.path.dirname(deb_uri)+'/'+delta_name
 
       if VERBOSE > 2: print ' uri ',uri
 
@@ -1025,21 +1070,21 @@ elif action == 'delta-upgrade' :
       os.close(delta_fd)
       conn.close()
       sys.stderr.write(" " * 70 + '\r')
-      T=tempo()
-      try:
-        ret=do_patch(tmp_delta,'/',newdeb ,T)
-        len_newdebs += os.stat(newdeb)[ST_SIZE]
-      except DebDeltaError,s:
-        print ' Error: applying of delta failed: ',str(s)
-        if os.path.exists(newdeb):
-          os.unlink(newdeb)
-      unlink(tmp_delta)
-      os.chdir(original_cwd)
-      rmtree(T)
+
+      #append to queue
+      c=pickle.dumps(  (p.name,tmp_delta,newdeb) )
+      os.write(qin, c + '\t' )
+
+  #terminate queue
+  os.write(qin,'\t\t\t')
+  if VERBOSE>=2 : print ' Downloading done, waiting for patching thread. '
+  os.read(qout,1)
+  #while thread_patch:    time.sleep(1)
+
   elaps =  time.time() - start_sec
   if VERBOSE:
     print 'Delta-upgrade download and patch time: %dsec; virtual speed: %dkB per second.' %  \
-          (elaps, len_newdebs / 1024 / (elaps+1))
+          (elaps, len_newdebs / 1024 / (elaps+1)) 
 ##################################################### apt method
 ### still work in progress
       
