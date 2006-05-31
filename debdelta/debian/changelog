@@ -1,3 +1,14 @@
+debdelta (0.9) unstable; urgency=low
+
+  * debdeltas: 
+    '-n N' option, to decide how many deltas to compute for each package ;
+    '--avoid file' option, to avoid packages from a dist
+     ('file' is a Python database, that can be created with contrib/parse_dist )
+  * debdelta : corrected bug, now really skip conf files !
+  * debdeltas : corrected bug, was not exiting from forks !  
+  
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 31 May 2006 14:13:39 +0200
+
 debdelta (0.8) unstable; urgency=low
 
   * 'debdelta' can use MD5 to exploit identical files that were renamed.
@@ -46,7 +57,7 @@ debdelta (0.3) experimental; urgency=low
 
 debdelta (0.2) experimental; urgency=low
 
-  * Addded getopt support.  Reorganized code.
+  * Added getopt support.  Reorganized code.
   * Be careful of cwd when using os.path.abspath.
   * Add parameters to patch.sh , in particular, support for '#unpack-old' keyword
   * Graduated verbosity.

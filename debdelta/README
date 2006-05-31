@@ -22,6 +22,9 @@ minigzip is Copyright (C) 1995-2002 Jean-loup Gailly
 
 The debdelta  application suite is really composed of different applications.
 
+Warning: all these applications are still at a beta stage, do not run them as
+'root' user.
+
 ---- debdelta
 
 'debdelta'  computes the delta, that is, a file that encodes the difference
@@ -52,13 +55,14 @@ $ debpatch  /tmp/emacs.debdelta / /tmp/emacs.deb
 It will generate delta files with names such as
  package_old-version_new-version_architecture.debdelta
 and put them in the directory where the new .deb is.
-If the delta exceeds 50% of the deb, 'debdeltas' will delete it
+
+If the delta exceeds ~50% of the deb, 'debdeltas' will delete it
 and leave a stamp of the form
  package_old-version_new-version_architecture.debdelta-too-big
 
 Example :
 
-$ ./debdeltas -v /var/cache/apt/archives/*deb
+$ debdeltas /var/cache/apt/archives/*deb
 
 With the --dir argument, it will put the deltas in a different tree
 (this is necessary if you use 'debmirror' , since 'debmirror' will
@@ -68,43 +72,43 @@ Example:
 
 $ m=where_your_mirror_is
 $ d=where_to_put_deltas
-$ cd $m/pool 
-$ find  -type d -mtime -1   |  xargs -r -n 8 debdeltas --dir $d// 
+$ cd $m
+$ find pool -type d -mtime -1   |  xargs -r -n 32 debdeltas --dir $d// 
 
 The // means that the pool directory tree will be mimicked in the deltas
 directory tree.
 
 ----------- debdelta-upgrade
 
-This command will download necessary patches from my mirror
+This command will download necessary deltas from my mirror
 and use them to create debs for an 'apt-get upgrade'
 
 This is currently an ugly hack; it should be replaced by an APT method
 (this is work in progress); but for this I need help from APT and python-apt
 authors.
 
+By default, debs are saved in /tmp/archives : do not forget to
+move them in /var/cache/apt/archives
+
 -------------- Statistics
 
 I am currently running 'debdeltas' in a mirror that mirrors 'sarge'
-and 'etch'.  I am running 'debdelta' blindly on it (so it is also
-computing differences between packages in 'sarge' and etch'; but most
-are too big, and are then deleted).  It stores deltas in
-http://tonelli.sns.it/mirror/debian-deltas
+'etch' and 'sid' for i386. 
 
-Preliminary statistics show that  ~40% of deltas are <=50% of original .deb.
+To do preliminary statistics, I used an older version of 'debdeltas',
+ that computed deltas between a package's versions in 'sarge' and
+ 'etch' and 'sid'.
 
-Of those, the average percent is that a delta is ~20%  original .deb.
+Preliminary statistics showed that  ~40% of deltas are <=50% of original .deb.
 
-This means that, in its current setting, 'debdeltas' potentially asks for 
-a +20% disk space on a mirror. (This would be probably lower 
-if I would teach 'debdelta' not too delta debs from different releases).
+In some cases, though, the benefit of using deltas is much more than that:
+for example, 'debdelta'  can express the difference between 'tetex-doc'
+ 3.0-17 and 3.0-18 into a delta of mere 260kB !
 
 -------------- Speed
 
 On a desktop with CPU  Athlon64 3000 and a average hard disk,
-
 $ debdelta mozilla-browser_1.7.8-1sarge3_i386.deb  mozilla-browser_1.7.8-1sarge6_i386.deb /tmp/m-b.debdelta
-
 processes the 10Mb of mozilla-browser in ~11sec, 
 that is a speed of ~900kB per second.
 
@@ -113,24 +117,36 @@ at a speed of  ~600kB per second.
 
 Numbers drop in a old PC, or in a notebook (like mine, that has a
 Athlon 1600MHz and slow disks), where data are chewed at ~200kB per
-second.
+second. Still, since I have a ADSL line that downloads at
+max 80kB per second, I have a benefit downloading deltas.
 
-In my case, for example, since I have a ADSL line that downloads at
-max 80kB per second, I would have a benefit downloading deltas, even
-on my slow notebook: indeed, to download a 80MB package, it would take
-1000seconds; whereas to download a delta that is 20% of 80MB it would
-take 200seconds, and then 80MB / (200kB/sec) = 400seconds to apply it,
-for a total of 600seconds.
+In a theoretical example, indeed, to download a 80MB package, it would
+take 1000seconds; whereas to download a delta that is 20% of 80MB it
+takes 200seconds, and then 80MB / (200kB/sec) = 400seconds to apply
+it, for a total of 600seconds. So I may get a "virtual speed" of 80MB /
+600sec = 130kB/sec .
+
+Note that delta downloading and delta patching is done in parallel:
+if 4 packages as above have to be downloaded, then the total
+time for downloading of full debs would be 4000seconds, while the time
+for  parallel-download-patch-apply-patch may be as low as 1400seconds.
+
+This is a real example of running 'debdelta-upgrade' :
+ Looking for a delta for libc6 from 2.3.6-9 to 2.3.6-11
+ Looking for a delta for udev from 0.092-2 to 0.093-1
+ Patching done, time: 22sec, speed: 204kB/sec, result: libc6_2.3.6-11_i386.deb
+ Patching done, time: 4sec, speed: 57kB/sec, result: udev_0.093-1_i386.deb
+ Delta-upgrade download time 28sec speed 21.6k/sec
+               total time: 53sec; virtual speed: 93.9k/sec.
+
+(Note that the "virtual speed" of 93.9k/sec , while less than the 
+130kB/sec of the theoretical example above, is still more than the
+80kB that my ADSL line would allow).
 
 Of course the above is even better for people with fast disks and/or
 slow modems.
 
-Moreover, delta downloading and delta patching can be done in parallel:
-if 4 packages as above have to be downloaded, then the total
-time for straight downloading would be 4000seconds, while the time
-for  parallel-download-patch may be as low as 1400seconds.
-
-Actually, an apt delta method may do a smart decision 
-of how many deltas to download, and in which order,
-to optimize the result, (given the deltas size, the packages size,
-the downloading speed and the patching speed).
+Actually, an apt delta method may do a smart decision of how many
+deltas to download, and in which order, to optimize the result, (given
+the deltas size, the packages size, the downloading speed and the
+patching speed).

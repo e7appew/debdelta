@@ -1,0 +1,33 @@
+#!/usr/bin/python 
+import sys, shelve
+
+if len(sys.argv) <= 1:
+    print 'Usage: ',sys.argv[0],'  python-database  [ Debian "Package" from dists]'
+    sys.exit(0)
+
+def de_n(a):
+  if a and a[-1] ==  '\n' :
+    a = a[:-1]
+  return a
+
+def parse_dist(f,d):
+    a=f.readline()
+    p={}
+    while a:
+        if a[:4] in ('Pack','Vers','Arch','Stat','Inst','File'):
+            a=de_n(a)
+            i=a.index(':')
+            assert(a[i:i+2] == ': ')
+            p[a[:i]] = a[i+2:]
+        elif a == '\n':
+            d[p['Package']] = p
+            p={}
+        a=f.readline()
+
+d = shelve.open(sys.argv[1])
+for n in sys.argv[2:]:
+    f=open(n)
+    parse_dist(f,d)
+    f.close()
+
+d.close()
