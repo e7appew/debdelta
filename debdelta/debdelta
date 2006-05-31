@@ -73,6 +73,7 @@ import shutil
 
 MAXMEMORY = 1024 * 1024 * 50
 
+#this is +-10% , depending on the package size
 MAX_DELTA_PERCENT = 50
 
 DEBUG   = 1
@@ -81,6 +82,7 @@ KEEP    = False
 INFO    = False
 NEEDSOLD= False
 DIR     = None
+AVOID   = None
 
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
@@ -95,8 +97,8 @@ else:
   __doc__ = doc[action] + doc_common
 
   try: 
-      ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
-                                     ('help','info','needsold','dir=') )
+    ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
+                                   ('help','info','needsold','dir=','avoid=') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -109,6 +111,11 @@ else:
     elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
     elif o == '-M' :    MAXMEMORY = 1024 * 1024 * int(v)
     elif o == '--info' and action == 'patch' : INFO = True
+    elif o == '--avoid'  :
+      AVOID = v
+      if not os.path.isfile(AVOID):
+        print 'Error: --avoid ',AVOID,' does not exist.'
+        sys.exit(3)
     elif o == '--dir'  :
       DIR = v
       if not os.path.isdir(DIR):
@@ -152,6 +159,21 @@ def freespace(w):
 dpkg_keeps_controls = (
   'conffiles','config','list','md5sums','postinst',
   'postrm','preinst','prerm','shlibs','templates')
+
+def parse_dist(f,d):
+  a=f.readline()
+  p={}
+  while a:
+    if a[:4] in ('Pack','Vers','Arch','Stat','Inst','File','Size','MD5s'):
+      a=de_n(a)
+      i=a.index(':')
+      assert(a[i:i+2] == ': ')
+      p[a[:i]] = a[i+2:]
+    elif a == '\n':
+      d[p['Package']] = p
+      p={}
+    a=f.readline()
+
 
 def scan_control(p,params,prefix=None,script=None,stdout = None):
   if prefix == None:
@@ -331,8 +353,10 @@ def do_patch(delta,olddeb,newdeb,TD):
   if not os.path.isfile('PATCH/patch.sh'):
     die('Error. File '+delta+' is not a debdelta file.')
   p=open('PATCH/patch.sh')
-  s=p.readline()#skip #!/bin/sh
   s=p.readline()
+  #skip #!/bin/sh
+  if s[:2] == '#!' :
+    s=p.readline()
   while s :
     if s[0] == '#' :
       s=de_n(s)[1:]
@@ -447,7 +471,7 @@ def do_patch(delta,olddeb,newdeb,TD):
         debsize = os.stat(olddeb)[ST_SIZE]
       end_sec = time.time()
       a=(end_sec - start_sec)
-      print ' patching time: %dsec, speed:  %dkB per second ' % (a,(debsize / 1024 /  (a+1)))
+      print ' patching time: %dsec, speed:  %dkB per second ' % (a,(debsize / 1024 /  (a+.001)))
 
 ##################################################### compute delta
 
@@ -552,7 +576,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   a=TD+'/OLD/CONTROL/conffiles'
   if os.path.exists(a):
     p=open(a)
-    old_conffiles=p.read().split('\n')
+    old_conffiles=[ de_bar(a) for a in p.read().split('\n') ]
     p.close()
   else:
     old_conffiles=()
@@ -805,11 +829,11 @@ def do_delta(olddeb,newdeb,delta,TD):
   elaps =  time.time() - start_sec
   percent =  deltasize * 100. /  newdebsize 
   if VERBOSE:
-    print ' deb delta is  %3.1f%% of deb ; that is, %dkB would be saved' \
-          % ( percent , (( newdebsize -deltasize ) / 1024) )
+    print ' deb delta is  %3.1f%% of deb; that is, %dkB are saved, on a total of %dkB.' \
+          % ( percent , (( newdebsize -deltasize ) / 1024),( newdebsize/ 1024))
     if VERBOSE :
       print '  delta time: %dsec, speed: %dkB per second ' %  \
-            (elaps, newdebsize / 1024 / (elaps+1))
+            (elaps, newdebsize / 1024 / (elaps+0.001))
   return (delta, percent, elaps)
 
 
@@ -823,6 +847,14 @@ def do_deltas(argv):
     import apt_pkg
     apt_pkg.InitSystem()
     from apt_pkg import VersionCompare
+
+  if AVOID and type(AVOID) == type(''):
+    import shelve
+    if VERBOSE: print ' Using avoid dict ',AVOID
+    avoid_pack = shelve.open(AVOID,'r')
+  else:
+    avoid_pack = {}
+  
   debs=[]
   for i in argv:
     debs.append(i)
@@ -866,11 +898,18 @@ def do_deltas(argv):
         l -= 1
         old=info_by_pack_arch[ (pa,ar) ][l]
         new=info_by_pack_arch[ (pa,ar) ][l+1]
+        if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
+          if VERBOSE :     print '(Due to old version) avoid: ', new['File']
+          break        
 
+        if pa in avoid_pack and ( avoid_pack[pa]['Version'] == new['Version']) :
+          if VERBOSE :     print '(Due to new version) avoid: ', new['File']
+          break        
+        
         newdebsize=os.stat(new['File'])[ST_SIZE]
         #very small packages cannot be effectively delta-ed
-        if newdebsize <= 4 * 1024 :
-          #this actually affects 1 every 60 packages in the archives
+        if newdebsize <= 8 * 1024 :
+          #this actually affects 1 every ~30 packages in the archives
           if VERBOSE > 1:     print 'Skip , too small: ', new['File']
           break
         
@@ -879,12 +918,13 @@ def do_deltas(argv):
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
         if DIR:
           if DIR[-2:] == '//' :
-            a=DIR+'/'+os.path.dirname(new['File'])+'/'+deltabasename
+            a=DIR+os.path.dirname(new['File'])+'/'+deltabasename
             delta=make_parents(a)
           else:
             delta = DIR+'/'+deltabasename
         else:
           delta = os.path.dirname(new['File']) + '/'+deltabasename
+          
         if os.path.exists(delta):
           if VERBOSE > 2:     print 'Skip , already exists: ',delta
           break
@@ -893,7 +933,7 @@ def do_deltas(argv):
           break
 
         free=freespace(os.path.dirname(delta))
-        if free and free < newdebsize /2 + 1024 :
+        if free and (free < (newdebsize /2 + 1024)) :
           if VERBOSE : print 'Not enough disk space for storing ',delta
           break
         
@@ -923,7 +963,11 @@ def do_deltas(argv):
         rmtree(T)
 
         if ret and MAX_DELTA_PERCENT:
-          if ret[1] > MAX_DELTA_PERCENT and os.stat(delta)[ST_SIZE] >= 4*1024 :
+          deltasize=os.stat(delta)[ST_SIZE]
+          if ( ret[1] > (MAX_DELTA_PERCENT+10) and  deltasize >= 15*1024 ) or \
+            ( ret[1] > (MAX_DELTA_PERCENT+5) and  deltasize >= 150*1024)  or \
+            ( ret[1] > (MAX_DELTA_PERCENT-5) and  deltasize >= 1500*1024) or \
+            ( ret[1] > (MAX_DELTA_PERCENT-10) and  deltasize >= 15000*1024):
             os.unlink(delta)
             if VERBOSE : print ' Warning, too big!'
             p=open(delta+'-too-big','w')
@@ -1022,7 +1066,7 @@ elif action == 'deltas' :
   
 ##################################################### delta-upgrade
     
-def delta_upgrade(DIR):
+def delta_upgrade():
   import  thread , pickle
 
   original_cwd = os.getcwd() 
@@ -1033,19 +1077,47 @@ def delta_upgrade(DIR):
   import  apt, apt_pkg
   apt_pkg.init()
 
+  from apt import SizeToStr
+
   cache=apt.Cache()
   cache.upgrade()
 
   if DIR == None:
-    DIR='/tmp/archives'
-  if not os.path.exists(DIR):    
-    os.mkdir(DIR)
+    DEB_DIR='/tmp/archives'
+  else:
+    DEB_DIR=DIR
+  if not os.path.exists(DEB_DIR):    
+    os.mkdir(DEB_DIR)
 
-  print 'Recreated debs are saved in ',DIR
+  #this is slow but currently python-apt does not provide these info
+  f=open('/var/lib/dpkg/available')
+  dpkg_avail={}
+  parse_dist(f,dpkg_avail)
+  f.close()
+
+  ## FIXME : how do I get the URI and/or architecture out of python-apt ??
+  def fake_uri(p):
+    if p.sourcePackageName[:3] == 'lib':
+      b=p.sourcePackageName[:4]
+    else:
+      b=p.sourcePackageName[0]
+    c=p.candidateOrigin[0].component
+    # rely on usual pool structure....
+    return c+'/'+b+'/'+p.sourcePackageName
+  def get_uri_from_dpkg(p):
+    ##this sucks... it is soooo slow..., but it works
+    dpkg_params={}
+    pip=os.popen('env -i dpkg -p '+p.name)
+    parse_dist(pip,dpkg_params)
+    pip.close()
+    assert(dpkg_params['Version'] == p.installedVersion )
+    return dpkg_params
+  
+  print 'Recreated debs are saved in ',DEB_DIR
   start_sec = time.time()
-  len_newdebs=0
   len_deltas=0
-
+  len_newdebs=0
+      
   (qout,qin)=os.pipe()
   #qoutf=os.fdopen(qout)
   def thread_do_patch(qout,threads):
@@ -1066,6 +1138,7 @@ def delta_upgrade(DIR):
           try:
             ret=do_patch(tmp_delta,'/',newdeb ,T)
             if VERBOSE : print '   for ',name
+            else: print 'Created ',newdeb
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
             if os.path.exists(newdeb):
@@ -1081,40 +1154,29 @@ def delta_upgrade(DIR):
             rmtree(T)
         else:
           os.waitpid(pid,0)
-        global len_newdebs
-        if len_newdebs != None and os.path.exists(newdeb):
-          len_newdebs += os.stat(newdeb)[ST_SIZE]
       threads.pop()
       if VERBOSE>=2 : print ' Patching thread ended , bye bye. '
-      return
+      return len_newdebs
 
   threads=[]
   threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads) ) )
 
+  len_downloaded=0
+  conn_time=0
+  
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
            and p.candidateOrigin[0].origin == 'Debian':
-
-      ## FIXME : how do I get the URI and/or architecture out of python-apt ??
-      #if p.sourcePackageName[:3] == 'lib':
-      #  b=p.sourcePackageName[:4]
-      #else:
-      #  b=p.sourcePackageName[0]
-      #c=p.candidateOrigin[0].component
-      ## rely on usual pool structure....
-      #u=c+'/'+b+'/'+p.sourcePackageName
-      ##this sucks... it is so slow..., but it works
-      dpkg_params={}
-      pip=os.popen('env -i dpkg -p '+p.name)
-      scan_control(pip,dpkg_params)
-      pip.close()
-      arch=dpkg_params['Architecture']
+      
+      dpkg_params=dpkg_avail[p.name]
+      if 'Filename' not in dpkg_params :
+        if VERBOSE: print ' I am lost ! "dpkg -p ',p.name,'" does not give URI!'
+        break
+      arch=dpkg_params['Architecture']      
       deb_uri=dpkg_params['Filename']
-      assert(dpkg_params['Version'] == p.installedVersion )
-
-
+      
       newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
-      if os.path.exists(DIR+'/'+newdeb) or \
+      if os.path.exists(DEB_DIR+'/'+newdeb) or \
              os.path.exists('/var/cache/apt/archives/'+newdeb):
         if VERBOSE: print  'Already downloaded: ',newdeb
         continue
@@ -1123,7 +1185,7 @@ def delta_upgrade(DIR):
         print 'Looking for a delta for %s from %s to %s ' % \
               ( p.name, p.installedVersion, p.candidateVersion )
 
-      newdeb = DIR+'/'+newdeb
+      newdeb = DEB_DIR+'/'+newdeb
 
       #delta name
       delta_name=p.name+'_'+version_mangle(p.installedVersion)+\
@@ -1140,22 +1202,37 @@ def delta_upgrade(DIR):
       if r.status != 200:
         if VERBOSE: print '  delta is not available',repr(r.status), r.reason
         data1 = r.read()
+        #conn_time+=time.time()
         continue
+      a=time.time()
+      conn_time-=a
       (delta_fd, tmp_delta) = tempfile.mkstemp()
       j=0
       s=r.read(1024)
       while s:
+        len_downloaded += len(s)
+        j+=len(s)
         os.write(delta_fd,s)
-        j += 1
-        sys.stderr.write(" %5d kB for %s \r" % ( j , delta_name))
-        s=r.read(1024)        
+        if a + 0.5 < time.time() :
+          a=time.time()
+          sys.stderr.write(" %s ( %s/sec ) for %s \r" % \
+                           (SizeToStr(j),
+                            SizeToStr(len_downloaded/(a+conn_time)),\
+                            delta_name))
+        s=r.read(1024)
       os.close(delta_fd)
       conn.close()
+      conn_time+=time.time()
       sys.stderr.write(" " * 70 + '\r')
 
       #append to queue
       c=pickle.dumps(  (p.name,tmp_delta,newdeb) )
       os.write(qin, c + '\t' )
+
+      if 'Size' in dpkg_params:
+        len_newdebs += int( dpkg_params['Size'])
+      elif VERBOSE:
+        print ' (Size of %s will not be counted in virtual speed ...)' % p.name
 
   #terminate queue
   os.write(qin,'\t\t\t')
@@ -1164,15 +1241,18 @@ def delta_upgrade(DIR):
     time.sleep(0.2)
 
   elaps =  time.time() - start_sec
-  if VERBOSE:
-    print 'Delta-upgrade download and patch time: %dsec; virtual speed: %dkB per second.' %  \
-          (elaps, len_newdebs / 1024 / (elaps+1)) 
+  if 1 or VERBOSE:
+    if conn_time:
+      print 'Delta-upgrade download time %dsec speed %s/sec' %\
+          (int(conn_time), SizeToStr(len_downloaded / conn_time))
+      print '              total time: %dsec; virtual speed: %s/sec.' %  \
+          (elaps, SizeToStr(len_newdebs / elaps))
 ##################################################### apt method
 ### still work in progress
 if action == 'delta-upgrade':
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
-  delta_upgrade(DIR)
+  delta_upgrade()
       
 if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   import os,sys, select, fcntl, apt, thread, threading, time
