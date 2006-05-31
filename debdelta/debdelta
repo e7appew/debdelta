@@ -471,7 +471,8 @@ def do_patch(delta,olddeb,newdeb,TD):
         debsize = os.stat(olddeb)[ST_SIZE]
       end_sec = time.time()
       a=(end_sec - start_sec)
-      print ' patching time: %dsec, speed:  %dkB per second ' % (a,(debsize / 1024 /  (a+.001)))
+      print ' Patching done, time: %dsec, speed: %dkB/sec, result: %s' % \
+            (a,(debsize / 1024 /  (a+.001)), (newdeb))
 
 ##################################################### compute delta
 
@@ -657,6 +658,17 @@ def do_delta(olddeb,newdeb,delta,TD):
 
   def delta_tar(o,n,w,skip=(),renames={}):
     " compute delta of two tar files, and prepare the script consequently"
+    if os.path.exists('OLD/mega_cat'):
+      # if -k is given, still we need to delete it...
+      os.unlink('OLD/mega_cat')
+    
+    def _append_(w,rm=False):
+      system("cat '"+w+"' >> OLD/mega_cat")
+      unlink(w)          
+      script.write("cat '"+w+"'  >> OLD/mega_cat\n")
+      if rm:
+        script.write("rm '"+w+"'\n")
+    
     (o,co) = unzip(o,False)
     (n,cn) = unzip(n)
     oldtar = tarfile.open(o, "r")
@@ -688,11 +700,7 @@ def do_delta(olddeb,newdeb,delta,TD):
           oldused[oldname] = name
           del name
           oldtar.extract(oldname,"OLD/"+w )
-          system("cat 'OLD/"+w+"/"+oldname+"' >> OLD/mega_cat")
-          unlink('OLD/'+w+'/'+oldname)          
-          script.write("cat 'OLD/"+w+"/"+oldname+"'  >> OLD/mega_cat\n")
-          if not multiple:
-            script.write("rm 'OLD/"+w+"/"+oldname+"'\n")
+          _append_( "OLD/"+w+"/"+oldname , not multiple)
         elif VERBOSE > 4 : print '  not regular in old : ', name
       elif VERBOSE > 4 : print '  not present in old : ', name
 
@@ -704,16 +712,11 @@ def do_delta(olddeb,newdeb,delta,TD):
         if oldtarinfo.isreg() :
           if VERBOSE > 4 : print ' provide also old file ', oldname
           oldtar.extract(oldname,"OLD/"+w )
-          system("cat 'OLD/"+w+"/"+oldname+"' >> OLD/mega_cat")
-          unlink('OLD/'+w+'/'+oldname)
-          script.write("cat 'OLD/"+w+"/"+oldname+"'  >> OLD/mega_cat ; rm 'OLD/"+w+"/"+oldname+"'\n")
-    
+          _append_( "OLD/"+w+"/"+oldname )
+          
     if os.path.exists('OLD/mega_cat'):
       rmtree('OLD/'+w)
       delta_files('OLD/mega_cat',n)
-      if os.path.exists('OLD/mega_cat'):
-        # if -k is given, still we need to delete it...
-        os.unlink('OLD/mega_cat')
     else:
       p=verbatim(n)
       script.write('mv '+p+' '+n+ '\n')
@@ -1137,8 +1140,7 @@ def delta_upgrade():
           T=tempo()
           try:
             ret=do_patch(tmp_delta,'/',newdeb ,T)
-            if VERBOSE : print '   for ',name
-            else: print 'Created ',newdeb
+            if VERBOSE == 0 : print 'Created ',newdeb
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
             if os.path.exists(newdeb):
@@ -1152,6 +1154,8 @@ def delta_upgrade():
           os.chdir(original_cwd)
           if os.path.exists(T):
             rmtree(T)
+          #exit fork
+          return
         else:
           os.waitpid(pid,0)
       threads.pop()
