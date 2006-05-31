@@ -12,14 +12,16 @@ Options:
 
 
 doc['deltas']="""\
-Usage: debdeltas [ option...  ] deb_files
-  Computes all missing deltas for Debian files deb_files
+Usage: debdeltas [ option...  ]  [deb_files and dirs]
+  Computes all missing deltas for Debian files.
+  It orders by version number and produce deltas to the newest version
 
 Options:
 --dir DIR   force saving of deltas in this DIR
             (otherwise they go in the dir of the newer deb)
             if DIR ends in // , then the dirname of deb_file
             the  will be used as well
+ -n N       how many deltas to produce for each deb (default 1)
 --needsold  create a patch that can only be used if the old .deb is available
   -M Mb     maximum memory (to decide if using 'bsdiff' or 'xdelta')
 """
@@ -76,6 +78,8 @@ MAXMEMORY = 1024 * 1024 * 50
 #this is +-10% , depending on the package size
 MAX_DELTA_PERCENT = 50
 
+N_DELTAS= 1
+
 DEBUG   = 1
 VERBOSE = 0
 KEEP    = False
@@ -97,7 +101,7 @@ else:
   __doc__ = doc[action] + doc_common
 
   try: 
-    ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:' ,
+    ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
                                    ('help','info','needsold','dir=','avoid=') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
@@ -110,6 +114,11 @@ else:
     elif o == '-k' : KEEP = True
     elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
     elif o == '-M' :    MAXMEMORY = 1024 * 1024 * int(v)
+    elif o == '-n' :
+      N_DELTAS = int(v)
+      if N_DELTAS <= 0:
+        print 'Error: -n ',v,' is negative or zero.'
+        sys.exit(3) 
     elif o == '--info' and action == 'patch' : INFO = True
     elif o == '--avoid'  :
       AVOID = v
@@ -684,12 +693,12 @@ def do_delta(olddeb,newdeb,delta,TD):
       multiple = False
       if name in renames:
         ( oldname , multiple ) = renames[name]
-        if VERBOSE >3 : print '   identical!  ', oldname, name, multiple
+        if VERBOSE > 4 : print '   identical!  ', oldname, name, multiple
       else:
         oldname = name
 
       if   oldname in skip :
-        if VERBOSE > 3 : print '   skip using old file ', name
+        if VERBOSE > 4 : print '   skip using old file ', name
         continue
       
       if oldname in oldnames  :
@@ -890,17 +899,19 @@ def do_deltas(argv):
     return VersionCompare( a['Version'] , b['Version']  )
   
   for pa,ar in info_by_pack_arch :
-    l= len( info_by_pack_arch[ (pa,ar) ] )
-
-    if l > 1 :
+    how_many= len( info_by_pack_arch[ (pa,ar) ] )    
+    if VERBOSE>3:
+      print ' I see: ',pa,[ o['Version'] for o in info_by_pack_arch[(pa,ar)]]
+      
+    if how_many > 1 :
       info_by_pack_arch[ (pa,ar) ].sort(order_by_version)
-
-      l -= 1
-      while l>0:
+      l = how_many - 1
+      while (l>0) and (l >= how_many - N_DELTAS):
         os.chdir(original_cwd)
         l -= 1
         old=info_by_pack_arch[ (pa,ar) ][l]
         new=info_by_pack_arch[ (pa,ar) ][l+1]
+
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
           if VERBOSE :     print '(Due to old version) avoid: ', new['File']
           break        
