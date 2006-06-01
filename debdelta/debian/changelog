@@ -1,3 +1,10 @@
+debdelta (0.10) unstable; urgency=low
+
+  * safer code
+  * debdelta: produce shorter patch.sh, and uses bzip2
+
+ -- A Mennucc1 <mennucc1@debian.org>  Thu,  1 Jun 2006 23:10:44 +0200
+
 debdelta (0.9) unstable; urgency=low
 
   * debdeltas: 

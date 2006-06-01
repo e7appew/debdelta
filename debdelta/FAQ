@@ -1,0 +1,52 @@
+Q: How do I use it?
+
+A: Quick answer:
+  apt-get update
+  su nobody -c debdelta-upgrade
+  mv /tmp/archives/*deb  /var/cache/apt/archives
+  apt-get upgrade
+
+
+Q: Do you use 'xdelta' or 'bsdiff' ? bsdiff is better, but
+   bsdiff is quite memory-hungry. It requires max(17*n,9*n+m)+O(1)
+   bytes of memory, where n is the size of the old file and m is the
+   size of the new file. bspatch requires n+m+O(1) bytes.
+
+A: 'debdelta' has an option '-M ' to choose between 'xdelta' and 'bsdiff' ;
+ by default, it uses 'xdelta' when memory usage would exceed 50Mb 
+
+ (Ah so max(17*n,9*n+m) is the correct formula! The man page just says
+ '17*n'.  But in my stats, that that is not the case; my stats are
+ estimating that the memory is '12*n' so that is what I use. )
+
+
+Q: How do you integrate this approach with the minimal security
+  that signed Release files give us today?
+
+A: 'debpatch' recreates the new .deb , and guarantees that it is equal to the
+  one in archives, so archive signatures can be verified
+ ( for this reason, 'debdelta'  does not use dpkg-repack )
+
+
+Q: What about the kind of signatures dpkg-sig provides?
+
+A: Supported.
+
+
+Q: What about .debs where the data part is compressed with bzip ?
+
+A: currently, is unsupported (I never found one :-)
+  but I did write some code to support it.
+
+
+Q: can 'debpatch' recreate the new .deb using the installed old .deb, even when
+  -  there are dpkg-diversions ?
+  - conf files where modified ?
+
+A: yes, yes.
+
+
+Q: can 'debpatch' recreate the new .deb using the installed old .deb, 
+  when 'prelink' is used in the host?
+
+A: currently, no.
