@@ -1,3 +1,12 @@
+debdelta (0.11) unstable; urgency=low
+
+  * debdelta: (by faking 2nd part of tar headers), some improvement for  .deb
+     with many small files
+  * debdelta-upgrade : while the thread is patching, also download some
+     .debs for which deltas are not available.
+  
+ -- A Mennucc1 <mennucc1@debian.org>  Wed,  7 Jun 2006 16:07:36 +0200
+
 debdelta (0.10) unstable; urgency=low
 
   * safer code

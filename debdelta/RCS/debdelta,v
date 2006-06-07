@@ -1,9 +1,15 @@
-head	1.26;
+head	1.27;
 access;
 symbols;
-locks; strict;
+locks
+	debdev:1.27; strict;
 comment	@# @;
 
+
+1.27
+date	2006.06.07.14.05.18;	author debdev;	state Exp;
+branches;
+next	1.26;
 
 1.26
 date	2006.06.01.21.10.06;	author debdev;	state Exp;
@@ -140,20 +146,28 @@ desc
 @@
 
 
-1.26
+1.27
 log
-@safer code: rmtree, rmdir and unlink check that they are working in
-temp dir
+@MAX_DELTA_PERCENT = 60
 
-safer code: avoid inserting into shell code filenames with ' or " or \
+avoid FutureWarning
 
-code does not rely on CWD, so it is thread safe now.
+Readjusted verbosity  :-> .
+Now -vvv is really verbose, gives per-file info.
 
-shorter patch.sh, by using CR macro, and bzip
+append(s) is renamed to append_NEW_file(s)
 
-MD5 is now added as a parameter, so it is up to 'debpatch' to check it
+fake_tar_header_2nd() and delta_tar() :
+  write some part of the tar header into mega_cat :
+  really improves compressibility with xdelta, for .deb with many
+  small files
 
-corrected buggy 'break' when 'I am lost' in debdeltas
+delta_tar() : do not use system('cat')
+
+debdelta-upgrade : do not fork , use real threads.
+
+debdelta-upgrade : while the thread is patching,
+ also download some .debs for which deltas are not available.
 @
 text
 @#!/usr/bin/python
@@ -231,10 +245,13 @@ import shutil
 ################################################# main program, read options
 
 
+DELTA_URL="http://tonelli.sns.it/mirror/debian-deltas"
+DEB_URL="http://ftp.debian.org/debian"
+
 MAXMEMORY = 1024 * 1024 * 50
 
 #this is +-10% , depending on the package size
-MAX_DELTA_PERCENT = 50
+MAX_DELTA_PERCENT = 60
 
 N_DELTAS= 1
 
@@ -245,6 +262,8 @@ INFO    = False
 NEEDSOLD= False
 DIR     = None
 AVOID   = None
+
+
 
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
@@ -300,11 +319,11 @@ def dummy(): #otherwise the python mode for emacs fails to index my routines
 
 if KEEP:
   def unlink(a):
-    if VERBOSE : print ' would unlink ',a
+    if VERBOSE > 4: print ' would unlink ',a
   def rmdir(a):
-    if VERBOSE : print ' would rmdir ',a
+    if VERBOSE > 4: print ' would rmdir ',a
   def rmtree(a):
-    if VERBOSE : print ' would rm -r ',a
+    if VERBOSE > 4: print ' would rm -r ',a
 else:
   def __wrap__(a,cmd):
     t=os.getenv('TMPDIR')
@@ -470,7 +489,7 @@ def system(a,TD):
   if t == None:
     t='/tmp'
   if VERBOSE and TD[: (len(t)+4) ] != t+'/tmp' :
-    print 'Warning system in ',TD,' for ',a
+    print 'Warning "system()" in ',TD,' for ',a
   ret = os.system("cd '" +TD +"' ; "+a)  
   if ret == 2:
     return KeyboardInterrupt
@@ -482,7 +501,7 @@ def check_deb(f):
     die('Error: '+f + ' does not exist.')
   p=open(f)
   if p.read(21) != "!<arch>\ndebian-binary" :
-    die('Error: '+f+ 'does not seem to be a Debian package ')
+    die('Error: '+f+ ' does not seem to be a Debian package ')
   p.close()
 
 def check_diff(f):
@@ -510,7 +529,6 @@ def do_patch(delta,olddeb,newdeb,TD):
   check_diff(delta)
 
   if INFO:
-    #os.chdir(TD+'/PATCH')
     system('ar x  '+delta+' patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
            TD+'/PATCH')
   else:    
@@ -539,7 +557,7 @@ def do_patch(delta,olddeb,newdeb,TD):
   while s :
     if s[0] == '#' :
       s=de_n(s)[1:]
-      if VERBOSE > 2 or (VERBOSE and action != 'deltas' and \
+      if VERBOSE > 1 or (VERBOSE and action != 'deltas' and \
                          action != 'delta-upgrade' ) or INFO :
         print ' info: ',s
       if ':' in s:
@@ -625,7 +643,7 @@ def do_patch(delta,olddeb,newdeb,TD):
             if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
             os.symlink(divert, a)
           else:
-            if VERBOSE > 4 : print '    not symlinking ',divert,' to ',orig
+            if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
       else:
         system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -f - -C '+TD+'OLD/DATA', TD)
 
@@ -635,15 +653,15 @@ def do_patch(delta,olddeb,newdeb,TD):
       for  b in dpkg_keeps_controls :
         a='/var/lib/dpkg/info/' + p +'.'+b
         if os.path.exists(a ):
-          os.symlink(a,'OLD/CONTROL/'+b)
+          os.symlink(a,TD+'OLD/CONTROL/'+b)
 
     ##then , really execute the patch
     a=''
-    if VERBOSE > 4 : a = '-v'
+    if VERBOSE > 3 : a = '-v'
     system('/bin/sh -e '+a+' PATCH/patch.sh', TD)
 
     if DEBUG and 'NEW/MD5sum' in params:
-      if VERBOSE: print ' veryfing MD5 ', params['NEW/MD5sum']
+      if VERBOSE > 1 : print ' verifying MD5 ', params['NEW/MD5sum']
       system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
 
     if newdeb:
@@ -703,11 +721,6 @@ def do_delta(olddeb,newdeb,delta,TD):
   else:
     new_md5sum=None
   
-  def append(s):
-    'appends some data to NEW.file'
-    s=prepare_for_echo(s)
-    script.write("echo -n -e '"+ s +"' >> NEW.file\n")
-
   ##### unpack control.tar.gz, scan control, write  parameters
   params={}
   for o in 'OLD', 'NEW' :
@@ -715,7 +728,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       #unpack control.tar.gz
       system('ar p '+TD+o+'.file control.tar.gz | tar -x -z -f - -C '+TD+o+'/CONTROL',TD)
       ## scan control
-      if  VERBOSE > 1 :
+      if  VERBOSE  :
         print o
         s=sys.stdout
       else:
@@ -727,8 +740,6 @@ def do_delta(olddeb,newdeb,delta,TD):
       del s,p
 
 
-  ## helper sh function for script, for delta_tar()
-  script.write('CR () { cat "$@@"  >> OLD/mega_cat ; rm "$@@" ;}\n')
 
   # uses MD5 to detect identical files (even when renamed)
   data_identical={}
@@ -783,8 +794,9 @@ def do_delta(olddeb,newdeb,delta,TD):
   ############### some routines  to prepare delta of two files
 
   def patch_append(f):
-    if VERBOSE > 3 :
-      print '   appending ',f,' of size ', os.stat(TD+'PATCH/'+f)[ST_SIZE]
+    if VERBOSE > 1 :
+      a=os.stat(TD+'PATCH/'+f)[ST_SIZE]
+      print '  appending ',f,' of size ', a,' to debdelta, %3.2f'  % ( a * 100. /  newdebsize ) , '% of new .deb'
     system(['ar','qSc', delta,f],  TD+'/PATCH')
     unlink(TD+'PATCH/'+f)
 
@@ -793,7 +805,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     deltacount += 1
     pp=str(deltacount)
     p = 'PATCH/'+pp
-    if VERBOSE > 3 : print '   including "',name,'" verbatim in patch'
+    if VERBOSE > 1 : print '  including "',name,'" verbatim in patch'
     os.rename(TD+f,TD+p)
     patch_append(pp)
     return p
@@ -816,13 +828,17 @@ def do_delta(olddeb,newdeb,delta,TD):
     elif  cn == '.bz2' :
       print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
       
-  def delta_files(o,n):
+  def delta_files(o,n,unzip_p=True):
     " compute delta of two files , and prepare the script consequently"
-    if VERBOSE > 3 : print '   compute delta for  ',o,' and ',n
+    if VERBOSE > 1 : print '   compute delta for  ',o,' and ',n
     nsize = os.stat(TD+n)[ST_SIZE]
     osize = os.stat(TD+o)[ST_SIZE]
-    (o,co) = unzip(o)
-    (n,cn) = unzip(n)
+    if unzip_p:
+      (o,co) = unzip(o)
+      (n,cn) = unzip(n)
+    else:
+      co=''
+      cn=''
     global deltacount
     deltacount += 1
     pp=str(deltacount)
@@ -836,31 +852,77 @@ def do_delta(olddeb,newdeb,delta,TD):
     if ( osize < (MAXMEMORY / 12)) and (osize < (free / 8)) :
       system('bsdiff  '+o+' '+n+' '+p,TD)
       script.write('bspatch '+o+' '+n+' '+p+'\n')
+      script.write('rm '+p+' '+o+'\n')
     else:
-      if VERBOSE > 3 : print '   fallback on xdelta instead of bsdiff' 
-      system('xdelta delta -n -9 -m'+str(MAXMEMORY)+'M '+o+' '+n+' '+p,TD)
+      a=''
+      if VERBOSE > 2 : print '    fallback on xdelta instead of bsdiff' ; a = '-v'
+      system('xdelta delta -n -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+      system('bzip2 -9 '+a+' '+p,TD)
+      script.write('bunzip2 '+p+'.bz2\n')
       script.write('xdelta patch '+p+' '+o+' '+n+'\n')
-    ## clean up
-    script.write('rm '+p+' '+o+'\n')
+      script.write('rm '+p+' '+o+'\n')
+      pp += '.bz2'
+      p  += '.bz2'
     script_zip(n,cn)
     ## how did we fare ?
     deltasize = os.stat(TD+p)[ST_SIZE]
-    if VERBOSE > 2 :
-      print '  delta is  %3.4f'  % ( deltasize * 100. /  nsize ) , '% of ',n
+    if VERBOSE > 1 :
+      print '   delta is %3.2f'  % ( deltasize * 100. /  nsize ) , '% of ',n,\
+            ', %3.2f'  % ( deltasize * 100. /  newdebsize ) , '% of new .deb'
     #save it
     patch_append(pp)
     #clean up
     unlink(TD+o)
     unlink(TD+n)
+
+  ########### helper sh functions for script, for delta_tar()
+
+  def fake_tar_header_2nd():
+    " returns the second part of a tar header , for regular files and dirs"
+    # The following code was contributed by Detlef Lannert.
+    # into /usr/lib/python2.3/tarfile.py
+    MAGIC      = "ustar"            # magic tar string
+    VERSION    = "00"               # version number
+    NUL        = "\0"               # the null character
+    parts = []
+    for value, fieldsize in (
+      ("", 100),
+      # unfortunately this is not what DPKG does
+      #(MAGIC, 6),
+      #(VERSION, 2),
+      #  this is  what DPKG does
+      ('ustar  \x00',8),
+      ("root", 32),
+      ("root", 32),
+      ("%07o" % 0, 8),
+      ("%07o" % 0, 8),
+      ("", 155)
+      ):
+      l = len(value)
+      parts.append(value + (fieldsize - l) * NUL)      
+    buf = "".join(parts)
+    return buf
   
+  fake_tar_2nd=fake_tar_header_2nd()
+  fake_tar_2nd_echo=prepare_for_echo(fake_tar_2nd)
+  script.write("FTH='"+fake_tar_2nd_echo+"'\n")
+  
+  script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
+
   def delta_tar(o,n,w,skip=(),renames={}):
     " compute delta of two tar files, and prepare the script consequently"
     if os.path.exists(TD+'OLD/mega_cat'):
       # if -k is given, still we need to delete it...
       os.unlink(TD+'OLD/mega_cat')
-    #helper fun
+    mega_cat=open(TD+'OLD/mega_cat','w')
+    #helper function
     def _append_(w,rm=False):
-      system("cat '"+w+"' >>  OLD/mega_cat", TD)
+      f=open(TD+w)
+      a=f.read(1024)
+      while a:
+        mega_cat.write(a)
+        a=f.read(1024)
+      f.close()
       unlink(TD+w)
       if rm:
         script.write("CR '"+w+"'\n")
@@ -872,13 +934,32 @@ def do_delta(olddeb,newdeb,delta,TD):
     oldtar = tarfile.open(TD+o, "r")
     oldnames = oldtar.getnames() #map( de_bar , oldtar.getnames() )
     oldused={}
-    if VERBOSE > 3 : print '   scanning ',n
+    if VERBOSE > 2 : print '   scanning ',n
     newtar = tarfile.open(TD+n, "r")
     for newtarinfo in newtar:
       name = de_bar( newtarinfo.name )
-      if not newtarinfo.isreg():
-        if VERBOSE > 4 : print '  not regular in new : ', name
+
+      a=("%o" % newtarinfo.mode)
+      t=newtarinfo.type
+      if VERBOSE and (( t == '2' and a  != '777' ) or \
+                      ((t == '5' or t == '0') and (a not in [ '755' , '644' ]))):
+        print ' weird permission: ',name,a,repr(newtarinfo.type)
+
+      #recreate also parts of the tar headers
+      mega_cat.write(newtarinfo.name+fake_tar_2nd)
+      s=prepare_for_echo(newtarinfo.name)
+      script.write("echo -n -e '"+ s +"'\"$FTH\" >> OLD/mega_cat\n")
+      #mega_cat.write(newtarinfo.name)
+      #script.write("echo -n -e '"+ s +"' >> OLD/mega_cat\n")
+
+      if newtarinfo.isdir():
+        if VERBOSE > 2 : print '   directory   in new : ', name
         continue
+
+      if not newtarinfo.isreg():
+        if VERBOSE > 2 : print '   not regular in new : ', name
+        continue
+
       multiple = False
       if name in renames:
         ( oldname , multiple ) = renames[name]
@@ -886,26 +967,27 @@ def do_delta(olddeb,newdeb,delta,TD):
         oldname = name
 
       if   oldname in skip :
-        if VERBOSE > 4 : print '   skip using old file ', name
+        if VERBOSE > 2 : print '   skip using old file ', name
         continue
 
-      if '"' in oldname or "'" in oldname or '\\' in oldname :
-        if VERBOSE > 3 : print '   weird chars in old file ', oldname
+      if '"' in oldname or "'" in oldname or '\\' in oldname or '`' in oldname :
+        #FIXME should use it , by properly quoting for the shell script
+        if VERBOSE  : print ' weird chars in old file ', oldname
         continue
       
       if oldname in oldnames  :
         oldtarinfo = oldtar.getmember(oldname)        
         assert( oldtarinfo.name == oldname )
         if oldtarinfo.isreg() :
-          if VERBOSE > 4 :
-            if name in renames : print '  use identical old file ', oldname
-            else:  print '  use same name old file ', oldname
+          if VERBOSE > 2 :
+            if name in renames : print '   use identical old file ', oldname
+            else:  print '   use same name old file ', oldname
           oldused[oldname] = name
           del name
           oldtar.extract(oldname,TD+"OLD/"+w )
           _append_( "OLD/"+w+"/"+oldname , not multiple)
-        elif VERBOSE > 4 : print '  not regular in old : ', name
-      elif VERBOSE > 4 : print '  not present in old : ', name
+        elif VERBOSE > 2 : print '   not regular in old : ', name
+      elif VERBOSE > 2 : print '   not present in old : ', name
 
     #there may be files that have been renamed and edited...
     for oldname in oldnames :
@@ -913,11 +995,12 @@ def do_delta(olddeb,newdeb,delta,TD):
         oldtarinfo = oldtar.getmember(oldname)
         assert( oldtarinfo.name == oldname )
         if oldtarinfo.isreg() :
-          if VERBOSE > 4 : print ' provide also old file ', oldname
+          if VERBOSE > 2 : print '   provide also old file ', oldname
           oldtar.extract(oldname,TD+"OLD/"+w )
           _append_( "OLD/"+w+"/"+oldname )
-    
-    if os.path.exists(TD+'OLD/mega_cat'):
+
+    mega_cat.close()
+    if os.path.exists(TD+'OLD/mega_cat'):#now, always
       rmtree(TD+'/OLD/'+w)
       delta_files('OLD/mega_cat',n)
     else:
@@ -927,6 +1010,10 @@ def do_delta(olddeb,newdeb,delta,TD):
     script_zip(n,cn)
   ############ start computing deltas
 
+  def append_NEW_file(s):
+    'appends some data to NEW.file'
+    s=prepare_for_echo(s)
+    script.write("echo -n -e '"+ s +"' >> NEW.file\n")
     
   if NEEDSOLD :
     #this delta needs the old deb 
@@ -940,7 +1027,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   # pop the "!<arch>\n"
   s = newdeb_file.readline()
   assert( "!<arch>\n" == s)
-  append(s)
+  append_NEW_file(s)
 
   #process all contents of old vs new .deb
   ar_list_old= list_ar(TD+'OLD.file')
@@ -951,12 +1038,12 @@ def do_delta(olddeb,newdeb,delta,TD):
     system('ar p '+TD+'NEW.file '+name+' >> '+TD+n,TD)
 
     newsize = os.stat(TD+n)[ST_SIZE]
-    if VERBOSE > 2: print ' studying ' , name , ' of len ' , newsize
+    if VERBOSE > 1: print '  studying ' , name , ' of len ' , newsize
     #add 'ar' structure
     s = newdeb_file.read(60)
-    if VERBOSE > 4: print '  ar line: ',repr(s)
+    if VERBOSE > 3: print '  ar line: ',repr(s)
     assert( s[:len(name)] == name and s[-2] == '`' and s[-1] == '\n' )
-    append(s)
+    append_NEW_file(s)
     #sometimes there is an extra \n, depending if the previous was odd length
     newdeb_file.seek(newsize  ,1)
     if newsize & 1 :
@@ -966,7 +1053,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     #add file to debdelta
     if newsize < 128:      #file is too short to compute a delta,
       p=open(TD+n)
-      append( p.read(newsize))
+      append_NEW_file( p.read(newsize))
       p.close()
       unlink(TD+n)
     elif  name[:11] == 'control.tar' :
@@ -1002,26 +1089,28 @@ def do_delta(olddeb,newdeb,delta,TD):
       die('internal error')
     #pad new deb
     if extrachar :
-      append(extrachar)
+      append_NEW_file(extrachar)
   # put in script any leftover
   s = newdeb_file.read()
   if s:
-    if VERBOSE > 2: print '  ar leftover character: ',repr(s)
-    append(s)
+    if VERBOSE > 2: print '   ar leftover character: ',repr(s)
+    append_NEW_file(s)
 
   if DEBUG > 1 and new_md5sum :
-    if VERBOSE > 2 : print '   ',a
     script.write('echo "'+new_md5sum+'  NEW.file" | md5sum -c > /dev/null')
 
   #script is done
   script.close()
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   if  (patchsize > newdebsize / 10 and patchsize > 512 ) or patchsize > 4*1024:
-    if VERBOSE > 2 : print '  patch.sh is quite large: using bzip2 '
-    system('bzip2 -9  PATCH/patch.sh', TD)
+    v=''
+    if VERBOSE > 1 : print '  patch.sh is quite large: using bzip2 ' ; v='-v'
+    system('bzip2 -9  '+v+'  PATCH/patch.sh', TD)
     patch_append('patch.sh.bz2')
   else:
-    system('gzip -9 -n PATCH/patch.sh', TD)  
+    v=''
+    if VERBOSE > 1 : print '  patch.sh is small: using gzip ' ; v='-v'
+    system('gzip -9 -n '+v+' PATCH/patch.sh', TD)  
     patch_append('patch.sh.gz')
 
   deltasize = os.stat(delta)[ST_SIZE]
@@ -1031,9 +1120,8 @@ def do_delta(olddeb,newdeb,delta,TD):
   if VERBOSE:
     print ' deb delta is  %3.1f%% of deb; that is, %dkB are saved, on a total of %dkB.' \
           % ( percent , (( newdebsize -deltasize ) / 1024),( newdebsize/ 1024))
-    if VERBOSE :
-      print '  delta time: %dsec, speed: %dkB per second ' %  \
-            (elaps, newdebsize / 1024 / (elaps+0.001))
+    print ' delta time: %dsec, speed: %dkB per second ' %  \
+          (elaps, newdebsize / 1024 / (elaps+0.001))
   return (delta, percent, elaps)
 
 
@@ -1041,6 +1129,8 @@ def do_delta(olddeb,newdeb,delta,TD):
 
 def do_deltas(argv):
   original_cwd = os.getcwd()
+  import warnings
+  warnings.simplefilter("ignore",FutureWarning)
   try:
     from apt import VersionCompare
   except ImportError:
@@ -1088,31 +1178,31 @@ def do_deltas(argv):
   
   for pa,ar in info_by_pack_arch :
     how_many= len( info_by_pack_arch[ (pa,ar) ] )    
-    if VERBOSE>3:
-      print ' I see: ',pa,[ o['Version'] for o in info_by_pack_arch[(pa,ar)]]
+    if VERBOSE>2:
+      print '   I see: ',pa,[ o['Version'] for o in info_by_pack_arch[(pa,ar)]]
       
     if how_many > 1 :
       info_by_pack_arch[ (pa,ar) ].sort(order_by_version)
       l = how_many - 1
       while (l>0) and (l >= how_many - N_DELTAS):
-        os.chdir(original_cwd)
+        #os.chdir(original_cwd)
         l -= 1
         old=info_by_pack_arch[ (pa,ar) ][l]
         new=info_by_pack_arch[ (pa,ar) ][l+1]
 
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
-          if VERBOSE :     print '(Due to old version) avoid: ', new['File']
+          if VERBOSE > 1 :     print '(Due to old version) avoid: ', new['File']
           break        
 
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == new['Version']) :
-          if VERBOSE :     print '(Due to new version) avoid: ', new['File']
+          if VERBOSE > 1 :     print '(Due to new version) avoid: ', new['File']
           break        
         
         newdebsize=os.stat(new['File'])[ST_SIZE]
         #very small packages cannot be effectively delta-ed
-        if newdebsize <= 8 * 1024 :
-          #this actually affects 1 every ~30 packages in the archives
-          if VERBOSE > 1:     print 'Skip , too small: ', new['File']
+        if newdebsize <= 4 * 1024 :
+          #this actually affects 1 every ~60 packages in the archives
+          if VERBOSE > 1:     print '  Skip , too small: ', new['File']
           break
         
         assert( old['Package'] == pa and pa == new['Package'] )
@@ -1128,10 +1218,10 @@ def do_deltas(argv):
           delta = os.path.dirname(new['File']) + '/'+deltabasename
           
         if os.path.exists(delta):
-          if VERBOSE > 2:     print 'Skip , already exists: ',delta
+          if VERBOSE > 1:     print '  Skip , already exists: ',delta
           break
         if os.path.exists(delta+'-too-big'):
-          if VERBOSE > 2:     print 'Skip , tried and too big: ',delta
+          if VERBOSE > 1:     print '  Skip , tried and too big: ',delta
           break
 
         free=freespace(os.path.dirname(delta))
@@ -1145,23 +1235,23 @@ def do_deltas(argv):
         try:
           ret=do_delta(old['File'],new['File'], delta,T)
         except KeyboardInterrupt:
-          os.chdir(original_cwd)
+          #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
           rmtree(T)
           raise
         except DebDeltaError,s:
-          os.chdir(original_cwd)
+          #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
           if not VERBOSE: print 'Creating: ',delta
           print ' Creation of delta failed, reason: ',str(s)
         except:
-          os.chdir(original_cwd)
+          #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
           raise
-        os.chdir(original_cwd)
+        #os.chdir(original_cwd)
         rmtree(T)
 
         if ret and MAX_DELTA_PERCENT:
@@ -1181,24 +1271,24 @@ def do_deltas(argv):
           try:
             do_patch(delta,old['File'],None ,T)
           except KeyboardInterrupt:
-            os.chdir(original_cwd)
+            #os.chdir(original_cwd)
             if os.path.exists(delta):
               os.unlink(delta)
             rmtree(T)
             raise
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
-            os.chdir(original_cwd)
+            #os.chdir(original_cwd)
             if os.path.exists(delta):
               os.unlink(delta)
           except:
             print " Unexpected error while testing delta:", sys.exc_info()[0]
-            os.chdir(original_cwd)
+            #os.chdir(original_cwd)
             if os.path.exists(delta):
               os.unlink(delta)
             rmtree(T)
             raise
-          os.chdir(original_cwd)
+          #os.chdir(original_cwd)
           if os.path.exists(T):
             rmtree(T)
 
@@ -1269,12 +1359,9 @@ elif action == 'deltas' :
 ##################################################### delta-upgrade
     
 def delta_upgrade():
-  import  thread , pickle
+  original_cwd = os.getcwd()
 
-  original_cwd = os.getcwd() 
-  import httplib
-  conn=httplib.HTTPConnection("tonelli.sns.it")
-  delta_http_base='/mirror/debian-deltas'
+  import  thread , pickle
 
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
@@ -1295,7 +1382,8 @@ def delta_upgrade():
     os.mkdir(DEB_DIR)
 
   #this is slow but currently python-apt does not provide these info
-  f=open('/var/lib/dpkg/available')
+  f=os.popen('apt-cache dumpavail')
+  #f=open('/var/lib/dpkg/available')
   dpkg_avail={}
   parse_dist(f,dpkg_avail)
   f.close()
@@ -1324,9 +1412,9 @@ def delta_upgrade():
   len_newdebs=0
       
   (qout,qin)=os.pipe()
-  #qoutf=os.fdopen(qout)
+  ######################## thread_do_patch
   def thread_do_patch(qout,threads):
-      if VERBOSE>=2 : print ' Patching thread started. '
+      if VERBOSE > 1 : print ' Patching thread started. '
       while 1:
         s=os.read(qout,1)
         c=''
@@ -1334,14 +1422,12 @@ def delta_upgrade():
           c+=s
           s=os.read(qout,1)
         if c == '\t' or c == '': break
-        (name,tmp_delta , newdeb) = pickle.loads(c)      
+        (name, delta , newdeb) = pickle.loads(c)      
         if VERBOSE>=2 : print ' Now patching for: ',name
-        # my fault...  do_patch() wants its own CWD!
-        pid=os.fork()
-        if pid == 0:
+        if True: 
           T=tempo()
           try:
-            ret=do_patch(tmp_delta,'/',newdeb ,T)
+            ret=do_patch(delta,'/',newdeb ,T)
             if VERBOSE == 0 : print 'Created ',newdeb
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
@@ -1351,24 +1437,74 @@ def delta_upgrade():
             print " Error while applying delta for ",name,":",sys.exc_info()
             if os.path.exists(newdeb):
               os.unlink(newdeb)
-          if os.path.exists(tmp_delta):
-            unlink(tmp_delta)
-          os.chdir(original_cwd)
+          else:
+            if os.path.exists(delta):
+              os.unlink(delta)
+          #os.chdir(original_cwd)
           if os.path.exists(T):
             rmtree(T)
-          #exit fork
-          return
-        else:
-          os.waitpid(pid,0)
       threads.pop()
-      if VERBOSE>=2 : print ' Patching thread ended , bye bye. '
+      if VERBOSE > 1 : print ' Patching thread ended , bye bye. '
       return len_newdebs
 
   threads=[]
   threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads) ) )
 
+  global conn_time
   len_downloaded=0
   conn_time=0
+
+  import httplib
+  from urlparse import urlparse
+
+  a=urlparse(DELTA_URL)
+  assert(a[0] == 'http')
+  deltas_conn=httplib.HTTPConnection(a[1])
+  delta_http_base=a[2]
+
+  a=urlparse(DEB_URL)
+  assert(a[0] == 'http')
+  debs_conn=httplib.HTTPConnection(a[1])
+  debs_http_base=a[2]
+
+  #these are the packages that do not have a delta
+  no_delta = []
+
+  ###################################### download_uri
+  def download_uri(conn,uri,outname):
+      if VERBOSE > 2: print ' uri ',uri
+      conn.connect()
+      conn.request("GET", uri)
+      r = conn.getresponse()
+      if r.status != 200:
+        if VERBOSE: print '  Uri is not available',uri,repr(r.status), r.reason
+        data1 = r.read()
+        #conn_time+=time.time()
+        return None
+      ext=string.split(outname,'.')[-1]
+      out=open(outname+'.temp','w')
+      a=time.time()
+      global conn_time
+      conn_time-=a      
+      j=0
+      s=r.read(1024)
+      while s:
+        j+=len(s)
+        out.write(s)
+        if a + 0.5 < time.time() :
+          a=time.time()
+          sys.stderr.write("%s %s ( %s/sec ) for %s \r" % \
+                           (ext,SizeToStr(j),
+                            SizeToStr((j+len_downloaded)/(a+conn_time)),\
+                            delta_name[:50]))
+        s=r.read(1024)
+      out.close()
+      conn.close()
+      conn_time+=time.time()
+      sys.stderr.write(" " * 70 + '\r')
+      os.rename(outname+'.temp',outname)
+      return j
+
   
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
@@ -1376,7 +1512,7 @@ def delta_upgrade():
       
       dpkg_params=dpkg_avail[p.name]
       if 'Filename' not in dpkg_params :
-        if VERBOSE: print ' I am lost ! "dpkg -p ',p.name,'" does not give URI!'
+        if VERBOSE: print ' I am lost ! apt-cache dumpavail  does not give URI for ',p.name
         continue
       
       arch=dpkg_params['Architecture']      
@@ -1401,40 +1537,19 @@ def delta_upgrade():
 
       uri=delta_http_base+'/'+os.path.dirname(deb_uri)+'/'+delta_name
 
-      if VERBOSE > 2: print ' uri ',uri
+      #download delta
+      if not os.path.exists(DEB_DIR+'/'+delta_name):        
+        r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name)
+        if r == None:
+          no_delta.append(deb_uri   )
+        else:
+          len_downloaded += r
 
-      conn.connect()
-      conn.request("GET", uri)
-      r = conn.getresponse()
-      if r.status != 200:
-        if VERBOSE: print '  delta is not available',repr(r.status), r.reason
-        data1 = r.read()
-        #conn_time+=time.time()
-        continue
-      a=time.time()
-      conn_time-=a
-      (delta_fd, tmp_delta) = tempfile.mkstemp()
-      j=0
-      s=r.read(1024)
-      while s:
-        len_downloaded += len(s)
-        j+=len(s)
-        os.write(delta_fd,s)
-        if a + 0.5 < time.time() :
-          a=time.time()
-          sys.stderr.write(" %s ( %s/sec ) for %s \r" % \
-                           (SizeToStr(j),
-                            SizeToStr(len_downloaded/(a+conn_time)),\
-                            delta_name))
-        s=r.read(1024)
-      os.close(delta_fd)
-      conn.close()
-      conn_time+=time.time()
-      sys.stderr.write(" " * 70 + '\r')
-
-      #append to queue
-      c=pickle.dumps(  (p.name,tmp_delta,newdeb) )
-      os.write(qin, c + '\t' )
+      #queue to apply delta
+      if os.path.exists(DEB_DIR+'/'+delta_name):
+        #append to queue
+        c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb) )
+        os.write(qin, c + '\t' )
 
       if 'Size' in dpkg_params:
         len_newdebs += int( dpkg_params['Size'])
@@ -1443,7 +1558,16 @@ def delta_upgrade():
 
   #terminate queue
   os.write(qin,'\t\t\t')
-  if VERBOSE>=2 : print ' Downloading done, waiting for patching thread. '
+  if threads:
+    time.sleep(0.2)
+  
+  #do something useful in the meantime
+  while threads and no_delta:
+    a=no_delta.pop()
+    download_uri(debs_conn, debs_http_base+'/'+a , \
+                 DEB_DIR+'/'+os.path.basename(a) )
+
+  if VERBOSE > 1 : print ' Downloading done, waiting for patching thread. '
   while threads:
     time.sleep(0.2)
 
@@ -1454,13 +1578,18 @@ def delta_upgrade():
           (int(conn_time), SizeToStr(len_downloaded / conn_time))
       print '              total time: %dsec; virtual speed: %s/sec.' %  \
           (elaps, SizeToStr(len_newdebs / elaps))
-##################################################### apt method
-### still work in progress
+
+
+####
+
 if action == 'delta-upgrade':
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
   delta_upgrade()
-      
+
+##################################################### apt method
+
+### still work in progress
 if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   import os,sys, select, fcntl, apt, thread, threading, time
 
@@ -1564,6 +1693,321 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   sys.exit(0)
 
+@
+
+
+1.26
+log
+@safer code: rmtree, rmdir and unlink check that they are working in
+temp dir
+
+safer code: avoid inserting into shell code filenames with ' or " or \
+
+code does not rely on CWD, so it is thread safe now.
+
+shorter patch.sh, by using CR macro, and bzip
+
+MD5 is now added as a parameter, so it is up to 'debpatch' to check it
+
+corrected buggy 'break' when 'I am lost' in debdeltas
+@
+text
+@d76 3
+d82 1
+a82 1
+MAX_DELTA_PERCENT = 50
+d94 2
+d150 1
+a150 1
+    if VERBOSE : print ' would unlink ',a
+d152 1
+a152 1
+    if VERBOSE : print ' would rmdir ',a
+d154 1
+a154 1
+    if VERBOSE : print ' would rm -r ',a
+d320 1
+a320 1
+    print 'Warning system in ',TD,' for ',a
+d332 1
+a332 1
+    die('Error: '+f+ 'does not seem to be a Debian package ')
+a359 1
+    #os.chdir(TD+'/PATCH')
+d388 1
+a388 1
+      if VERBOSE > 2 or (VERBOSE and action != 'deltas' and \
+d474 1
+a474 1
+            if VERBOSE > 4 : print '    not symlinking ',divert,' to ',orig
+d484 1
+a484 1
+          os.symlink(a,'OLD/CONTROL/'+b)
+d488 1
+a488 1
+    if VERBOSE > 4 : a = '-v'
+d492 1
+a492 1
+      if VERBOSE: print ' veryfing MD5 ', params['NEW/MD5sum']
+a551 5
+  def append(s):
+    'appends some data to NEW.file'
+    s=prepare_for_echo(s)
+    script.write("echo -n -e '"+ s +"' >> NEW.file\n")
+
+d559 1
+a559 1
+      if  VERBOSE > 1 :
+a570 2
+  ## helper sh function for script, for delta_tar()
+  script.write('CR () { cat "$@@"  >> OLD/mega_cat ; rm "$@@" ;}\n')
+d625 3
+a627 2
+    if VERBOSE > 3 :
+      print '   appending ',f,' of size ', os.stat(TD+'PATCH/'+f)[ST_SIZE]
+d636 1
+a636 1
+    if VERBOSE > 3 : print '   including "',name,'" verbatim in patch'
+d659 1
+a659 1
+  def delta_files(o,n):
+d661 1
+a661 1
+    if VERBOSE > 3 : print '   compute delta for  ',o,' and ',n
+d664 6
+a669 2
+    (o,co) = unzip(o)
+    (n,cn) = unzip(n)
+d683 1
+d685 5
+a689 2
+      if VERBOSE > 3 : print '   fallback on xdelta instead of bsdiff' 
+      system('xdelta delta -n -9 -m'+str(MAXMEMORY)+'M '+o+' '+n+' '+p,TD)
+d691 3
+a693 2
+    ## clean up
+    script.write('rm '+p+' '+o+'\n')
+d697 3
+a699 2
+    if VERBOSE > 2 :
+      print '  delta is  %3.4f'  % ( deltasize * 100. /  nsize ) , '% of ',n
+d705 32
+d738 2
+d745 2
+a746 1
+    #helper fun
+d748 6
+a753 1
+      system("cat '"+w+"' >>  OLD/mega_cat", TD)
+d765 1
+a765 1
+    if VERBOSE > 3 : print '   scanning ',n
+d769 18
+d788 1
+a788 1
+        if VERBOSE > 4 : print '  not regular in new : ', name
+d790 1
+d798 1
+a798 1
+        if VERBOSE > 4 : print '   skip using old file ', name
+d801 3
+a803 2
+      if '"' in oldname or "'" in oldname or '\\' in oldname :
+        if VERBOSE > 3 : print '   weird chars in old file ', oldname
+d810 3
+a812 3
+          if VERBOSE > 4 :
+            if name in renames : print '  use identical old file ', oldname
+            else:  print '  use same name old file ', oldname
+d817 2
+a818 2
+        elif VERBOSE > 4 : print '  not regular in old : ', name
+      elif VERBOSE > 4 : print '  not present in old : ', name
+d826 1
+a826 1
+          if VERBOSE > 4 : print ' provide also old file ', oldname
+d829 3
+a831 2
+    
+    if os.path.exists(TD+'OLD/mega_cat'):
+d841 4
+d858 1
+a858 1
+  append(s)
+d869 1
+a869 1
+    if VERBOSE > 2: print ' studying ' , name , ' of len ' , newsize
+d872 1
+a872 1
+    if VERBOSE > 4: print '  ar line: ',repr(s)
+d874 1
+a874 1
+    append(s)
+d884 1
+a884 1
+      append( p.read(newsize))
+d920 1
+a920 1
+      append(extrachar)
+d924 2
+a925 2
+    if VERBOSE > 2: print '  ar leftover character: ',repr(s)
+    append(s)
+a927 1
+    if VERBOSE > 2 : print '   ',a
+d934 3
+a936 2
+    if VERBOSE > 2 : print '  patch.sh is quite large: using bzip2 '
+    system('bzip2 -9  PATCH/patch.sh', TD)
+d939 3
+a941 1
+    system('gzip -9 -n PATCH/patch.sh', TD)  
+d951 2
+a952 3
+    if VERBOSE :
+      print '  delta time: %dsec, speed: %dkB per second ' %  \
+            (elaps, newdebsize / 1024 / (elaps+0.001))
+d960 2
+d1009 2
+a1010 2
+    if VERBOSE>3:
+      print ' I see: ',pa,[ o['Version'] for o in info_by_pack_arch[(pa,ar)]]
+d1016 1
+a1016 1
+        os.chdir(original_cwd)
+d1022 1
+a1022 1
+          if VERBOSE :     print '(Due to old version) avoid: ', new['File']
+d1026 1
+a1026 1
+          if VERBOSE :     print '(Due to new version) avoid: ', new['File']
+d1031 3
+a1033 3
+        if newdebsize <= 8 * 1024 :
+          #this actually affects 1 every ~30 packages in the archives
+          if VERBOSE > 1:     print 'Skip , too small: ', new['File']
+d1049 1
+a1049 1
+          if VERBOSE > 2:     print 'Skip , already exists: ',delta
+d1052 1
+a1052 1
+          if VERBOSE > 2:     print 'Skip , tried and too big: ',delta
+d1066 1
+a1066 1
+          os.chdir(original_cwd)
+d1072 1
+a1072 1
+          os.chdir(original_cwd)
+d1078 1
+a1078 1
+          os.chdir(original_cwd)
+d1082 1
+a1082 1
+        os.chdir(original_cwd)
+d1102 1
+a1102 1
+            os.chdir(original_cwd)
+d1109 1
+a1109 1
+            os.chdir(original_cwd)
+d1114 1
+a1114 1
+            os.chdir(original_cwd)
+d1119 1
+a1119 1
+          os.chdir(original_cwd)
+d1190 2
+a1193 5
+  original_cwd = os.getcwd() 
+  import httplib
+  conn=httplib.HTTPConnection("tonelli.sns.it")
+  delta_http_base='/mirror/debian-deltas'
+
+d1213 2
+a1214 1
+  f=open('/var/lib/dpkg/available')
+d1243 1
+a1243 1
+  #qoutf=os.fdopen(qout)
+d1245 1
+a1245 1
+      if VERBOSE>=2 : print ' Patching thread started. '
+d1253 1
+a1253 1
+        (name,tmp_delta , newdeb) = pickle.loads(c)      
+d1255 1
+a1255 3
+        # my fault...  do_patch() wants its own CWD!
+        pid=os.fork()
+        if pid == 0:
+d1258 1
+a1258 1
+            ret=do_patch(tmp_delta,'/',newdeb ,T)
+d1268 4
+a1271 3
+          if os.path.exists(tmp_delta):
+            unlink(tmp_delta)
+          os.chdir(original_cwd)
+a1273 4
+          #exit fork
+          return
+        else:
+          os.waitpid(pid,0)
+d1275 1
+a1275 1
+      if VERBOSE>=2 : print ' Patching thread ended , bye bye. '
+d1281 1
+d1284 52
+d1343 1
+a1343 1
+        if VERBOSE: print ' I am lost ! "dpkg -p ',p.name,'" does not give URI!'
+d1368 7
+a1374 30
+      if VERBOSE > 2: print ' uri ',uri
+
+      conn.connect()
+      conn.request("GET", uri)
+      r = conn.getresponse()
+      if r.status != 200:
+        if VERBOSE: print '  delta is not available',repr(r.status), r.reason
+        data1 = r.read()
+        #conn_time+=time.time()
+        continue
+      a=time.time()
+      conn_time-=a
+      (delta_fd, tmp_delta) = tempfile.mkstemp()
+      j=0
+      s=r.read(1024)
+      while s:
+        len_downloaded += len(s)
+        j+=len(s)
+        os.write(delta_fd,s)
+        if a + 0.5 < time.time() :
+          a=time.time()
+          sys.stderr.write(" %s ( %s/sec ) for %s \r" % \
+                           (SizeToStr(j),
+                            SizeToStr(len_downloaded/(a+conn_time)),\
+                            delta_name))
+        s=r.read(1024)
+      os.close(delta_fd)
+      conn.close()
+      conn_time+=time.time()
+      sys.stderr.write(" " * 70 + '\r')
+d1376 5
+a1380 3
+      #append to queue
+      c=pickle.dumps(  (p.name,tmp_delta,newdeb) )
+      os.write(qin, c + '\t' )
+d1389 10
+a1398 1
+  if VERBOSE>=2 : print ' Downloading done, waiting for patching thread. '
+d1409 4
+a1412 2
+##################################################### apt method
+### still work in progress
+d1417 4
+a1420 1
+      
 @
 
 
