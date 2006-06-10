@@ -79,7 +79,7 @@ DEB_URL="http://ftp.debian.org/debian"
 MAXMEMORY = 1024 * 1024 * 50
 
 #this is +-10% , depending on the package size
-MAX_DELTA_PERCENT = 60
+MAX_DELTA_PERCENT = 70
 
 N_DELTAS= 1
 
@@ -117,7 +117,7 @@ else:
     if o == '-v' : VERBOSE += 1
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
-    elif o == '--needsold' and action == 'delta' :  NEEDSOLD = True
+    elif o == '--needsold' :  NEEDSOLD = True
     elif o == '-M' :    MAXMEMORY = 1024 * 1024 * int(v)
     elif o == '-n' :
       N_DELTAS = int(v)
@@ -164,6 +164,7 @@ else:
       cmd(a)
     except OSError,s:
       print ' Warning! when trying to ',repr(c),'got OSError',repr(str(s))
+      if DEBUG > 2 : raise
 
   def unlink(a):
     return __wrap__(a,os.unlink)
@@ -291,6 +292,14 @@ def version_mangle(v):
 
 def tempo():
   TD = abspath(tempfile.mkdtemp())
+  t=os.getenv('TMPDIR')
+  if t == None:
+    t='/tmp'
+  #this is fascist but still I do not trust my code
+  # and if this fails, then __wrap_ fails as well
+  if TD[ : len(t) ] != t :
+    raise DebDeltaError; ('Sorry I do not like the temp dir "%s"' % TD)
+  #
   for i in 'OLD','NEW','PATCH' :
     os.mkdir(TD+'/'+i)
   if  VERBOSE > 2 or KEEP :  print 'Temporary in '+TD
@@ -300,8 +309,9 @@ def tempo():
 
 
 class DebDeltaError:
-  def __init__(self,s):
+  def __init__(self,s,retriable=False):
     self.__str = s
+    self.retriable = retriable
   def __str__(self):
     return self.__str
 
@@ -400,8 +410,8 @@ def do_patch(delta,olddeb,newdeb,TD):
     free=freespace(TD)
     instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
     if free and free < instsize * 1024  :
-      die(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
-          ( int(free/1024) , instsize ) )
+      raise DebDeltaError(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
+          ( int(free/1024) , instsize ), True )
 
   ## really we will apply the patch
   if not INFO:
@@ -524,13 +534,13 @@ def do_delta(olddeb,newdeb,delta,TD):
   
   free=freespace(TD)
   if free and free < newdebsize * 2:
-    die('Error: not enough disk space in '+TD)
+    raise DebDeltaError('Error: not enough disk space in '+TD, True)
 
   delta=abspath(delta)
   if  os.path.exists(delta) :
     os.rename(delta,delta+'~')
   
-  #counter for numbered files
+  #counter for numbered files  FIXME this will not work in threads....
   global deltacount
   deltacount = 0 
 
@@ -568,50 +578,16 @@ def do_delta(olddeb,newdeb,delta,TD):
       del s,p
 
 
-
-  # uses MD5 to detect identical files (even when renamed)
-  data_identical={}
-  if os.path.exists(TD+'/NEW/CONTROL/md5sums') and \
-     os.path.exists(TD+'/OLD/CONTROL/md5sums') :
-    f=open(TD+'/OLD/CONTROL/md5sums')
-    do={}
-    a=de_n(f.readline())
-    while a:
-      m , n = a[:32] ,  de_bar( a[34:] )
-      do[ m ] = n
-      a=de_n(f.readline())
-    f.close()
-    f=open(TD+'/NEW/CONTROL/md5sums')
-    dn={}
-    mul={}
-    us={}
-    r=None
-    a=de_n(f.readline())
-    while a:
-      m , n = a[:32] ,  de_bar( a[34:] )
-      if m in do:
-         #sometimes there are multiple occurences of the same file...
-         # ( as in    tetex-doc_3.0-18_all.deb    )
-         r=do[m]
-         if r in us:
-           mul[r] = True
-         us[ r ] = True
-         dn[ n ] = r
-      a=de_n(f.readline())
-    f.close()
-    for n in dn:
-      data_identical[ n ] = ( dn[ n ], mul.get( dn[ n ] ) )
-    del f,dn,do,a,mul,n,m,r,us
-
-    
+  #### check for disk space
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)  
-    instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
+    instsize=int(params['NEW/Installed-Size']) + 2 * int(params['OLD/Installed-Size'])
     if free and free < instsize * 1024  :
-      die(' Not enough disk space (%dkB) for creating delta (needs %dkB).' % \
-          ( int(free/1024) , instsize ) )
+      raise DebDeltaError(' Not enough disk space (%dkB) for creating delta (needs %dkB).' % \
+          ( int(free/1024) , instsize ) , True )
 
-  ## check for conffiles 
+    
+  ############# check for conffiles 
   a=TD+'/OLD/CONTROL/conffiles'
   if os.path.exists(a):
     p=open(a)
@@ -619,6 +595,33 @@ def do_delta(olddeb,newdeb,delta,TD):
     p.close()
   else:
     old_conffiles=()
+
+  def shell_not_allowed(name):
+    "Strings that I do not trust to inject into the shell script; maybe I am a tad too paranoid..."
+    #FIXME should use it , by properly quoting for the shell script
+    return '"' in name or "'" in name or '\\' in name or '`' in name 
+
+  # uses MD5 to detect identical files (even when renamed)
+  def scan_md5(n):
+    md5={}
+    f=open(n)
+    a=1
+    while a:
+      a=de_n(f.readline())
+      m , n = a[:32] ,  de_bar( a[34:] )
+      md5[n]=m
+    f.close()
+    return md5
+
+
+  new_md5=None
+  if os.path.exists(TD+'/NEW/CONTROL/md5sums'):
+    new_md5=scan_md5(TD+'/NEW/CONTROL/md5sums')
+    
+  old_md5=None
+  if os.path.exists(TD+'/OLD/CONTROL/md5sums') :
+    old_md5=scan_md5(TD+'/OLD/CONTROL/md5sums')
+
   ############### some routines  to prepare delta of two files
 
   def patch_append(f):
@@ -705,6 +708,30 @@ def do_delta(olddeb,newdeb,delta,TD):
 
   ########### helper sh functions for script, for delta_tar()
 
+  import difflib
+
+  def file_similarity_premangle(oo):
+    o=oo.split('/')
+    (ob,oe)=os.path.splitext(o[-1])
+    return o[:-1]+ ob.split('_')+[oe]
+  def files_similarity_score__(oo,nn):
+    if oo == nn :
+      return 0
+    d=difflib.context_diff(oo,nn,'','','','',0,'')
+    d=[a for a in tuple(d) if a and a[:3] != '---' and a[:3] != '***' ]
+    if oo[-1] != nn[-1] : #penalty for wrong extension
+      return 0.2+float(len(d)) * 2.0 / float(len(oo)+len(nn))
+    else:
+      return float(len(d)) * 2.0 / float(len(oo)+len(nn))
+  def files_similarity_score(oo,nn):
+    if oo == nn :
+      return 0
+    if type(oo) == type(''):
+      oo=file_similarity_premangle(oo)
+    if type(nn) == type(''):
+      nn=file_similarity_premangle(nn)
+    return files_similarity_score__(oo,nn)
+
   def fake_tar_header_2nd():
     " returns the second part of a tar header , for regular files and dirs"
     # The following code was contributed by Detlef Lannert.
@@ -737,7 +764,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
 
-  def delta_tar(o,n,w,skip=(),renames={}):
+  def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}):
     " compute delta of two tar files, and prepare the script consequently"
     if os.path.exists(TD+'OLD/mega_cat'):
       # if -k is given, still we need to delete it...
@@ -757,28 +784,110 @@ def do_delta(olddeb,newdeb,delta,TD):
       else:
         script.write("cat '"+w+"'  >> OLD/mega_cat\n")
     
-    (o,co) = unzip(o,False)
-    (n,cn) = unzip(n)
-    oldtar = tarfile.open(TD+o, "r")
-    oldnames = oldtar.getnames() #map( de_bar , oldtar.getnames() )
-    oldused={}
-    if VERBOSE > 2 : print '   scanning ',n
-    newtar = tarfile.open(TD+n, "r")
-    for newtarinfo in newtar:
-      name = de_bar( newtarinfo.name )
+    (old_filename,old_filename_ext) = unzip(old_filename,False)
+    (new_filename,new_filename_ext) = unzip(new_filename)
 
+    #### scan once for regular files
+    oldtar = tarfile.open(TD+old_filename, "r")
+    oldnames = []
+    oldtarinfos = {}
+    for oldtarinfo in oldtar:
+      oldname = oldtarinfo.name
+      if  (oldname in skip) or shell_not_allowed(oldname) or \
+             not oldtarinfo.isreg():
+        continue      
+      if VERBOSE and oldname != de_bar(oldname):
+        print ' Weird filename in old tar: ' , oldname 
+      oldname = de_bar(oldname)
+      if oldname in skip:
+        continue
+      oldnames.append(oldname)
+      oldtarinfos[oldname] = oldtarinfo
+
+    newtar = tarfile.open(TD+new_filename, "r")
+    newnames = []
+    newtarinfos = {}
+    for newtarinfo in newtar:
+      newname =  newtarinfo.name
+      #just curious to know
       a=("%o" % newtarinfo.mode)
       t=newtarinfo.type
       if VERBOSE and (( t == '2' and a  != '777' ) or \
                       ((t == '5' or t == '0') and (a not in [ '755' , '644' ]))):
-        print ' weird permission: ',name,a,repr(newtarinfo.type)
+        print ' Weird permission: ',newname,a,repr(newtarinfo.type)
+      ###
+      if   not newtarinfo.isreg():
+        continue
+      if VERBOSE and newname != de_bar(newname):
+        print ' Weird filename in new tar: ' , newname 
+      newname = de_bar(newname)
+      newnames.append(newname)
+      newtarinfos[newname] = newtarinfo
+      
+    old_used={}
+    correspondence={}
+    multiple={}
 
+    ##############################
+    if VERBOSE > 2 : print '  finding correspondences  ',n
+    reverse_old_md5={}
+    if old_md5:
+      for o in old_md5:
+        reverse_old_md5[old_md5[o]] = o
+
+    oldnames_premangle={}
+    for o in oldnames:
+      oldnames_premangle[o]=file_similarity_premangle(o)
+
+    for newname in newnames:
+      newtarinfo=newtarinfos[newname]
+      oldname=None
+      #try correspondence by MD5
+      if new_md5 and newname in new_md5:
+        md5=new_md5[newname]        
+        if md5 in reverse_old_md5:
+          oldname=reverse_old_md5[md5]
+          if VERBOSE > 2 :
+            if oldname  == newname :
+              print '   use identical old file: ',newname
+            else:
+              print '   use identical old file: ',oldname, newname
+      #try correspondence by file name
+      if oldname == None and newname in oldnames:
+        oldname=newname
+        if VERBOSE > 2 : print '   use same name old file: ',newname
+      #try correspondence by file name and len similarity
+      if oldname == None:
+        basescore=0.6
+        nl=newtarinfo.size
+        np=file_similarity_premangle(newname)
+        for o in oldnames:
+          l=oldtarinfos[o].size
+          s=files_similarity_score__(oldnames_premangle[o],np) + abs(float(l - nl))/float(l+nl)
+          #print ' diff ',s,o
+          if s < basescore:
+              oldname=o
+              basescore=s
+        if oldname and VERBOSE > 2 : print '   best similar  ',int(100*basescore),newname,oldname
+      if not oldname:
+        if VERBOSE > 2 : print '   no correspondence for: ',newname
+        continue
+      #we have correspondence, lets store
+      if oldname in old_used:
+        multiple[oldname]=True
+      else:
+        old_used[oldname]=[]
+      old_used[oldname].append(newname)
+      correspondence[newname]=oldname
+
+    ######### now do real scanning
+    if VERBOSE > 2 : print '   scanning ',n
+    for newtarinfo in newtar:
+      name = de_bar( newtarinfo.name )
       #recreate also parts of the tar headers
       mega_cat.write(newtarinfo.name+fake_tar_2nd)
       s=prepare_for_echo(newtarinfo.name)
       script.write("echo -n -e '"+ s +"'\"$FTH\" >> OLD/mega_cat\n")
-      #mega_cat.write(newtarinfo.name)
-      #script.write("echo -n -e '"+ s +"' >> OLD/mega_cat\n")
 
       if newtarinfo.isdir():
         if VERBOSE > 2 : print '   directory   in new : ', name
@@ -788,54 +897,33 @@ def do_delta(olddeb,newdeb,delta,TD):
         if VERBOSE > 2 : print '   not regular in new : ', name
         continue
 
-      multiple = False
-      if name in renames:
-        ( oldname , multiple ) = renames[name]
-      else:
-        oldname = name
-
-      if   oldname in skip :
-        if VERBOSE > 2 : print '   skip using old file ', name
-        continue
-
-      if '"' in oldname or "'" in oldname or '\\' in oldname or '`' in oldname :
-        #FIXME should use it , by properly quoting for the shell script
-        if VERBOSE  : print ' weird chars in old file ', oldname
-        continue
+      if name not in correspondence:
+        if VERBOSE > 2: print '   no corresponding fil: ', name
+        continue 
+      oldname = correspondence[name]
       
-      if oldname in oldnames  :
-        oldtarinfo = oldtar.getmember(oldname)        
-        assert( oldtarinfo.name == oldname )
-        if oldtarinfo.isreg() :
-          if VERBOSE > 2 :
-            if name in renames : print '   use identical old file ', oldname
-            else:  print '   use same name old file ', oldname
-          oldused[oldname] = name
-          del name
-          oldtar.extract(oldname,TD+"OLD/"+w )
-          _append_( "OLD/"+w+"/"+oldname , not multiple)
-        elif VERBOSE > 2 : print '   not regular in old : ', name
-      elif VERBOSE > 2 : print '   not present in old : ', name
+      mul=multiple.get(oldname)
+      if VERBOSE > 2 :  print '   adding reg file: ', oldname, mul
+      oldtar.extract(oldtarinfos[oldname],TD+"OLD/"+CWD )
+      _append_( "OLD/"+CWD+"/"+oldname , not mul )
 
     #there may be files that have been renamed and edited...
     for oldname in oldnames :
-      if (oldname not in oldused) and  (oldname not in skip) :
-        oldtarinfo = oldtar.getmember(oldname)
-        assert( oldtarinfo.name == oldname )
-        if oldtarinfo.isreg() :
-          if VERBOSE > 2 : print '   provide also old file ', oldname
-          oldtar.extract(oldname,TD+"OLD/"+w )
-          _append_( "OLD/"+w+"/"+oldname )
+      if (oldname in skip) or (oldname in old_used ) :
+        continue
+      if VERBOSE > 2 : print '   provide also old file ', oldname
+      oldtar.extract(oldtarinfos[oldname],TD+"OLD/"+CWD )
+      _append_( "OLD/"+CWD+"/"+oldname )
 
     mega_cat.close()
     if os.path.exists(TD+'OLD/mega_cat'):#now, always
-      rmtree(TD+'/OLD/'+w)
-      delta_files('OLD/mega_cat',n)
+      rmtree(TD+'/OLD/'+CWD)
+      delta_files('OLD/mega_cat',new_filename)
     else:
-      p=verbatim(n)
-      script.write('mv '+p+' '+n+ '\n')
-    unlink(TD+o)
-    script_zip(n,cn)
+      p=verbatim(new_filename)
+      script.write('mv '+p+' '+new_filename+ '\n')
+    unlink(TD+old_filename)
+    script_zip(new_filename,new_filename_ext)
   ############ start computing deltas
 
   def append_NEW_file(s):
@@ -901,7 +989,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write('#old-data-tree\n')
       o = 'OLD/'+name
       system('ar p OLD.file '+name+' >> '+o, TD)
-      delta_tar(o,n,'DATA',old_conffiles,data_identical)
+      delta_tar(o,n,'DATA',old_conffiles,old_md5,new_md5)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
       p=verbatim(n)
@@ -1016,7 +1104,7 @@ def do_deltas(argv):
         #os.chdir(original_cwd)
         l -= 1
         old=info_by_pack_arch[ (pa,ar) ][l]
-        new=info_by_pack_arch[ (pa,ar) ][l+1]
+        new=info_by_pack_arch[ (pa,ar) ][how_many - 1]
 
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
           if VERBOSE > 1 :     print '(Due to old version) avoid: ', new['File']
@@ -1052,6 +1140,10 @@ def do_deltas(argv):
           if VERBOSE > 1:     print '  Skip , tried and too big: ',delta
           break
 
+        if os.path.exists(delta+'-fails'):
+          if VERBOSE > 1:     print '  Skip , tried and fails: ',delta
+          break
+
         free=freespace(os.path.dirname(delta))
         if free and (free < (newdebsize /2 + 1024)) :
           if VERBOSE : print 'Not enough disk space for storing ',delta
@@ -1062,29 +1154,27 @@ def do_deltas(argv):
         T=tempo()          
         try:
           ret=do_delta(old['File'],new['File'], delta,T)
-        except KeyboardInterrupt:
-          #os.chdir(original_cwd)
-          if os.path.exists(delta):
-            os.unlink(delta)
-          rmtree(T)
-          raise
         except DebDeltaError,s:
           #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
           if not VERBOSE: print 'Creating: ',delta
           print ' Creation of delta failed, reason: ',str(s)
+          if not s.retriable :
+            p=open(delta+'-fails','w')
+            p.close()
         except:
           #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
+          rmtree(T)
           raise
         #os.chdir(original_cwd)
         rmtree(T)
 
         if ret and MAX_DELTA_PERCENT:
           deltasize=os.stat(delta)[ST_SIZE]
-          if ( ret[1] > (MAX_DELTA_PERCENT+10) and  deltasize >= 15*1024 ) or \
+          if ( ret[1] > (MAX_DELTA_PERCENT+10)  ) or \
             ( ret[1] > (MAX_DELTA_PERCENT+5) and  deltasize >= 150*1024)  or \
             ( ret[1] > (MAX_DELTA_PERCENT-5) and  deltasize >= 1500*1024) or \
             ( ret[1] > (MAX_DELTA_PERCENT-10) and  deltasize >= 15000*1024):
@@ -1098,17 +1188,13 @@ def do_deltas(argv):
           T=tempo()
           try:
             do_patch(delta,old['File'],None ,T)
-          except KeyboardInterrupt:
-            #os.chdir(original_cwd)
-            if os.path.exists(delta):
-              os.unlink(delta)
-            rmtree(T)
-            raise
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
-            #os.chdir(original_cwd)
-            if os.path.exists(delta):
-              os.unlink(delta)
+            if not  s.retriable :
+              p=open(delta+'-fails','w')
+              p.close()              
+              if os.path.exists(delta):
+                os.unlink(delta)
           except:
             print " Unexpected error while testing delta:", sys.exc_info()[0]
             #os.chdir(original_cwd)
@@ -1189,7 +1275,7 @@ elif action == 'deltas' :
 def delta_upgrade():
   original_cwd = os.getcwd()
 
-  import  thread , pickle
+  import  thread , pickle, urllib
 
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
@@ -1278,7 +1364,6 @@ def delta_upgrade():
   threads=[]
   threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads) ) )
 
-  global conn_time
   len_downloaded=0
   conn_time=0
 
@@ -1290,48 +1375,68 @@ def delta_upgrade():
   deltas_conn=httplib.HTTPConnection(a[1])
   delta_http_base=a[2]
 
-  a=urlparse(DEB_URL)
-  assert(a[0] == 'http')
-  debs_conn=httplib.HTTPConnection(a[1])
-  debs_http_base=a[2]
 
   #these are the packages that do not have a delta
   no_delta = []
 
   ###################################### download_uri
-  def download_uri(conn,uri,outname):
-      if VERBOSE > 2: print ' uri ',uri
-      conn.connect()
-      conn.request("GET", uri)
+  def test_uri(conn,uri):
+      a='Url'
+      if uri[-9:] == '.debdelta':
+        a='Debdelta'
+      s=uri[-60:]
+      conn.request("HEAD", urllib.quote(uri))
+      r = conn.getresponse()
+      r.read()
+      r.close()
+      if r.status == 200:
+        if VERBOSE > 2: print a,' is present: ',s
+        return r
+      if not VERBOSE: return None        
+      if uri[-9:] == '.debdelta':
+        conn.request("HEAD", urllib.quote(uri+'-too-big'))
+        r2 = conn.getresponse()
+        r2.read()
+        r2.close()
+        if r2.status == 200:
+          print a,' is too big: ',s
+          return None
+      if r.status == 404:
+        print a,'is not present: ',s
+      else:
+        print a,'is not available (',repr(r.status), r.reason,'): ', s
+      return None
+  ###################################### test_uri
+  def download_uri(conn,uri,outname,conn_time,len_downloaded):
+      shorturi=uri[-50:]
+      conn.request("GET", urllib.quote(uri))
       r = conn.getresponse()
       if r.status != 200:
-        if VERBOSE: print '  Uri is not available',uri,repr(r.status), r.reason
-        data1 = r.read()
-        #conn_time+=time.time()
+        if VERBOSE: print 'Not present: ...',s
         return None
-      ext=string.split(outname,'.')[-1]
+      length=r.length
+      assert( r.length == int(r.getheader('content-length')) )
       out=open(outname+'.temp','w')
       a=time.time()
-      global conn_time
       conn_time-=a      
       j=0
-      s=r.read(1024)
-      while s:
+      s=r.read(min(1024,r.length))
+      while s and j < length:
         j+=len(s)
         out.write(s)
         if a + 0.5 < time.time() :
           a=time.time()
-          sys.stderr.write("%s %s ( %s/sec ) for %s \r" % \
-                           (ext,SizeToStr(j),
+          sys.stderr.write("%d%% (%4s/s) for ...%s \r" % \
+                           (100*j / length,
                             SizeToStr((j+len_downloaded)/(a+conn_time)),\
-                            delta_name[:50]))
-        s=r.read(1024)
+                            shorturi))
+        s=r.read(min(1024,r.length))
       out.close()
-      conn.close()
+      r.close()
       conn_time+=time.time()
-      sys.stderr.write(" " * 70 + '\r')
+      sys.stderr.write("Downloaded: ...%s \n" % shorturi)
       os.rename(outname+'.temp',outname)
-      return j
+      return  conn_time , (j+len_downloaded)
 
   
   for p in cache :
@@ -1349,10 +1454,10 @@ def delta_upgrade():
       newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
       if os.path.exists(DEB_DIR+'/'+newdeb) or \
              os.path.exists('/var/cache/apt/archives/'+newdeb):
-        if VERBOSE: print  'Already downloaded: ',newdeb
+        if VERBOSE > 1 : print  'Already downloaded: ',newdeb
         continue
 
-      if VERBOSE:
+      if VERBOSE > 1:
         print 'Looking for a delta for %s from %s to %s ' % \
               ( p.name, p.installedVersion, p.candidateVersion )
 
@@ -1366,23 +1471,31 @@ def delta_upgrade():
       uri=delta_http_base+'/'+os.path.dirname(deb_uri)+'/'+delta_name
 
       #download delta
-      if not os.path.exists(DEB_DIR+'/'+delta_name):        
-        r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name)
+      if not os.path.exists(DEB_DIR+'/'+delta_name):
+        if VERBOSE:
+          r=test_uri(deltas_conn,uri)
+        else:
+          r=True
+        if r:
+          r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name,conn_time,len_downloaded)
         if r == None:
           no_delta.append(deb_uri   )
         else:
-          len_downloaded += r
+          conn_time = r[0]
+          len_downloaded = r[1]
 
       #queue to apply delta
       if os.path.exists(DEB_DIR+'/'+delta_name):
         #append to queue
         c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb) )
         os.write(qin, c + '\t' )
+        # compute virtual speed . FIXME this is incorrect if patching fails!
+        if 'Size' in dpkg_params:
+          len_newdebs += int( dpkg_params['Size'])
+        elif VERBOSE:
+          print ' (Size of %s will not be counted in virtual speed ...)' % p.name
 
-      if 'Size' in dpkg_params:
-        len_newdebs += int( dpkg_params['Size'])
-      elif VERBOSE:
-        print ' (Size of %s will not be counted in virtual speed ...)' % p.name
+  deltas_conn.close()
 
   #terminate queue
   os.write(qin,'\t\t\t')
@@ -1390,11 +1503,20 @@ def delta_upgrade():
     time.sleep(0.2)
   
   #do something useful in the meantime
-  while threads and no_delta:
-    a=no_delta.pop()
-    download_uri(debs_conn, debs_http_base+'/'+a , \
-                 DEB_DIR+'/'+os.path.basename(a) )
-
+  if  threads and no_delta:
+    if VERBOSE > 1 :
+      print ' Downloading deltas done, downloading debs while waiting for patching thread.'
+    a=urlparse(DEB_URL)
+    assert(a[0] == 'http')
+    debs_conn=httplib.HTTPConnection(a[1])
+    debs_http_base=a[2]
+    while threads and no_delta:
+      a=no_delta.pop()
+      download_uri(debs_conn, debs_http_base+'/'+a , \
+                   DEB_DIR+'/'+os.path.basename(a),conn_time,len_downloaded )
+    
+    debs_conn.close()
+    
   if VERBOSE > 1 : print ' Downloading done, waiting for patching thread. '
   while threads:
     time.sleep(0.2)
