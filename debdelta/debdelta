@@ -66,7 +66,7 @@ minigzip='/usr/lib/debdelta/minigzip'
 
 import sys , os , tempfile , string ,getopt , tarfile , shutil , time
 
-from stat    import ST_SIZE
+from stat    import ST_SIZE, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
 
 from types import StringType, FunctionType, TupleType, ListType
@@ -423,7 +423,7 @@ def do_patch(delta,olddeb,newdeb,TD):
     if olddeb != '/' :
       os.symlink(olddeb,TD+'/OLD.file')
       #unpack control.tar.gz
-      system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -f - -C '+TD+'OLD/CONTROL',\
+      system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',\
              TD)
     #then we check for the conformance
     if  DEBUG:
@@ -488,8 +488,22 @@ def do_patch(delta,olddeb,newdeb,TD):
           else:
             if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
       else:
-        system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -f - -C '+TD+'OLD/DATA', TD)
-
+        system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
+        def chmod_add(n,m):
+          om=S_IMODE(os.stat(n)[ST_MODE])
+          nm=om | m
+          if nm != om:
+            if VERBOSE > 1 : print ' Performing chmod ',n,oct(om),oct(nm)
+            os.chmod(n,nm)
+        for (dirpath, dirnames, filenames) in os.walk(TD+'OLD/DATA'):
+          chmod_add(dirpath,  S_IRUSR | S_IWUSR| S_IXUSR  )
+          for i in filenames:
+            i=os.path.join(dirpath,i)
+            if os.path.isfile(i):
+              chmod_add(i,  S_IRUSR   )
+          for i in dirnames:
+            i=os.path.join(dirpath,i)
+            chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
 
     if 'old-control-tree' in params and olddeb == '/':      
       p=params['OLD/Package']
