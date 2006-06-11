@@ -79,12 +79,16 @@ import shutil
 DELTA_URL="http://tonelli.sns.it/mirror/debian-deltas"
 DEB_URL="http://ftp.debian.org/debian"
 
+#target of: maximum memory that bsdiff will use
 MAXMEMORY = 1024 * 1024 * 50
 
 #this is +-10% , depending on the package size
 MAX_DELTA_PERCENT = 70
 
 N_DELTAS= 1
+
+#seems that 'xdelta' is buggy on 64bit and different-endian machines
+ALLOW_XDELTA = False
 
 DEBUG   = 1
 VERBOSE = 0
@@ -110,18 +114,24 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                                   ('help','info','needsold','dir=','avoid=') )
+                 ('help','info','needsold','allow-xdelta','dir=','avoid=') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
-
 
   for  o , v  in  opts :
     if o == '-v' : VERBOSE += 1
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
+    elif o == '--allow-xdelta' :  ALLOW_XDELTA = True
     elif o == '--needsold' :  NEEDSOLD = True
-    elif o == '-M' :    MAXMEMORY = 1024 * 1024 * int(v)
+    elif o == '-M' :
+      if int(v) <= 1:
+        print 'Error: "-M ',int(v),'" is too small.'
+        sys.exit(1)
+      if int(v) <= 12:
+        print 'Warning: "-M ',int(v),'" is quite small.'
+      MAXMEMORY = 1024 * 1024 * int(v)
     elif o == '-n' :
       N_DELTAS = int(v)
       if N_DELTAS <= 0:
@@ -411,8 +421,11 @@ def do_patch(delta,olddeb,newdeb,TD):
 
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)
-    instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
-    if free and free < instsize * 1024  :
+    if olddeb == '/':
+      instsize=int(params['NEW/Installed-Size'])
+    else:
+      instsize=int(params['NEW/Installed-Size'])+int(params['OLD/Installed-Size'])
+    if free and free < ( instsize * 1024 + 2**23) :
       raise DebDeltaError(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
           ( int(free/1024) , instsize ), True )
 
@@ -680,9 +693,10 @@ def do_delta(olddeb,newdeb,delta,TD):
       
   def delta_files(o,n,unzip_p=True):
     " compute delta of two files , and prepare the script consequently"
-    if VERBOSE > 1 : print '   compute delta for  ',o,' and ',n
     nsize = os.stat(TD+n)[ST_SIZE]
     osize = os.stat(TD+o)[ST_SIZE]
+    if VERBOSE > 1 : print '  compute delta for %s (%dkB) and %s (%dkB)' % \
+       (o,osize/1024,n,nsize/1024)
     if unzip_p:
       (o,co) = unzip(o)
       (n,cn) = unzip(n)
@@ -696,10 +710,13 @@ def do_delta(olddeb,newdeb,delta,TD):
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12
-    free=freespace(TD)
-    if free == None :
-      free = MAXMEMORY * 16
-    if ( osize < (MAXMEMORY / 12)) and (osize < (free / 8)) :
+    #free=freespace(TD)
+    #if free == None :
+    #  free = MAXMEMORY * 16
+    #    #this interferes with chhnked  and (osize < (free / 8)) :
+    if not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
+      if osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
+        print '  Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
       system('bsdiff  '+o+' '+n+' '+p,TD)
       script.write('bspatch '+o+' '+n+' '+p+'\n')
       script.write('rm '+p+' '+o+'\n')
@@ -831,8 +848,11 @@ def do_delta(olddeb,newdeb,delta,TD):
     oldtar.close()
     if type(old_filename) == StringType :
       unlink(TD+old_filename)
-    
+    else:
+      while oldfileobj.read(512):
+        pass
     (new_filename,new_filename_ext) = unzip(new_filename)
+    assert(0 == (os.path.getsize(TD+new_filename)% 512))
     newtar = tarfile.open(TD+new_filename, "r")
     newnames = []
     newtarinfos = {}
@@ -907,20 +927,59 @@ def do_delta(olddeb,newdeb,delta,TD):
       correspondence[newname]=oldname
 
     ######### now do real scanning
-    if VERBOSE > 2 : print '   scanning ',n
+    if VERBOSE > 2 : print '  scanning ',n
+
+    #helper function
+    def mega_cat_chunk(oldoffset,newoffset):
+      global deltacount
+      deltacount += 1
+      p = 'PATCH/'+ str(deltacount)
+      f=open(TD+new_filename)
+      f.seek(oldoffset)
+      of=open(TD+p,'w')
+      l=oldoffset
+      while l<newoffset:
+        s=f.read(512)
+        l+=len(s)
+        assert(len(s))
+        of.write(s)
+      f.close()
+      of.close()
+      delta_files('OLD/mega_cat',p)
+      script.write('cat '+p+' >> '+new_filename+'; rm '+p+'\n')
 
     #there may be files that have been renamed and edited...
-    for oldname in oldnames :
-      if (oldname in skip) or (oldname in old_used ) :
-        continue
-      if VERBOSE > 2 : print '   provide also old file ', oldname
-      #mega_cat.write(fake_tar_2nd)
-      #script.write("echo -n -e \"$FTH\" >> OLD/mega_cat\n")
-      _append_( "OLD/"+CWD+"/"+oldname )
-      if mega_cat.tell() > 2**21 :
-        break
+    def some_old_file_gen():
+      for oldname in oldnames :
+        if (oldname in skip) or (oldname in old_used ) :
+          continue
+        if VERBOSE > 2 : print '   provide also old file ', oldname
+        yield oldname
+      while 1:
+        yield None
+
+    some_old_file=some_old_file_gen()
+    one_old_file=some_old_file.next()
+
+    progressive_new_offset=0
 
     for newtarinfo in newtar:
+      #progressive mega_cat
+      a=mega_cat.tell()
+      if (a >= MAXMEMORY / 12 ) or \
+         (a >= MAXMEMORY / 13 and one_old_file ) or \
+         (a>0 and (a+newtarinfo.size) >= MAXMEMORY / 12):
+        #provide some old unused files, if any
+        while one_old_file:
+          _append_("OLD/"+CWD+"/"+one_old_file)
+          if mega_cat.tell() >= MAXMEMORY / 12:
+            break
+          one_old_file=some_old_file.next()
+        mega_cat.close()
+        mega_cat_chunk(progressive_new_offset, newtarinfo.offset )
+        progressive_new_offset=newtarinfo.offset
+        mega_cat=open(TD+'OLD/mega_cat','w')
+      #
       name = de_bar( newtarinfo.name )
       #recreate also parts of the tar headers
       mega_cat.write(newtarinfo.name+fake_tar_2nd)
@@ -945,11 +1004,15 @@ def do_delta(olddeb,newdeb,delta,TD):
       _append_( "OLD/"+CWD+"/"+oldname , not mul )
       old_used[oldname].pop()
 
+
     mega_cat.close()
     if os.path.exists(TD+'/OLD/'+CWD):
       rmtree(TD+'/OLD/'+CWD)
     if os.path.getsize(TD+'OLD/mega_cat') > 0 :
-      delta_files('OLD/mega_cat',new_filename)
+      if progressive_new_offset > 0 :
+        mega_cat_chunk(progressive_new_offset, os.path.getsize(TD+new_filename))
+      else:
+        delta_files('OLD/mega_cat',new_filename)
     else:
       p=verbatim(new_filename)
       script.write('mv '+p+' '+new_filename+ '\n')
@@ -984,7 +1047,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     system('ar p '+TD+'NEW.file '+name+' >> '+TD+n,TD)
 
     newsize = os.stat(TD+n)[ST_SIZE]
-    if VERBOSE > 1: print '  studying ' , name , ' of len ' , newsize
+    if VERBOSE > 1: print '  studying ' , name , ' of len %dkB' % (newsize/1024)
     #add 'ar' structure
     s = newdeb_file.read(60)
     if VERBOSE > 3: print '  ar line: ',repr(s)
