@@ -68,6 +68,9 @@ import sys , os , tempfile , string ,getopt , tarfile , shutil , time
 
 from stat    import ST_SIZE
 from os.path import abspath
+
+from types import StringType, FunctionType, TupleType, ListType
+
 import shutil
 
 ################################################# main program, read options
@@ -569,8 +572,8 @@ def do_delta(olddeb,newdeb,delta,TD):
       system('ar p '+TD+o+'.file control.tar.gz | tar -x -z -f - -C '+TD+o+'/CONTROL',TD)
       ## scan control
       if  VERBOSE  :
-        print o
         s=sys.stdout
+        s.write(o+': ')
       else:
         s=None
       p=open(TD+'/'+o+'/CONTROL/control') 
@@ -583,7 +586,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   #### check for disk space
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)  
-    instsize=int(params['NEW/Installed-Size']) + 2 * int(params['OLD/Installed-Size'])
+    instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
     if free and free < instsize * 1024  :
       raise DebDeltaError(' Not enough disk space (%dkB) for creating delta (needs %dkB).' % \
           ( int(free/1024) , instsize ) , True )
@@ -766,8 +769,10 @@ def do_delta(olddeb,newdeb,delta,TD):
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
 
+  ##########################################################################
   def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}):
     " compute delta of two tar files, and prepare the script consequently"
+    assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
     if os.path.exists(TD+'OLD/mega_cat'):
       # if -k is given, still we need to delete it...
       os.unlink(TD+'OLD/mega_cat')
@@ -780,17 +785,20 @@ def do_delta(olddeb,newdeb,delta,TD):
         mega_cat.write(a)
         a=f.read(1024)
       f.close()
-      unlink(TD+w)
       if rm:
         script.write("CR '"+w+"'\n")
+        unlink(TD+w)
       else:
         script.write("cat '"+w+"'  >> OLD/mega_cat\n")
-    
-    (old_filename,old_filename_ext) = unzip(old_filename,False)
-    (new_filename,new_filename_ext) = unzip(new_filename)
 
     #### scan once for regular files
-    oldtar = tarfile.open(TD+old_filename, "r")
+    if type(old_filename) == StringType :
+      (old_filename,old_filename_ext) = unzip(old_filename,False)
+      oldtar = tarfile.open(TD+old_filename, "r")
+    else:
+      old_filename_ext=None
+      oldfileobj = old_filename()
+      oldtar = tarfile.open(mode="r|", fileobj=oldfileobj)
     oldnames = []
     oldtarinfos = {}
     for oldtarinfo in oldtar:
@@ -798,14 +806,19 @@ def do_delta(olddeb,newdeb,delta,TD):
       if  (oldname in skip) or shell_not_allowed(oldname) or \
              not oldtarinfo.isreg():
         continue      
-      if VERBOSE and oldname != de_bar(oldname):
+      if VERBOSE > 2 and oldname != de_bar(oldname):
         print ' Weird filename in old tar: ' , oldname 
       oldname = de_bar(oldname)
       if oldname in skip:
         continue
       oldnames.append(oldname)
       oldtarinfos[oldname] = oldtarinfo
-
+      oldtar.extract(oldtarinfo,TD+"OLD/"+CWD )
+    oldtar.close()
+    if type(old_filename) == StringType :
+      unlink(TD+old_filename)
+    
+    (new_filename,new_filename_ext) = unzip(new_filename)
     newtar = tarfile.open(TD+new_filename, "r")
     newnames = []
     newtarinfos = {}
@@ -820,7 +833,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       ###
       if   not newtarinfo.isreg():
         continue
-      if VERBOSE and newname != de_bar(newname):
+      if VERBOSE > 2 and newname != de_bar(newname):
         print ' Weird filename in new tar: ' , newname 
       newname = de_bar(newname)
       newnames.append(newname)
@@ -828,7 +841,6 @@ def do_delta(olddeb,newdeb,delta,TD):
       
     old_used={}
     correspondence={}
-    multiple={}
 
     ##############################
     if VERBOSE > 2 : print '  finding correspondences  ',n
@@ -875,15 +887,25 @@ def do_delta(olddeb,newdeb,delta,TD):
         if VERBOSE > 2 : print '   no correspondence for: ',newname
         continue
       #we have correspondence, lets store
-      if oldname in old_used:
-        multiple[oldname]=True
-      else:
+      if oldname not in old_used:
         old_used[oldname]=[]
       old_used[oldname].append(newname)
       correspondence[newname]=oldname
 
     ######### now do real scanning
     if VERBOSE > 2 : print '   scanning ',n
+
+    #there may be files that have been renamed and edited...
+    for oldname in oldnames :
+      if (oldname in skip) or (oldname in old_used ) :
+        continue
+      if VERBOSE > 2 : print '   provide also old file ', oldname
+      #mega_cat.write(fake_tar_2nd)
+      #script.write("echo -n -e \"$FTH\" >> OLD/mega_cat\n")
+      _append_( "OLD/"+CWD+"/"+oldname )
+      if mega_cat.tell() > 2**21 :
+        break
+
     for newtarinfo in newtar:
       name = de_bar( newtarinfo.name )
       #recreate also parts of the tar headers
@@ -904,27 +926,19 @@ def do_delta(olddeb,newdeb,delta,TD):
         continue 
       oldname = correspondence[name]
       
-      mul=multiple.get(oldname)
-      if VERBOSE > 2 :  print '   adding reg file: ', oldname, mul
-      oldtar.extract(oldtarinfos[oldname],TD+"OLD/"+CWD )
+      mul=len( old_used[oldname]) > 1 #multiple usage
+      if VERBOSE > 2 :  print '   adding reg file: ', oldname, mul and '(multiple)' or ''
       _append_( "OLD/"+CWD+"/"+oldname , not mul )
-
-    #there may be files that have been renamed and edited...
-    for oldname in oldnames :
-      if (oldname in skip) or (oldname in old_used ) :
-        continue
-      if VERBOSE > 2 : print '   provide also old file ', oldname
-      oldtar.extract(oldtarinfos[oldname],TD+"OLD/"+CWD )
-      _append_( "OLD/"+CWD+"/"+oldname )
+      old_used[oldname].pop()
 
     mega_cat.close()
-    if os.path.exists(TD+'OLD/mega_cat'):#now, always
+    if os.path.exists(TD+'/OLD/'+CWD):
       rmtree(TD+'/OLD/'+CWD)
+    if os.path.getsize(TD+'OLD/mega_cat') > 0 :
       delta_files('OLD/mega_cat',new_filename)
     else:
       p=verbatim(new_filename)
       script.write('mv '+p+' '+new_filename+ '\n')
-    unlink(TD+old_filename)
     script_zip(new_filename,new_filename_ext)
   ############ start computing deltas
 
@@ -990,8 +1004,11 @@ def do_delta(olddeb,newdeb,delta,TD):
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       script.write('#old-data-tree\n')
       o = 'OLD/'+name
-      system('ar p OLD.file '+name+' >> '+o, TD)
-      delta_tar(o,n,'DATA',old_conffiles,old_md5,new_md5)
+      #system('ar p OLD.file '+name+' >> '+o, TD)
+      assert(name[-3:] == '.gz')#should add support for bz2 data.tar
+      def x():
+        return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+      delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
       p=verbatim(n)
