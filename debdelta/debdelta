@@ -465,9 +465,11 @@ def do_patch(delta,olddeb,newdeb,TD):
         a=p.readline()
         while a:
           a=de_n(a)
-          if s and a[:11] == 'diverted by':
-            orig,divert=s.pop()
-            #support diversions
+          #support diversions
+          if a[:26] == 'package diverts others to:':
+            continue
+          if s and a[:11] == 'diverted by' or  a[:20] == 'locally diverted to:':
+            orig,divert=s.pop()            
             i = a.index(':')
             divert = a[i+2:]
             s.append( (orig,divert) )
