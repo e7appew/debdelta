@@ -77,7 +77,6 @@ import shutil
 
 
 DELTA_URL="http://tonelli.sns.it/mirror/debian-deltas"
-DEB_URL="http://ftp.debian.org/debian"
 
 #target of: maximum memory that bsdiff will use
 MAXMEMORY = 1024 * 1024 * 50
@@ -1390,31 +1389,6 @@ def delta_upgrade():
     DEB_DIR=DIR
   if not os.path.exists(DEB_DIR):    
     os.mkdir(DEB_DIR)
-
-  #this is slow but currently python-apt does not provide these info
-  f=os.popen('apt-cache dumpavail')
-  #f=open('/var/lib/dpkg/available')
-  dpkg_avail={}
-  parse_dist(f,dpkg_avail)
-  f.close()
-
-  ## FIXME : how do I get the URI and/or architecture out of python-apt ??
-  def fake_uri(p):
-    if p.sourcePackageName[:3] == 'lib':
-      b=p.sourcePackageName[:4]
-    else:
-      b=p.sourcePackageName[0]
-    c=p.candidateOrigin[0].component
-    # rely on usual pool structure....
-    return c+'/'+b+'/'+p.sourcePackageName
-  def get_uri_from_dpkg(p):
-    ##this sucks... it is soooo slow..., but it works
-    dpkg_params={}
-    pip=os.popen('env -i dpkg -p '+p.name)
-    parse_dist(pip,dpkg_params)
-    pip.close()
-    assert(dpkg_params['Version'] == p.installedVersion )
-    return dpkg_params
   
   print 'Recreated debs are saved in ',DEB_DIR
   start_sec = time.time()
@@ -1504,14 +1478,19 @@ def delta_upgrade():
       return None
   ###################################### test_uri
   def download_uri(conn,uri,outname,conn_time,len_downloaded):
-      shorturi=uri[-50:]
       conn.request("GET", urllib.quote(uri))
       r = conn.getresponse()
       if r.status != 200:
-        if VERBOSE: print 'Not present: ...',s
+        if VERBOSE: print 'Not present: ...',uri
+        r.read()
+        r.close()
         return None
       length=r.length
       assert( r.length == int(r.getheader('content-length')) )
+      free=freespace(os.path.dirname(outname))
+      if free and (free + 2**14 ) < length  :
+        print 'Not enough disk space do download: ',os.path.basename(uri)
+        return None
       out=open(outname+'.temp','w')
       a=time.time()
       conn_time-=a      
@@ -1525,12 +1504,12 @@ def delta_upgrade():
           sys.stderr.write("%d%% (%4s/s) for ...%s \r" % \
                            (100*j / length,
                             SizeToStr((j+len_downloaded)/(a+conn_time)),\
-                            shorturi))
+                            uri[-50:]))
         s=r.read(min(1024,r.length))
       out.close()
       r.close()
       conn_time+=time.time()
-      sys.stderr.write("Downloaded: ...%s \n" % shorturi)
+      sys.stderr.write("Downloaded: ...%s \n" % uri[-60:])
       os.rename(outname+'.temp',outname)
       return  conn_time , (j+len_downloaded)
 
@@ -1538,14 +1517,19 @@ def delta_upgrade():
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
            and p.candidateOrigin[0].origin == 'Debian':
-      
-      dpkg_params=dpkg_avail[p.name]
-      if 'Filename' not in dpkg_params :
-        if VERBOSE: print ' I am lost ! apt-cache dumpavail  does not give URI for ',p.name
-        continue
+
+      #thanks a lot to Michael Vogt
+      p._lookupRecord(True)
+      dpkg_params = apt_pkg.ParseSection(p._records.Record)
+      cand = p._depcache.GetCandidateVer(p._pkg)
+      deb_path=dpkg_params['Filename']      
+      for (packagefile,i) in cand.FileList:
+        indexfile = cache._list.FindIndex(packagefile)
+        if indexfile:
+          deb_uri=indexfile.ArchiveURI(deb_path)
+          break      
       
       arch=dpkg_params['Architecture']      
-      deb_uri=dpkg_params['Filename']
       
       newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
       if os.path.exists(DEB_DIR+'/'+newdeb) or \
@@ -1556,7 +1540,7 @@ def delta_upgrade():
       if VERBOSE > 1:
         print 'Looking for a delta for %s from %s to %s ' % \
               ( p.name, p.installedVersion, p.candidateVersion )
-
+      
       newdeb = DEB_DIR+'/'+newdeb
 
       #delta name
@@ -1564,7 +1548,7 @@ def delta_upgrade():
                   '_'+ version_mangle(p.candidateVersion)+'_'+\
                   arch+'.debdelta'
 
-      uri=delta_http_base+'/'+os.path.dirname(deb_uri)+'/'+delta_name
+      uri=delta_http_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
 
       #download delta
       if not os.path.exists(DEB_DIR+'/'+delta_name):
@@ -1586,10 +1570,7 @@ def delta_upgrade():
         c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb) )
         os.write(qin, c + '\t' )
         # compute virtual speed . FIXME this is incorrect if patching fails!
-        if 'Size' in dpkg_params:
-          len_newdebs += int( dpkg_params['Size'])
-        elif VERBOSE:
-          print ' (Size of %s will not be counted in virtual speed ...)' % p.name
+        len_newdebs += int( dpkg_params['Size'])
 
   deltas_conn.close()
 
@@ -1599,19 +1580,20 @@ def delta_upgrade():
     time.sleep(0.2)
   
   #do something useful in the meantime
-  if  threads and no_delta:
+  deb_conns={}
+  if threads and no_delta:
     if VERBOSE > 1 :
       print ' Downloading deltas done, downloading debs while waiting for patching thread.'
-    a=urlparse(DEB_URL)
-    assert(a[0] == 'http')
-    debs_conn=httplib.HTTPConnection(a[1])
-    debs_http_base=a[2]
     while threads and no_delta:
-      a=no_delta.pop()
-      download_uri(debs_conn, debs_http_base+'/'+a , \
-                   DEB_DIR+'/'+os.path.basename(a),conn_time,len_downloaded )
-    
-    debs_conn.close()
+      a = no_delta.pop()
+      a=urlparse(a)
+      assert(a[0] == 'http')
+      if a[1] not in deb_conns:        
+        deb_conns[a[1]] = httplib.HTTPConnection(a[1])      
+      download_uri(deb_conns[a[1]], a[2] , \
+                   DEB_DIR+'/'+os.path.basename(a[2]),conn_time,len_downloaded )
+    for i in deb_conns:
+      deb_conns[i].close()
     
   if VERBOSE > 1 : print ' Downloading done, waiting for patching thread. '
   while threads:
