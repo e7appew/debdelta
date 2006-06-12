@@ -834,8 +834,8 @@ def do_delta(olddeb,newdeb,delta,TD):
     for oldtarinfo in oldtar:
       oldname = oldtarinfo.name
       if  (oldname in skip) or shell_not_allowed(oldname) or \
-             not oldtarinfo.isreg():
-        continue      
+             not oldtarinfo.isreg() or oldtarinfo.size == 0:
+        continue
       if VERBOSE > 2 and oldname != de_bar(oldname):
         print ' Weird filename in old tar: ' , oldname 
       oldname = de_bar(oldname)
@@ -889,6 +889,9 @@ def do_delta(olddeb,newdeb,delta,TD):
     for newname in newnames:
       newtarinfo=newtarinfos[newname]
       oldname=None
+      #ignore empty files
+      if newtarinfo.size == 0:
+        continue
       #try correspondence by MD5
       if new_md5 and newname in new_md5:
         md5=new_md5[newname]        
@@ -991,6 +994,10 @@ def do_delta(olddeb,newdeb,delta,TD):
 
       if not newtarinfo.isreg():
         if VERBOSE > 2 : print '   not regular in new : ', name
+        continue
+
+      if newtarinfo.size == 0:
+        if VERBOSE > 2 : print '   empty  new file    : ', name
         continue
 
       if name not in correspondence:
