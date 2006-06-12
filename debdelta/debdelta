@@ -733,14 +733,125 @@ def do_delta(olddeb,newdeb,delta,TD):
     ## how did we fare ?
     deltasize = os.stat(TD+p)[ST_SIZE]
     if VERBOSE > 1 :
-      print '   delta is %3.2f'  % ( deltasize * 100. /  nsize ) , '% of ',n,\
-            ', %3.2f'  % ( deltasize * 100. /  newdebsize ) , '% of new .deb'
+      print '   delta is %3.2f'  % ( deltasize * 100. /  nsize ) , '% of ',n
+      #redundant ', %3.2f'  % ( deltasize * 100. /  newdebsize ) , '% of new .deb'
     #save it
     patch_append(pp)
     #clean up
     unlink(TD+o)
-    unlink(TD+n)
 
+  def cmp_gz(o,n):
+    "compare gzip files, ignoring header; returns first different byte (+-10), or True if equal"
+    of=open(TD+o)
+    nf=open(TD+n)
+    oa=of.read(10)
+    na=nf.read(10)
+    if na[:3] != '\037\213\010' :
+      print ' Warning: was not created with gzip: ',n
+      nf.close() ; of.close() 
+      return 0
+    if oa[:3] != '\037\213\010' :
+      print ' Warning: was not created with gzip: ',o
+      nf.close() ; of.close() 
+      return 0
+    oflag=ord(oa[3])
+    if oflag & 0xf7:
+      print ' Warning: unsupported  .gz flags: ',oct(oflag),o
+    if oflag & 8 : #skip orig name
+      oa=of.read(1)
+      s=oa
+      while ord(oa) != 0:
+        oa=of.read(1)
+        s+=oa
+      #print repr(s)
+    nflag=ord(na[3])
+    if nflag & 0xf7:
+      print ' Warning: unsupported  .gz flags: ',oct(nflag),n
+    if nflag & 8 : #skip orig name
+      na=nf.read(1)
+      s=na
+      while ord(na) != 0:
+        na=nf.read(1)
+        s+=na
+      #print repr(s)
+    l=10
+    oa=of.read(2)
+    na=nf.read(2)    
+    while oa and na:
+      oa=of.read(2)
+      na=nf.read(2)
+      if oa != na:
+        return l
+      l+=2
+    if oa or na: return l
+    return True
+    
+  def delta_gzipped_files(o,n):
+    "delta o and n, replace o with n"
+    assert(o[-3:] == '.gz' and n[-3:] == '.gz')
+    before=cmp_gz(o,n)
+    if before == True:
+      return
+    f=open(TD+n)
+    a=f.read(10)
+    f.close()
+    if a[:3] != '\037\213\010' :
+      print ' Warning: was not created with gzip: ',n
+      return
+    flag=ord(a[3]) # mostly ignored  :->
+    orig_name='-n'
+    if flag & 8:
+      orig_name='-N'
+    if flag & 0xf7:
+      print ' Warning: unsupported  .gz flags: ',oct(flag),n
+    #a[4:8] #mtime ! ignored ! FIXME will be changed... 
+    #from deflate.c in gzip source code
+    format=ord(a[8])
+    FAST=4
+    SLOW=2 #unfortunately intermediate steps are lost....
+    pack_level=6
+    if format ==  0 :
+      pass
+    if format ==  FAST :
+      pack_level == 1
+    if format ==  SLOW :
+      pack_level == 9
+    else:
+      print ' Warning: unsupported compression .gz format: ',oct(format),n
+      return
+    if a[9] != '\003' :
+      if VERBOSE: print ' Warning: unknown OS in .gz format: ',oct(ord(a[9])),n
+    p='PATCH/tmp_gzip'
+    #save new file and unzip
+    shutil.copy2(TD+n,TD+p+'.new.gz')
+    system("gunzip '"+n+"'",TD)
+    shutil.copy2(TD+n[:-3],TD+p+'.new')
+    #test our ability of recompressing
+    l=[1,2,3,4,5,6,7,8,9]
+    del l[pack_level]
+    l.append(pack_level)
+    l.reverse()
+    for i in l:
+      #force -n  ... no problem with timestamps
+      gzip_flags="-n -"+str(i)      
+      system("gzip -c "+gzip_flags+" '"+n[:-3]+"' > "+p+'.faked.gz',TD)
+      r=cmp_gz(p+'.new.gz',p+'.faked.gz')
+      if r == True:
+        break
+      if i == pack_level and VERBOSE > 2:
+        print '   Warning: wrong guess to re-gzip to equal file: ',gzip_flags,r,n
+    if r != True:
+      if VERBOSE > 1: print '  Warning: cannot re-gzip to equal file: ',r,n
+      os.unlink(TD+p+".new") ; os.unlink(TD+p+'.new.gz') ; os.unlink(TD+p+'.faked.gz') 
+      return
+    #actual delta of decompressed files
+    system("gunzip '"+o+"'",TD)
+    script.write("gunzip '"+o+"'\n")
+    delta_files(o[:-3],p+'.new')
+    os.rename(TD+p+'.faked.gz',TD+o)
+    script.write("mv "+p+".new '"+o[:-3]+"' ; gzip "+gzip_flags+" '"+o[:-3]+"'\n")
+    os.unlink(TD+p+'.new.gz')
+    
   ########### helper sh functions for script, for delta_tar()
 
   import difflib
@@ -947,7 +1058,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       of.close()
       delta_files('OLD/mega_cat',p)
       script.write('cat '+p+' >> '+new_filename+'; rm '+p+'\n')
-      os.unlink(p)
+      os.unlink(TD+p)
 
     #there may be files that have been renamed and edited...
     def some_old_file_gen():
@@ -1003,8 +1114,16 @@ def do_delta(olddeb,newdeb,delta,TD):
         if VERBOSE > 2: print '   no corresponding fil: ', name
         continue 
       oldname = correspondence[name]
-      
+
       mul=len( old_used[oldname]) > 1 #multiple usage
+      
+      if not mul and oldname == name and oldname[-3:] == '.gz' and \
+             newtarinfo.size > 120 and  \
+        not ( new_md5 and name in new_md5 and old_md5 and name in old_md5 and \
+           new_md5[name] == old_md5[name]):
+        newtar.extract(newtarinfo,TD+"NEW/"+CWD )
+        delta_gzipped_files("OLD/"+CWD+'/'+name,"NEW/"+CWD+'/'+name)
+
       if VERBOSE > 2 :  print '   adding reg file: ', oldname, mul and '(multiple)' or ''
       _append_( "OLD/"+CWD+"/"+oldname , not mul )
       old_used[oldname].pop()
@@ -1018,6 +1137,7 @@ def do_delta(olddeb,newdeb,delta,TD):
         mega_cat_chunk(progressive_new_offset, os.path.getsize(TD+new_filename))
       else:
         delta_files('OLD/mega_cat',new_filename)
+        unlink(TD+new_filename)
     else:
       p=verbatim(new_filename)
       script.write('mv '+p+' '+new_filename+ '\n')
@@ -1102,6 +1222,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write('ar p OLD.file '+name+' >> '+o+'\n')
       delta_files(o,n)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
+      unlink(TD+n)
     else:
       die('internal error')
     #pad new deb
