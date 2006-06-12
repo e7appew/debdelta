@@ -734,7 +734,6 @@ def do_delta(olddeb,newdeb,delta,TD):
     deltasize = os.stat(TD+p)[ST_SIZE]
     if VERBOSE > 1 :
       print '   delta is %3.2f'  % ( deltasize * 100. /  nsize ) , '% of ',n
-      #redundant ', %3.2f'  % ( deltasize * 100. /  newdebsize ) , '% of new .deb'
     #save it
     patch_append(pp)
     #clean up
@@ -1152,7 +1151,9 @@ def do_delta(olddeb,newdeb,delta,TD):
   if NEEDSOLD :
     #this delta needs the old deb 
     script.write('#needs-old\n')
-
+  else:
+    script.write('#old-data-tree\n')
+    script.write('#old-control-tree\n')
   #this following is actually
   #def delta_debs_using_old(old,new):
 
@@ -1190,9 +1191,8 @@ def do_delta(olddeb,newdeb,delta,TD):
       append_NEW_file( p.read(newsize))
       p.close()
       unlink(TD+n)
-    elif  name[:11] == 'control.tar' :
+    elif not NEEDSOLD and name[:11] == 'control.tar' :
       #(mm this is almost useless, just saves a few bytes)
-      script.write('#old-control-tree\n')
       o = 'OLD/'+name
       system('ar p OLD.file '+name+' >> '+o, TD)
       ##avoid using strange files that dpkg may not install in /var...info/
@@ -1204,7 +1204,6 @@ def do_delta(olddeb,newdeb,delta,TD):
       delta_tar(o,n,'CONTROL',skip)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
-      script.write('#old-data-tree\n')
       o = 'OLD/'+name
       #system('ar p OLD.file '+name+' >> '+o, TD)
       assert(name[-3:] == '.gz')#should add support for bz2 data.tar
