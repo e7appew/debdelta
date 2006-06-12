@@ -571,10 +571,14 @@ def do_delta(olddeb,newdeb,delta,TD):
   if  os.path.exists(delta) :
     os.rename(delta,delta+'~')
   
-  #counter for numbered files  FIXME this will not work in threads....
-  global deltacount
-  deltacount = 0 
-
+  #generater for numbered files
+  def a_numb_file_gen():    
+    deltacount = 0
+    while 1:
+      yield str(deltacount)
+      deltacount+=1      
+  a_numb_file=a_numb_file_gen()
+  
   #start writing script 
   script=open(TD+'PATCH/patch.sh','w')
   script.write('#!/bin/sh -e\n')
@@ -663,9 +667,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     unlink(TD+'PATCH/'+f)
 
   def verbatim(f):
-    global deltacount
-    deltacount += 1
-    pp=str(deltacount)
+    pp=a_numb_file.next()
     p = 'PATCH/'+pp
     if VERBOSE > 1 : print '  including "',name,'" verbatim in patch'
     os.rename(TD+f,TD+p)
@@ -702,9 +704,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     else:
       co=''
       cn=''
-    global deltacount
-    deltacount += 1
-    pp=str(deltacount)
+    pp=a_numb_file.next()
     p = 'PATCH/'+pp
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
@@ -933,9 +933,7 @@ def do_delta(olddeb,newdeb,delta,TD):
 
     #helper function
     def mega_cat_chunk(oldoffset,newoffset):
-      global deltacount
-      deltacount += 1
-      p = 'PATCH/'+ str(deltacount)
+      p = 'PATCH/tmp_new_tar'
       f=open(TD+new_filename)
       f.seek(oldoffset)
       of=open(TD+p,'w')
@@ -949,6 +947,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       of.close()
       delta_files('OLD/mega_cat',p)
       script.write('cat '+p+' >> '+new_filename+'; rm '+p+'\n')
+      os.unlink(p)
 
     #there may be files that have been renamed and edited...
     def some_old_file_gen():
