@@ -844,11 +844,11 @@ def do_delta(olddeb,newdeb,delta,TD):
       os.unlink(TD+p+".new") ; os.unlink(TD+p+'.new.gz') ; os.unlink(TD+p+'.faked.gz') 
       return
     #actual delta of decompressed files
-    system("gunzip '"+o+"'",TD)
-    script.write("gunzip '"+o+"'\n")
-    delta_files(o[:-3],p+'.new')
+    system("zcat '"+o+"' > "+p+'.old',TD)
+    script.write("zcat '"+o+"' > "+p+".old ; rm '"+o+"' \n")
+    delta_files(p+'.old',p+'.new')
     os.rename(TD+p+'.faked.gz',TD+o)
-    script.write("mv "+p+".new '"+o[:-3]+"' ; gzip "+gzip_flags+" '"+o[:-3]+"'\n")
+    script.write("mv "+p+".new '"+o[:-3]+"' ;  gzip "+gzip_flags+" '"+o[:-3]+"'\n")
     os.unlink(TD+p+'.new.gz')
     
   ########### helper sh functions for script, for delta_tar()
