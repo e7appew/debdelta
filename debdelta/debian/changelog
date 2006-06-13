@@ -1,3 +1,10 @@
+debdelta (0.14) unstable; urgency=low
+
+  * debdeltas: can --clean unusable debdeltas
+  * debdelta: corrected bug (cannot gunzip a symlink)
+
+ -- A Mennucc1 <mennucc1@debian.org>  Tue, 13 Jun 2006 12:17:31 +0200
+
 debdelta (0.13) unstable; urgency=low
 
   * debdelta_upgrade: thanks to Michael Vogt, now uses APT caches at best
