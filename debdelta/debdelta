@@ -758,11 +758,9 @@ def do_delta(olddeb,newdeb,delta,TD):
       print ' Warning: unsupported  .gz flags: ',oct(oflag),o
     if oflag & 8 : #skip orig name
       oa=of.read(1)
-      s=oa
       while ord(oa) != 0:
         oa=of.read(1)
-        s+=oa
-      #print repr(s)
+    l=10
     nflag=ord(na[3])
     if nflag & 0xf7:
       print ' Warning: unsupported  .gz flags: ',oct(nflag),n
@@ -772,10 +770,8 @@ def do_delta(olddeb,newdeb,delta,TD):
       while ord(na) != 0:
         na=nf.read(1)
         s+=na
+      l+=len(s)
       #print repr(s)
-    l=10
-    oa=of.read(2)
-    na=nf.read(2)    
     while oa and na:
       oa=of.read(2)
       na=nf.read(2)
@@ -790,6 +786,10 @@ def do_delta(olddeb,newdeb,delta,TD):
     assert(o[-3:] == '.gz' and n[-3:] == '.gz')
     before=cmp_gz(o,n)
     if before == True:
+      return
+    #compare the cost of leaving as is , VS the minimum cost of delta
+    if ( os.path.getsize(TD+n) - before + 10 ) < 200 :
+      if VERBOSE > 1: print '   Not worthwhile gunzipping: ',n
       return
     f=open(TD+n)
     a=f.read(10)
@@ -846,6 +846,8 @@ def do_delta(olddeb,newdeb,delta,TD):
     #actual delta of decompressed files
     system("zcat '"+o+"' > "+p+'.old',TD)
     script.write("zcat '"+o+"' > "+p+".old ; rm '"+o+"' \n")
+    if VERBOSE > 1 :
+      print '  ',n,': ',
     delta_files(p+'.old',p+'.new')
     os.rename(TD+p+'.faked.gz',TD+o)
     script.write("mv "+p+".new '"+o[:-3]+"' ;  gzip "+gzip_flags+" '"+o[:-3]+"'\n")
