@@ -970,11 +970,12 @@ def do_delta(olddeb,newdeb,delta,TD):
     for newtarinfo in newtar:
       newname =  newtarinfo.name
       #just curious to know
-      a=("%o" % newtarinfo.mode)
       t=newtarinfo.type
-      if VERBOSE and (( t == '2' and a  != '777' ) or \
-                      ((t == '5' or t == '0') and (a not in [ '755' , '644' ]))):
-        print ' Weird permission: ',newname,a,repr(newtarinfo.type)
+      a=newtarinfo.mode
+      if VERBOSE and (( t == '2' and a  != 0777 ) or \
+                      ( t == '0' and ( (a & 0400 ) == 0 )) or \
+                      ( t == '5' and ( (a & 0500 ) == 0 ))):
+        print ' Weird permission: ',newname,oct(a),repr(newtarinfo.type)
       ###
       if   not newtarinfo.isreg():
         continue
