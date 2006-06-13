@@ -662,7 +662,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   def patch_append(f):
     if VERBOSE > 1 :
       a=os.stat(TD+'PATCH/'+f)[ST_SIZE]
-      print '  appending ',f,' of size ', a,' to debdelta, %3.2f'  % ( a * 100. /  newdebsize ) , '% of new .deb'
+      print '   appending ',f,' of size ', a,' to debdelta, %3.2f'  % ( a * 100. /  newdebsize ) , '% of new .deb'
     system(['ar','qSc', delta,f],  TD+'/PATCH')
     unlink(TD+'PATCH/'+f)
 
@@ -786,10 +786,12 @@ def do_delta(olddeb,newdeb,delta,TD):
     assert(o[-3:] == '.gz' and n[-3:] == '.gz')
     before=cmp_gz(o,n)
     if before == True:
+      if VERBOSE > 3: print '    equal but for header: ',n
       return
     #compare the cost of leaving as is , VS the minimum cost of delta
-    if ( os.path.getsize(TD+n) - before + 10 ) < 200 :
-      if VERBOSE > 1: print '   Not worthwhile gunzipping: ',n
+    newsize=os.path.getsize(TD+n)
+    if ( newsize - before + 10 ) < 200 :
+      if VERBOSE > 3: print '    not worthwhile gunzipping: ',n
       return
     f=open(TD+n)
     a=f.read(10)
@@ -837,17 +839,17 @@ def do_delta(olddeb,newdeb,delta,TD):
       r=cmp_gz(p+'.new.gz',p+'.faked.gz')
       if r == True:
         break
-      if i == pack_level and VERBOSE > 2:
-        print '   Warning: wrong guess to re-gzip to equal file: ',gzip_flags,r,n
+      if i == pack_level and VERBOSE > 3:
+        print '    warning: wrong guess to re-gzip to equal file: ',gzip_flags,r,n
     if r != True:
-      if VERBOSE > 1: print '  Warning: cannot re-gzip to equal file: ',r,n
+      if VERBOSE > 2: print '   warning: cannot re-gzip to equal file: ',r,n
       os.unlink(TD+p+".new") ; os.unlink(TD+p+'.new.gz') ; os.unlink(TD+p+'.faked.gz') 
       return
     #actual delta of decompressed files
     system("zcat '"+o+"' > "+p+'.old',TD)
     script.write("zcat '"+o+"' > "+p+".old ; rm '"+o+"' \n")
-    if VERBOSE > 1 :
-      print '  ',n,': ',
+    if VERBOSE > 2 :
+      print '   ',n[9:],'  (= to %d%%): ' % (100*before/newsize) ,
     delta_files(p+'.old',p+'.new')
     os.rename(TD+p+'.faked.gz',TD+o)
     script.write("mv "+p+".new '"+o[:-3]+"' ;  gzip "+gzip_flags+" '"+o[:-3]+"'\n")
