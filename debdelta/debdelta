@@ -1417,7 +1417,9 @@ def do_deltas(argv):
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
-        delta=os.path.join(delta_dirname(new['File']),deltabasename)        
+        deltadirname=delta_dirname(new['File'])
+        os.makedirs(deltadirname)
+        delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
           if VERBOSE > 1:     print '  Skip , already exists: ',delta
@@ -1430,7 +1432,7 @@ def do_deltas(argv):
           if VERBOSE > 1:     print '  Skip , tried and fails: ',delta
           break
 
-        free=freespace(os.path.dirname(delta))
+        free=freespace(deltadirname)
         if free and (free < (newdebsize /2 + 1024)) :
           if VERBOSE : print 'Not enough disk space for storing ',delta
           break
