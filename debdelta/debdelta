@@ -68,6 +68,7 @@ import sys , os , tempfile , string ,getopt , tarfile , shutil , time
 
 from stat    import ST_SIZE, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
+from copy    import copy
 
 from types import StringType, FunctionType, TupleType, ListType
 
@@ -922,7 +923,45 @@ def do_delta(olddeb,newdeb,delta,TD):
     o=oo.split('/')
     (ob,oe)=os.path.splitext(o[-1])
     return o[:-1]+ ob.split('_')+[oe]
+  
   def files_similarity_score__(oo,nn):
+    ln=len(nn)
+    lo=len(oo)
+    oo=copy(oo)
+    nn=copy(nn)
+    l=0
+    penalty=0
+    if oo.pop() != nn.pop() :
+      penalty=0.2
+    while oo and nn:
+      while oo[-1] == nn[-1]:
+        oo.pop()
+        nn.pop()
+      if not oo or not nn: break
+      while oo[0] == nn[0]:
+        oo=oo[1:]
+        nn=nn[1:]
+      if not oo or not nn: break
+      if len(nn) > 1 and oo[0] == nn[1]:
+        l+=1
+        nn=nn[1:]
+      if len(oo) > 1 and oo[1] == nn[0]:
+        l+=1
+        oo=oo[1:]
+      if not oo or not nn: break
+      if  oo[-1] != nn[-1]:
+        oo.pop()
+        nn.pop()
+        l+=2
+      if not oo or not nn: break
+      if oo[0] != nn[0]:
+        oo=oo[1:]
+        nn=nn[1:]
+        l+=2
+    return penalty + (l +len(oo) + len(nn)) * 2.0 / float(ln+lo)
+  
+  def files_similarity_score__difflib__(oo,nn):
+    "compute similarity by difflib. Too slow."
     if oo == nn :
       return 0
     d=difflib.context_diff(oo,nn,'','','','',0,'')
@@ -931,6 +970,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       return 0.2+float(len(d)) * 2.0 / float(len(oo)+len(nn))
     else:
       return float(len(d)) * 2.0 / float(len(oo)+len(nn))
+    
   def files_similarity_score(oo,nn):
     if oo == nn :
       return 0
