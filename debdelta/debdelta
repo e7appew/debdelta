@@ -521,7 +521,7 @@ def do_patch(delta,olddeb,newdeb,TD):
           for i in filenames:
             i=os.path.join(dirpath,i)
             if os.path.isfile(i):
-              chmod_add(i,  S_IRUSR   )
+              chmod_add(i,  S_IRUSR |  S_IWUSR )
           for i in dirnames:
             i=os.path.join(dirpath,i)
             chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
@@ -934,11 +934,11 @@ def do_delta(olddeb,newdeb,delta,TD):
     if oo.pop() != nn.pop() :
       penalty=0.2
     while oo and nn:
-      while oo[-1] == nn[-1]:
+      while oo and nn and oo[-1] == nn[-1]:
         oo.pop()
         nn.pop()
       if not oo or not nn: break
-      while oo[0] == nn[0]:
+      while oo and nn and oo[0] == nn[0]:
         oo=oo[1:]
         nn=nn[1:]
       if not oo or not nn: break
