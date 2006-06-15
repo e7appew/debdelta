@@ -1418,7 +1418,7 @@ def do_deltas(argv):
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
         deltadirname=delta_dirname(new['File'])
-        os.makedirs(deltadirname)
+        make_parents(deltadirname+'/')
         delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
