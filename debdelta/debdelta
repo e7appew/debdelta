@@ -7,7 +7,7 @@ Usage: debdelta [ option...  ] fromfile tofile patchout
 
 Options:
 --needsold  create a patch that can only be used if the old .deb is available
-  -M Mb   maximum memory (to decide if using 'bsdiff' or 'xdelta')
+  -M Mb     maximum memory  to use (for 'bsdiff' or 'xdelta')
 """
 
 
@@ -23,7 +23,7 @@ Options:
             (i.e. the dirname of deb_file will be used as well)
  -n N       how many deltas to produce for each deb package (default 1)
 --needsold  create a patch that can only be used if the old .deb is available
-  -M Mb     maximum memory to use for 'bsdiff' or 'xdelta'
+  -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
 --clean     delete deltas if newer deb is not in archive
 """
 
@@ -51,7 +51,7 @@ Options:
 """
 
 
-doc_common="""
+doc_common="""\
   -v      verbose (can be added multiple times)
   -k      keep temporary files
 """
@@ -87,7 +87,9 @@ MAX_DELTA_PERCENT = 70
 N_DELTAS= 1
 
 #seems that 'xdelta' is buggy on 64bit and different-endian machines
-ALLOW_XDELTA = False
+USE_XDELTA  = False
+#xdelta3 IS buggy and crashes on some inputs
+USE_XDELTA3 = False
 
 DEBUG   = 1
 VERBOSE = 0
@@ -113,7 +115,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','allow-xdelta','dir=','avoid=','clean') )
+                 ('help','info','needsold','dir=','avoid=','clean') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -123,7 +125,6 @@ else:
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
     elif o == '--clean' : CLEAN = True
-    elif o == '--allow-xdelta' :  ALLOW_XDELTA = True
     elif o == '--needsold' :  NEEDSOLD = True
     elif o == '-M' :
       if int(v) <= 1:
@@ -593,18 +594,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   #start writing script 
   script=open(TD+'PATCH/patch.sh','w')
   script.write('#!/bin/sh -e\n')
-  
-  if DEBUG:
-    # compute a MD5 of NEW deb
-    p=os.popen('md5sum '+TD+'NEW.file')
-    a=p.readline()
-    p.read()
-    p.close
-    new_md5sum=a[:32]
-    script.write('#NEW/MD5sum: '+ new_md5sum[:32]+'\n')
-  else:
-    new_md5sum=None
-  
+    
   ##### unpack control.tar.gz, scan control, write  parameters
   params={}
   for o in 'OLD', 'NEW' :
@@ -623,6 +613,23 @@ def do_delta(olddeb,newdeb,delta,TD):
       if s: print
       del s,p
 
+  if DEBUG:
+    # compute a MD5 of NEW deb
+    p=os.popen('md5sum '+TD+'NEW.file')
+    a=p.readline()
+    p.read()
+    p.close
+    newdeb_md5sum=a[:32]
+    script.write('#NEW/MD5sum: '+ newdeb_md5sum[:32]+'\n')
+  else:
+    newdeb_md5sum=None
+
+  if NEEDSOLD :
+    #this delta needs the old deb 
+    script.write('#needs-old\n')
+  else:
+    script.write('#old-data-tree\n')
+    script.write('#old-control-tree\n')
 
   #### check for disk space
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
@@ -669,6 +676,16 @@ def do_delta(olddeb,newdeb,delta,TD):
     old_md5=scan_md5(TD+'/OLD/CONTROL/md5sums')
 
   ############### some routines  to prepare delta of two files
+
+  def script_md5_check_file(n,md5=None):
+    assert(os.path.isfile(TD+n))
+    if md5==None:
+      pm=os.popen('md5sum '+TD+n)
+      a=pm.readline()
+      pm.read()
+      pm.close
+      md5=a[:32]
+    script.write('echo "'+md5+'  '+n+'" | md5sum -c > /dev/null\n')
 
   def patch_append(f):
     if VERBOSE > 1 :
@@ -725,7 +742,28 @@ def do_delta(olddeb,newdeb,delta,TD):
     #  free = MAXMEMORY * 16
     #    #this interferes with chhnked  and (osize < (free / 8)) :
     tim = -time.time()
-    if not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
+
+    if DEBUG > 2 :  script_md5_check_file(o)
+
+    #I am also testing rdiff
+    if False:
+      system('rdiff signature '+o+' sign_file.tmp  ',TD)
+      system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
+
+      script.write('rdiff patch '+o+' '+p+' '+n+'\n')
+      script_md5_check_file(n)
+
+      tim += time.time()
+      
+    #xdelta3 crashes!
+    #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
+    elif USE_XDELTA3:
+      system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+'\n')
+      tim += time.time()
+
+    #bsdiff is sooooo slow!
+    elif True: # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
       if osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
         print '  Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
       global bsdiff_time, bsdiff_datasize
@@ -734,8 +772,8 @@ def do_delta(olddeb,newdeb,delta,TD):
       bsdiff_time += tim
       bsdiff_datasize += nsize
       script.write('bspatch '+o+' '+n+' '+p+'\n')
-      script.write('rm '+p+' '+o+'\n')
-    else:
+    #xdelta does not deal with different endianness!
+    elif False:
       a=''
       if VERBOSE > 2 : print '    fallback on xdelta instead of bsdiff' ; a = '-v'
       system('xdelta delta -n -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
@@ -743,9 +781,11 @@ def do_delta(olddeb,newdeb,delta,TD):
       tim += time.time()
       script.write('bunzip2 '+p+'.bz2\n')
       script.write('xdelta patch '+p+' '+o+' '+n+'\n')
-      script.write('rm '+p+' '+o+'\n')
       pp += '.bz2'
       p  += '.bz2'
+    else: raise
+
+    script.write('rm '+p+' '+o+'\n')
     script_zip(n,cn)
     ## how did we fare ?
     deltasize = os.path.getsize(TD+p)
@@ -871,6 +911,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     delta_files(p+'.old',p+'.new')
     os.rename(TD+p+'.faked.gz',TD+o)
     script.write("mv "+p+".new '"+o[:-3]+"' ;  gzip "+gzip_flags+" '"+o[:-3]+"'\n")
+    if DEBUG > 2 :  script_md5_check_file(o)
     os.unlink(TD+p+'.new.gz')
     
   ########### helper sh functions for script, for delta_tar()
@@ -936,11 +977,14 @@ def do_delta(olddeb,newdeb,delta,TD):
     " compute delta of two tar files, and prepare the script consequently"
     assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
     if os.path.exists(TD+'OLD/mega_cat'):
+      print 'Warning!!! OLD/mega_cat  exists !!!!'
       # if -k is given, still we need to delete it...
       os.unlink(TD+'OLD/mega_cat')
+      script.write('rm OLD/mega_cat || true \n')
     mega_cat=open(TD+'OLD/mega_cat','w')
     #helper function
     def _append_(w,rm=False):
+      assert(os.path.isfile(TD+w))
       f=open(TD+w)
       a=f.read(1024)
       while a:
@@ -1013,7 +1057,8 @@ def do_delta(olddeb,newdeb,delta,TD):
     reverse_old_md5={}
     if old_md5:
       for o in old_md5:
-        reverse_old_md5[old_md5[o]] = o
+        if o not in skip:
+          reverse_old_md5[old_md5[o]] = o
 
     oldnames_premangle={}
     for o in oldnames:
@@ -1098,6 +1143,9 @@ def do_delta(olddeb,newdeb,delta,TD):
     progressive_new_offset=0
 
     for newtarinfo in newtar:
+      ## for tracking strange bugs
+      if DEBUG > 3 and mega_cat.tell() > 0 :
+        script_md5_check_file("OLD/mega_cat")
       #progressive mega_cat
       a=mega_cat.tell()
       if (a >= MAXMEMORY / 12 ) or \
@@ -1105,7 +1153,10 @@ def do_delta(olddeb,newdeb,delta,TD):
          (a>0 and (a+newtarinfo.size) >= MAXMEMORY / 12):
         #provide some old unused files, if any
         while one_old_file:
-          _append_("OLD/"+CWD+"/"+one_old_file)
+          w="OLD/"+CWD+"/"+one_old_file
+          if os.path.isfile(TD+w):
+            _append_(w)
+          else: print 'Warning!!! ',w,'does not exists ???'
           if mega_cat.tell() >= MAXMEMORY / 12:
             break
           one_old_file=some_old_file.next()
@@ -1165,18 +1216,12 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write('mv '+p+' '+new_filename+ '\n')
     script_zip(new_filename,new_filename_ext)
   ############ start computing deltas
-
+    
   def append_NEW_file(s):
     'appends some data to NEW.file'
     s=prepare_for_echo(s)
     script.write("echo -n -e '"+ s +"' >> NEW.file\n")
     
-  if NEEDSOLD :
-    #this delta needs the old deb 
-    script.write('#needs-old\n')
-  else:
-    script.write('#old-data-tree\n')
-    script.write('#old-control-tree\n')
   #this following is actually
   #def delta_debs_using_old(old,new):
 
@@ -1256,8 +1301,8 @@ def do_delta(olddeb,newdeb,delta,TD):
     if VERBOSE > 2: print '   ar leftover character: ',repr(s)
     append_NEW_file(s)
 
-  if DEBUG > 1 and new_md5sum :
-    script.write('echo "'+new_md5sum+'  NEW.file" | md5sum -c > /dev/null')
+  if DEBUG > 1 and newdeb_md5sum :
+    script_md5_check_file("NEW.file",md5=newdeb_md5sum)
 
   #script is done
   script.close()
@@ -1369,6 +1414,9 @@ def do_deltas(argv):
 
   for f in debs:
     if os.path.isfile(f):
+      if f[-4: ] != '.deb' :
+        print 'Warning: skipping cmd line argument: ',f
+        continue
       scan_deb(f)
       if CLEAN:
         di=delta_dirname(f)
