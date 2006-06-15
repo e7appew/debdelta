@@ -721,27 +721,15 @@ def do_delta(olddeb,newdeb,delta,TD):
     elif  cn == '.bz2' :
       print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
       
-  def delta_files(o,n,unzip_p=True):
+  def delta_files(o,n):
     " compute delta of two files , and prepare the script consequently"
     nsize = os.path.getsize(TD+n)
     osize = os.path.getsize(TD+o)
     if VERBOSE > 1 : print '  compute delta for %s (%dkB) and %s (%dkB)' % \
        (o,osize/1024,n,nsize/1024)
-    if unzip_p:
-      (o,co) = unzip(o)
-      (n,cn) = unzip(n)
-    else:
-      co=''
-      cn=''
+    #
     pp=a_numb_file.next()
     p = 'PATCH/'+pp
-    ## according to the man page,
-    ## bsdiff uses memory equal to 17 times the size of oldfile
-    ## but , in my experiments, this number is more like 12
-    #free=freespace(TD)
-    #if free == None :
-    #  free = MAXMEMORY * 16
-    #    #this interferes with chhnked  and (osize < (free / 8)) :
     tim = -time.time()
 
     if DEBUG > 2 :  script_md5_check_file(o)
@@ -763,7 +751,10 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+'\n')
       tim += time.time()
 
-    #bsdiff is sooooo slow!
+    ## according to the man page,
+    ## bsdiff uses memory equal to 17 times the size of oldfile
+    ## but , in my experiments, this number is more like 12.
+    ##But bsdiff is sooooo slow!
     elif True: # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
       if osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
         print '  Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
@@ -787,7 +778,6 @@ def do_delta(olddeb,newdeb,delta,TD):
     else: raise
 
     script.write('rm '+p+' '+o+'\n')
-    script_zip(n,cn)
     ## how did we fare ?
     deltasize = os.path.getsize(TD+p)
     if VERBOSE > 1 :
@@ -1012,7 +1002,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
 
-  ##########################################################################
+  ####################  vvv     delta_tar    vvv ###########################
   def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}):
     " compute delta of two tar files, and prepare the script consequently"
     assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
@@ -1151,7 +1141,7 @@ def do_delta(olddeb,newdeb,delta,TD):
 
     #helper function
     def mega_cat_chunk(oldoffset,newoffset):
-      p = 'PATCH/tmp_new_tar'
+      p = a_numb_file.next()
       f=open(TD+new_filename)
       f.seek(oldoffset)
       of=open(TD+p,'w')
@@ -1163,8 +1153,14 @@ def do_delta(olddeb,newdeb,delta,TD):
         of.write(s)
       f.close()
       of.close()
-      delta_files('OLD/mega_cat',p)
-      script.write('cat '+p+' >> '+new_filename+'; rm '+p+'\n')
+      #move to a temporary
+      pt=a_numb_file.next()
+      script.write('mv OLD/mega_cat '+pt+'\n')
+      os.rename(TD+'OLD/mega_cat',TD+pt)
+      #do delta, in background there
+      script.write('wait ; ( ')
+      delta_files(pt,p)
+      script.write('cat '+p+' >> '+new_filename+'; rm '+p+' ; ) & \n')
       os.unlink(TD+p)
 
     #there may be files that have been renamed and edited...
@@ -1180,6 +1176,9 @@ def do_delta(olddeb,newdeb,delta,TD):
     some_old_file=some_old_file_gen()
     one_old_file=some_old_file.next()
 
+    max_chunk_size = MAXMEMORY / 12
+    chunk_discount = 0.3
+
     progressive_new_offset=0
 
     for newtarinfo in newtar:
@@ -1188,22 +1187,23 @@ def do_delta(olddeb,newdeb,delta,TD):
         script_md5_check_file("OLD/mega_cat")
       #progressive mega_cat
       a=mega_cat.tell()
-      if (a >= MAXMEMORY / 12 ) or \
-         (a >= MAXMEMORY / 13 and one_old_file ) or \
-         (a>0 and (a+newtarinfo.size) >= MAXMEMORY / 12):
+      if (a >=  max_chunk_size * chunk_discount) or \
+         (a >= max_chunk_size * chunk_discount * 0.9 and one_old_file ) or \
+         (a>0 and (a+newtarinfo.size) >= max_chunk_size * chunk_discount ):
         #provide some old unused files, if any
         while one_old_file:
           w="OLD/"+CWD+"/"+one_old_file
           if os.path.isfile(TD+w):
             _append_(w)
           else: print 'Warning!!! ',w,'does not exists ???'
-          if mega_cat.tell() >= MAXMEMORY / 12:
+          if mega_cat.tell() >=  max_chunk_size * chunk_discount :
             break
           one_old_file=some_old_file.next()
         mega_cat.close()
         mega_cat_chunk(progressive_new_offset, newtarinfo.offset )
         progressive_new_offset=newtarinfo.offset
         mega_cat=open(TD+'OLD/mega_cat','w')
+        chunk_discount = min( 1. , chunk_discount * 1.2 )
       #
       name = de_bar( newtarinfo.name )
       #recreate also parts of the tar headers
@@ -1254,7 +1254,10 @@ def do_delta(olddeb,newdeb,delta,TD):
     else:
       p=verbatim(new_filename)
       script.write('mv '+p+' '+new_filename+ '\n')
+    script.write('wait\n')
     script_zip(new_filename,new_filename_ext)
+  ####################  ^^^^    delta_tar    ^^^^ ###########################
+
   ############ start computing deltas
     
   def append_NEW_file(s):
@@ -1327,8 +1330,11 @@ def do_delta(olddeb,newdeb,delta,TD):
       o = 'OLD/'+name
       system('ar p OLD.file '+name+' >> '+o, TD)
       script.write('ar p OLD.file '+name+' >> '+o+'\n')
+      (o,co) = unzip(o)
+      (n,cn) = unzip(n)
       delta_files(o,n)
-      script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
+      script_zip(n,cn)
+      script.write('cat '+n+cn+' >> NEW.file ;  rm '+n+'\n')
       unlink(TD+n)
     else:
       die('internal error')
