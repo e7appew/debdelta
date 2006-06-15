@@ -1684,7 +1684,11 @@ def delta_upgrade():
     DEB_DIR=DIR
   if not os.path.exists(DEB_DIR):    
     os.mkdir(DEB_DIR)
+
   
+  #these are the packages that do not have a delta
+  no_delta = []
+
   print 'Recreated debs are saved in ',DEB_DIR
   start_sec = time.time()
   len_deltas=0
@@ -1692,7 +1696,7 @@ def delta_upgrade():
       
   (qout,qin)=os.pipe()
   ######################## thread_do_patch
-  def thread_do_patch(qout,threads):
+  def thread_do_patch(qout,threads,no_delta):
       if VERBOSE > 1 : print ' Patching thread started. '
       while 1:
         s=os.read(qout,1)
@@ -1701,21 +1705,23 @@ def delta_upgrade():
           c+=s
           s=os.read(qout,1)
         if c == '\t' or c == '': break
-        (name, delta , newdeb) = pickle.loads(c)      
+        (name, delta , newdeb, deb_uri) = pickle.loads(c)      
         if VERBOSE>=2 : print ' Now patching for: ',name
         if True: 
           T=tempo()
           try:
             ret=do_patch(delta,'/',newdeb ,T)
-            if VERBOSE == 0 : print 'Created ',newdeb
+            if VERBOSE == 0 : print 'Created ',newdeb,'   '
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
             if os.path.exists(newdeb):
               os.unlink(newdeb)
+            no_delta.append(deb_uri)
           except:
             print " Error while applying delta for ",name,":",sys.exc_info()
             if os.path.exists(newdeb):
               os.unlink(newdeb)
+            no_delta.append(deb_uri)
           else:
             if os.path.exists(delta):
               os.unlink(delta)
@@ -1727,7 +1733,7 @@ def delta_upgrade():
       return len_newdebs
 
   threads=[]
-  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads) ) )
+  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads,no_delta) ) )
 
   len_downloaded=0
   conn_time=0
@@ -1739,10 +1745,6 @@ def delta_upgrade():
   assert(a[0] == 'http')
   deltas_conn=httplib.HTTPConnection(a[1])
   delta_http_base=a[2]
-
-
-  #these are the packages that do not have a delta
-  no_delta = []
 
   ###################################### download_uri
   def test_uri(conn,uri):
@@ -1854,7 +1856,7 @@ def delta_upgrade():
         if r:
           r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name,conn_time,len_downloaded)
         if r == None:
-          no_delta.append(deb_uri   )
+          no_delta.append(deb_uri)
         else:
           conn_time = r[0]
           len_downloaded = r[1]
@@ -1862,7 +1864,7 @@ def delta_upgrade():
       #queue to apply delta
       if os.path.exists(DEB_DIR+'/'+delta_name):
         #append to queue
-        c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb) )
+        c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
         # compute virtual speed . FIXME this is incorrect if patching fails!
         len_newdebs += int( dpkg_params['Size'])
