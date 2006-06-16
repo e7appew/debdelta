@@ -1529,13 +1529,13 @@ def do_deltas(argv):
 
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
           if VERBOSE > 1 :     print '(Due to old version) avoid: ', new['File']
-          break        
+          continue
 
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == new['Version']) :
           if VERBOSE > 1 :     print '(Due to new version) avoid: ', new['File']
           break        
         
-        newdebsize=os.stat(new['File'])[ST_SIZE]
+        newdebsize=os.path.getsize(new['File'])
         #very small packages cannot be effectively delta-ed
         if newdebsize <= 4 * 1024 :
           #this actually affects 1 every ~60 packages in the archives
@@ -1552,14 +1552,15 @@ def do_deltas(argv):
         
         if os.path.exists(delta):
           if VERBOSE > 1:     print '  Skip , already exists: ',delta
-          break
+          continue
+        
         if os.path.exists(delta+'-too-big'):
           if VERBOSE > 1:     print '  Skip , tried and too big: ',delta
-          break
+          continue
 
         if os.path.exists(delta+'-fails'):
           if VERBOSE > 1:     print '  Skip , tried and fails: ',delta
-          break
+          continue
 
         free=freespace(deltadirname)
         if free and (free < (newdebsize /2 + 2**15)) :
