@@ -19,8 +19,12 @@ Usage: debdeltas [ option...  ]  [deb_files and dirs]
 Options:
 --dir DIR   force saving of deltas in this DIR
             (otherwise they go in the dir of the newer deb_file)
-            if DIR ends in // , recreate directory tree
-            (i.e. the dirname of deb_file will be used as well)
+
+--alt DIR   for any cmdline argument, search for debs also in this dir 
+
+            if DIR ends in // , then the dirname of the cmdline argument
+            will be appended to DIR, as well (useful when creating archives)
+            
  -n N       how many deltas to produce for each deb package (default 1)
 --needsold  create a patch that can only be used if the old .deb is available
   -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
@@ -98,6 +102,7 @@ KEEP    = False
 INFO    = False
 NEEDSOLD= False
 DIR     = None
+ALT     = None
 AVOID   = None
 CLEAN   = False
 
@@ -116,7 +121,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','avoid=','clean') )
+                 ('help','info','needsold','dir=','alt=','avoid=','clean') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -149,6 +154,11 @@ else:
       DIR = v
       if not os.path.isdir(DIR):
         print 'Error: --dir ',DIR,' does not exist.'
+        sys.exit(3)
+    elif o == '--alt'  :
+      ALT = v
+      if not os.path.isdir(ALT):
+        print 'Error: --alt ',ALT,' does not exist.'
         sys.exit(3)
     elif o ==  '--help' or o ==  '-h':
       print __doc__
@@ -1404,8 +1414,17 @@ def do_deltas(argv):
 
   info_by_pack_arch={}
   info_by_file={}
+  deb_dir_visited=[]
 
   def scan_deb(f):
+      if os.path.isdir(f):
+        if f not in deb_dir_visited:
+          deb_dir_visited.append(f)
+          for d in os.listdir(f):
+            d=os.path.join(f,d)
+            if os.path.isfile(d) and d[-4:] == '.deb' :
+              scan_delta( d )
+        return
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,info_by_file[f])
@@ -1427,7 +1446,7 @@ def do_deltas(argv):
         for d in os.listdir(f):
           d=os.path.join(f,d)
           if os.path.isfile(d):
-            scan_delta( os.path.join(f,d))
+            scan_delta( d )
       return
     if f[-9:] == '.debdelta' :
       a=f[:-9]
@@ -1447,16 +1466,19 @@ def do_deltas(argv):
     if (f,ov,nv) not in old_deltas_by_pack_arch[ (pa,ar) ]:
       old_deltas_by_pack_arch[ (pa,ar) ].append( (f, ov, nv ) )
 
-  def delta_dirname(f):
-    "compute delta dirname given deb path"
-    if DIR:
-      if DIR[-2:] == '//' :
-        a=DIR+os.path.dirname(f)
+  def delta_dirname(f,altdir):
+    "compute augmented dirname"
+    if os.path.isfile(f):
+      f=os.path.dirname(f)
+    assert(os.path.isdir(f))
+    if altdir:
+      if altdir[-2:] == '//' :
+        a=altdir+f
         return make_parents(a)
       else:
-        return DIR
+        return altdir
     else:
-      return os.path.dirname(f)
+      return f
 
   for f in debs:
     if os.path.isfile(f):
@@ -1464,16 +1486,16 @@ def do_deltas(argv):
         print 'Warning: skipping cmd line argument: ',f
         continue
       scan_deb(f)
+      if ALT:
+        scan_deb(delta_dirname(f,ALT))
       if CLEAN:
-        di=delta_dirname(f)
-        scan_delta(di)
+        scan_delta(delta_dirname(f,DIR))
     elif  os.path.isdir(f) :
-      a=None
-      for a in  filter( lambda a : a[-4:] == '.deb' ,os.listdir(f) ) :
-        scan_deb(os.path.join(f,a))
-      if CLEAN and a:
-        di=delta_dirname(os.path.join(f,a))
-        scan_delta(di)
+      scan_deb(f)
+      if ALT:
+        scan_deb(delta_dirname(f,ALT))
+      if CLEAN:
+        scan_delta(delta_dirname(f,DIR))
     else:
       print 'Warning: '+f+' is not a regular file or a directory.'
 
@@ -1524,7 +1546,7 @@ def do_deltas(argv):
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
-        deltadirname=delta_dirname(new['File'])
+        deltadirname=delta_dirname(new['File'],DIR)
         make_parents(deltadirname+'/')
         delta=os.path.join(deltadirname,deltabasename)
         
