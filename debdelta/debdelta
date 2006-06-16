@@ -744,8 +744,15 @@ def do_delta(olddeb,newdeb,delta,TD):
 
     if DEBUG > 2 :  script_md5_check_file(o)
 
-    #I am also testing rdiff
+
+    #I am also testing bdiff
     if False:
+      system(' ~/bin/bdiff -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
+      script.write(' ~/bin/bdiff -p '+o+' '+p+' '+n+'\n')
+      tim += time.time()
+
+    #I am also testing rdiff
+    elif False:
       system('rdiff signature '+o+' sign_file.tmp  ',TD)
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
 
@@ -1423,7 +1430,7 @@ def do_deltas(argv):
           for d in os.listdir(f):
             d=os.path.join(f,d)
             if os.path.isfile(d) and d[-4:] == '.deb' :
-              scan_delta( d )
+              scan_deb( d )
         return
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
