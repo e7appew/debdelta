@@ -91,10 +91,8 @@ MAX_DELTA_PERCENT = 70
 
 N_DELTAS= 1
 
-#seems that 'xdelta' is buggy on 64bit and different-endian machines
-USE_XDELTA  = False
-#xdelta3 IS buggy and crashes on some inputs
-USE_XDELTA3 = False
+
+USE_DELTA_ALGO  = 'bsdiff'
 
 DEBUG   = 1
 VERBOSE = 0
@@ -121,7 +119,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','alt=','avoid=','clean') )
+                 ('help','info','needsold','dir=','alt=','avoid=','delta-algo=','clean') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -132,6 +130,7 @@ else:
     elif o == '-k' : KEEP = True
     elif o == '--clean' : CLEAN = True
     elif o == '--needsold' :  NEEDSOLD = True
+    elif o == '--delta-algo': USE_DELTA_ALGO=v
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
@@ -730,7 +729,50 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write('./minigzip -9 '+n+'\n')
     elif  cn == '.bz2' :
       print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
-      
+
+  def delta_files__(o,n,p,algo='bsdiff'):
+    #I   tested bdiff
+    #http://www.webalice.it/g_pochini/bdiff/
+    #It is extremely slow!! and it performs much worse than other choices
+    if algo == 'bdiff':
+      system('~/debdelta/bdiff-1.0.5/bdiff -q -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
+      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+' ; rm '+p+'\n')
+    #
+    #I tested zdelta
+    #http://cis.poly.edu/zdelta/
+    #it is outperformed by xdelta
+    elif algo == 'zdelta':
+      system('~/debdelta/zdelta-2.1/zdc  '+o+' '+n+' '+p,TD)
+      script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+' ; rm '+p+'\n')
+    #
+    #I am also testing rdiff
+    elif algo == 'rdiff':
+      system('rdiff signature '+o+' sign_file.tmp  ',TD)
+      system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
+      script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+    #xdelta3 IS buggy and crashes on some inputs
+    #xdelta3 crashes!
+    #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
+    elif algo == 'xdelta3' :
+      system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+    ## according to the man page,
+    ## bsdiff uses memory equal to 17 times the size of oldfile
+    ## but , in my experiments, this number is more like 12.
+    ##But bsdiff is sooooo slow!
+    elif algo == 'bsdiff' : # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
+      system('bsdiff  '+o+' '+n+' '+p,TD)
+      script.write('bspatch '+o+' '+n+' '+p+'; rm '+p+'\n')
+    #seems that 'xdelta' is buggy on 64bit and different-endian machines
+    #xdelta does not deal with different endianness!
+    elif algo == 'xdelta' :
+      system('xdelta delta -n -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+      system('bzip2 -9 '+p,TD)
+      script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+      p  += '.bz2'
+    else: raise
+    return p
+
   def delta_files(o,n):
     " compute delta of two files , and prepare the script consequently"
     nsize = os.path.getsize(TD+n)
@@ -738,70 +780,33 @@ def do_delta(olddeb,newdeb,delta,TD):
     if VERBOSE > 1 : print '  compute delta for %s (%dkB) and %s (%dkB)' % \
        (o,osize/1024,n,nsize/1024)
     #
-    pp=a_numb_file.next()
-    p = 'PATCH/'+pp
+    p = 'PATCH/'+a_numb_file.next()
     tim = -time.time()
-
-    if DEBUG > 2 :  script_md5_check_file(o)
-
-
-    #I am also testing bdiff
-    if False:
-      system(' ~/bin/bdiff -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
-      script.write(' ~/bin/bdiff -p '+o+' '+p+' '+n+'\n')
-      tim += time.time()
-
-    #I am also testing rdiff
-    elif False:
-      system('rdiff signature '+o+' sign_file.tmp  ',TD)
-      system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
-
-      script.write('rdiff patch '+o+' '+p+' '+n+'\n')
-      script_md5_check_file(n)
-
-      tim += time.time()
-      
-    #xdelta3 crashes!
-    #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
-    elif USE_XDELTA3:
-      system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
-      script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+'\n')
-      tim += time.time()
-
-    ## according to the man page,
-    ## bsdiff uses memory equal to 17 times the size of oldfile
-    ## but , in my experiments, this number is more like 12.
-    ##But bsdiff is sooooo slow!
-    elif True: # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
-      if osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
-        print '  Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
-      global bsdiff_time, bsdiff_datasize
-      system('bsdiff  '+o+' '+n+' '+p,TD)
-      tim += time.time()
-      bsdiff_time += tim
-      bsdiff_datasize += nsize
-      script.write('bspatch '+o+' '+n+' '+p+'\n')
-    #xdelta does not deal with different endianness!
-    elif False:
-      a=''
-      if VERBOSE > 2 : print '    fallback on xdelta instead of bsdiff' ; a = '-v'
-      system('xdelta delta -n -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
-      system('bzip2 -9 '+a+' '+p,TD)
-      tim += time.time()
-      script.write('bunzip2 '+p+'.bz2\n')
-      script.write('xdelta patch '+p+' '+o+' '+n+'\n')
-      pp += '.bz2'
-      p  += '.bz2'
-    else: raise
-
-    script.write('rm '+p+' '+o+'\n')
+    #
+    if DEBUG > 3 :  script_md5_check_file(o)
+    #
+    if USE_DELTA_ALGO == 'bsdiff' and osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
+      print '  Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
+    #
+    p = delta_files__(o,n,p,USE_DELTA_ALGO)
+    #script.write(s)
+    #
+    if DEBUG > 2 :  script_md5_check_file(n)
+    #
+    tim += time.time()      
+    #
+    global bsdiff_time, bsdiff_datasize
+    bsdiff_time += tim
+    bsdiff_datasize += nsize
+    #
+    script.write('rm '+o+'\n')
     ## how did we fare ?
     deltasize = os.path.getsize(TD+p)
     if VERBOSE > 1 :
       print '   delta is %3.2f%% of %s, speed: %dkB /sec'  % \
             ( ( deltasize * 100. /  nsize ) , n, (nsize / 1024. / ( tim + 0.001 )))
     #save it
-    patch_append(pp)
+    patch_append(p[6:])
     #clean up
     unlink(TD+o)
 
@@ -1388,9 +1393,9 @@ def do_delta(olddeb,newdeb,delta,TD):
   if VERBOSE:
     print ' deb delta is  %3.1f%% of deb; that is, %dkB are saved, on a total of %dkB.' \
           % ( percent , (( newdebsize -deltasize ) / 1024),( newdebsize/ 1024))
-    print ' delta time: %.1f sec, speed: %dkB /sec, (bsdiff time: %.1fsec speed  %dkB /sec)' %  \
+    print ' delta time: %.1f sec, speed: %dkB /sec, (%s time: %.1fsec speed  %dkB /sec)' %  \
           (elaps, newdebsize / 1024. / (elaps+0.001), \
-           bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) )
+           USE_DELTA_ALGO,bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) )
   return (delta, percent, elaps)
 
 
