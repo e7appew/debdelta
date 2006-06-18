@@ -1733,12 +1733,14 @@ def delta_upgrade():
   print 'Recreated debs are saved in ',DEB_DIR
   start_sec = time.time()
   len_deltas=0
-  len_newdebs=0
       
   (qout,qin)=os.pipe()
+  thread_returns={}
   ######################## thread_do_patch
-  def thread_do_patch(qout,threads,no_delta):
+  def thread_do_patch(qout,threads,no_delta,returns):
       if VERBOSE > 1 : print ' Patching thread started. '
+      debs_size=0
+      debs_time=0
       while 1:
         s=os.read(qout,1)
         c=''
@@ -1748,7 +1750,8 @@ def delta_upgrade():
         if c == '\t' or c == '': break
         (name, delta , newdeb, deb_uri) = pickle.loads(c)      
         if VERBOSE>=2 : print ' Now patching for: ',name
-        if True: 
+        debs_time -= time.time()
+        if True:
           T=tempo()
           try:
             ret=do_patch(delta,'/',newdeb ,T)
@@ -1764,20 +1767,20 @@ def delta_upgrade():
               os.unlink(newdeb)
             no_delta.append(deb_uri)
           else:
+            debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
               os.unlink(delta)
           #os.chdir(original_cwd)
           if os.path.exists(T):
             rmtree(T)
+        debs_time += time.time()
       threads.pop()
       if VERBOSE > 1 : print ' Patching thread ended , bye bye. '
-      return len_newdebs
+      returns['debs_size']=debs_size
+      returns['debs_time']=debs_time
 
   threads=[]
-  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads,no_delta) ) )
-
-  len_downloaded=0
-  conn_time=0
+  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads,no_delta, thread_returns) ) )
 
   import httplib
   from urlparse import urlparse
@@ -1851,7 +1854,10 @@ def delta_upgrade():
       os.rename(outname+'.temp',outname)
       return  conn_time , (j+len_downloaded)
 
-  
+
+  deltas_down_size=0
+  deltas_down_time=0
+
   for p in cache :
     if p.isInstalled and  p.markedUpgrade \
            and p.candidateOrigin[0].origin == 'Debian':
@@ -1895,20 +1901,18 @@ def delta_upgrade():
         else:
           r=True
         if r:
-          r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name,conn_time,len_downloaded)
+          r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name,deltas_down_time,deltas_down_size)
         if r == None:
           no_delta.append(deb_uri)
         else:
-          conn_time = r[0]
-          len_downloaded = r[1]
+          deltas_down_time = r[0]
+          deltas_down_size = r[1]
 
       #queue to apply delta
       if os.path.exists(DEB_DIR+'/'+delta_name):
         #append to queue
         c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
-        # compute virtual speed . FIXME this is incorrect if patching fails!
-        len_newdebs += int( dpkg_params['Size'])
 
   deltas_conn.close()
 
@@ -1918,6 +1922,8 @@ def delta_upgrade():
     time.sleep(0.2)
   
   #do something useful in the meantime
+  debs_down_size=0
+  debs_down_time=0
   deb_conns={}
   if threads and no_delta:
     if VERBOSE > 1 :
@@ -1927,9 +1933,12 @@ def delta_upgrade():
       a=urlparse(a)
       assert(a[0] == 'http')
       if a[1] not in deb_conns:        
-        deb_conns[a[1]] = httplib.HTTPConnection(a[1])      
-      download_uri(deb_conns[a[1]], a[2] , \
-                   DEB_DIR+'/'+os.path.basename(a[2]),conn_time,len_downloaded )
+        deb_conns[a[1]] = httplib.HTTPConnection(a[1])
+      r=download_uri(deb_conns[a[1]], a[2] , \
+                   DEB_DIR+'/'+os.path.basename(a[2]),debs_down_time, debs_down_size )
+      if r:
+        debs_down_time = r[0]
+        debs_down_size = r[1]
     for i in deb_conns:
       deb_conns[i].close()
     
@@ -1938,12 +1947,27 @@ def delta_upgrade():
     time.sleep(0.2)
 
   elaps =  time.time() - start_sec
-  if 1 or VERBOSE:
-    if conn_time:
-      print 'Delta-upgrade download time %dsec speed %s/sec' %\
-          (int(conn_time), SizeToStr(len_downloaded / conn_time))
-      print '              total time: %dsec; virtual speed: %s/sec.' %  \
-          (elaps, SizeToStr(len_newdebs / elaps))
+  print 'Delta-upgrade statistics:'
+  if VERBOSE:
+    if deltas_down_time :
+      a=float(deltas_down_size)
+      t=deltas_down_time
+      print ' download deltas size %s time %dsec speed %s/sec' %\
+            ( SizeToStr(a) , int(t), SizeToStr(a / t ))
+    if thread_returns['debs_time'] :
+      a=float(thread_returns['debs_size'])
+      t=thread_returns['debs_time']
+      print ' patching to debs size %s time %dsec speed %s/sec' %\
+            ( SizeToStr(a) , int(t), SizeToStr(a / t ))
+    if debs_down_time :
+      a=float(debs_down_size)
+      t=debs_down_time
+      print ' download debs size %s time %dsec speed %s/sec' %\
+            ( SizeToStr(a) , int(t), SizeToStr(a / t ))
+  if elaps:
+    a=float(debs_down_size  + thread_returns['debs_size'])
+    print ' total resulting debs size %s time %dsec virtual speed: %s/sec' %  \
+          ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
 
 
 ####
