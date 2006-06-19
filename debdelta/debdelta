@@ -940,15 +940,11 @@ def do_delta(olddeb,newdeb,delta,TD):
     (ob,oe)=os.path.splitext(o[-1])
     return o[:-1]+ ob.split('_')+[oe]
   
-  def files_similarity_score__(oo,nn):
+  def files_similarity_score__noext__(oo,nn):
+    "warning: destroys the input"
     ln=len(nn)
     lo=len(oo)
-    oo=copy(oo)
-    nn=copy(nn)
     l=0
-    penalty=0
-    if oo.pop() != nn.pop() :
-      penalty=0.2
     while oo and nn:
       while oo and nn and oo[-1] == nn[-1]:
         oo.pop()
@@ -974,7 +970,16 @@ def do_delta(olddeb,newdeb,delta,TD):
         oo=oo[1:]
         nn=nn[1:]
         l+=2
-    return penalty + (l +len(oo) + len(nn)) * 2.0 / float(ln+lo)
+    return (l +len(oo) + len(nn)) * 2.0 / float(ln+lo)
+
+  def files_similarity_score__(oo,nn):
+    oo=copy(oo)
+    nn=copy(nn)
+    if oo.pop() != nn.pop() :
+      penalty=0.2
+      return 0.2 + files_similarity_score__noext__(oo,nn)
+    else:
+      return files_similarity_score__noext__(oo,nn)
   
   def files_similarity_score__difflib__(oo,nn):
     "compute similarity by difflib. Too slow."
@@ -1128,7 +1133,10 @@ def do_delta(olddeb,newdeb,delta,TD):
 
     oldnames_premangle={}
     for o in oldnames:
-      oldnames_premangle[o]=file_similarity_premangle(o)
+      a,b=os.path.splitext(o)
+      if b not in oldnames_premangle:
+        oldnames_premangle[b]={}
+      oldnames_premangle[b][o]=file_similarity_premangle(a)
 
     for newname in newnames:
       newtarinfo=newtarinfos[newname]
@@ -1151,13 +1159,15 @@ def do_delta(olddeb,newdeb,delta,TD):
         oldname=newname
         if VERBOSE > 2 : print '   use same name old file: ',newname
       #try correspondence by file name and len similarity
-      if oldname == None:
+      nb,ne=os.path.splitext(newname)
+      if oldname == None and ne in oldnames_premangle:
         basescore=0.6
         nl=newtarinfo.size
-        np=file_similarity_premangle(newname)
-        for o in oldnames:
+        np=file_similarity_premangle(nb)        
+        for o in oldnames_premangle[ne]:
+          op=oldnames_premangle[ne][o]
           l=oldtarinfos[o].size
-          s=files_similarity_score__(oldnames_premangle[o],np) + abs(float(l - nl))/float(l+nl)
+          s=files_similarity_score__noext__(op,np) + abs(float(l - nl))/float(l+nl)
           #print ' diff ',s,o
           if s < basescore:
               oldname=o
