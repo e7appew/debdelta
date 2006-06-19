@@ -442,7 +442,7 @@ def do_patch(delta,olddeb,newdeb,TD):
       instsize=int(params['NEW/Installed-Size'])
     else:
       instsize=int(params['NEW/Installed-Size'])+int(params['OLD/Installed-Size'])
-    if free and free < ( instsize * 1024 + 2**23) :
+    if free and free < ( instsize * 1024 + 2**23 + MAXMEMORY / 6 ) :
       raise DebDeltaError(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
           ( int(free/1024) , instsize ), True )
 
@@ -586,7 +586,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   newdebsize = os.stat(newdeb)[ST_SIZE]
   
   free=freespace(TD)
-  if free and free < newdebsize * 2:
+  if free and free < newdebsize :
     raise DebDeltaError('Error: not enough disk space in '+TD, True)
 
   delta=abspath(delta)
@@ -645,7 +645,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)  
     instsize=int(params['NEW/Installed-Size']) + int(params['OLD/Installed-Size'])
-    if free and free < instsize * 1024  :
+    if free and free < ( instsize * 1024 + + 2**23 + MAXMEMORY / 6 ) :
       raise DebDeltaError(' Not enough disk space (%dkB) for creating delta (needs %dkB).' % \
           ( int(free/1024) , instsize ) , True )
 
@@ -1040,7 +1040,10 @@ def do_delta(olddeb,newdeb,delta,TD):
       f=open(TD+w)
       a=f.read(1024)
       while a:
-        mega_cat.write(a)
+        try:
+          mega_cat.write(a)
+        except OSError,s :
+           raise DebDeltaError(' OSError (at _a_) while writing: '+str(s), True)
         a=f.read(1024)
       f.close()
       if rm:
@@ -1172,7 +1175,10 @@ def do_delta(olddeb,newdeb,delta,TD):
         s=f.read(512)
         l+=len(s)
         assert(len(s))
-        of.write(s)
+        try:
+          of.write(s)
+        except OSError,s :
+          raise DebDeltaError(' OSError (at MCK) while writing: '+str(s), True)
       f.close()
       of.close()
       #move to a temporary
