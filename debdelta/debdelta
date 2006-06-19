@@ -1028,6 +1028,9 @@ def do_delta(olddeb,newdeb,delta,TD):
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
 
+  global time_corr
+  time_corr=0
+
   ####################  vvv     delta_tar    vvv ###########################
   def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}):
     " compute delta of two tar files, and prepare the script consequently"
@@ -1112,7 +1115,11 @@ def do_delta(olddeb,newdeb,delta,TD):
     correspondence={}
 
     ##############################
+    global time_corr
+    time_corr=-time.time()
+
     if VERBOSE > 2 : print '  finding correspondences  ',n
+
     reverse_old_md5={}
     if old_md5:
       for o in old_md5:
@@ -1164,7 +1171,10 @@ def do_delta(olddeb,newdeb,delta,TD):
         old_used[oldname]=[]
       old_used[oldname].append(newname)
       correspondence[newname]=oldname
-
+      
+    time_corr+=time.time()
+    if VERBOSE > 1 : print '  time lost so far in finding correspondence %.2f' % time_corr
+    
     ######### now do real scanning
     if VERBOSE > 2 : print '  scanning ',n
 
@@ -1403,9 +1413,9 @@ def do_delta(olddeb,newdeb,delta,TD):
   if VERBOSE:
     print ' deb delta is  %3.1f%% of deb; that is, %dkB are saved, on a total of %dkB.' \
           % ( percent , (( newdebsize -deltasize ) / 1024),( newdebsize/ 1024))
-    print ' delta time: %.2f sec, speed: %dkB /sec, (%s time: %.2fsec speed  %dkB /sec)' %  \
+    print ' delta time: %.2f sec, speed: %dkB /sec, (%s time: %.2fsec speed  %dkB /sec) (corr %.2f sec)' %  \
           (elaps, newdebsize / 1024. / (elaps+0.001), \
-           USE_DELTA_ALGO,bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) )
+           USE_DELTA_ALGO,bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) , time_corr )
   return (delta, percent, elaps)
 
 
