@@ -562,7 +562,7 @@ def do_patch(delta,olddeb,newdeb,TD):
         debsize = os.stat(olddeb)[ST_SIZE]
       end_sec = time.time()
       a=(end_sec - start_sec)
-      print ' Patching done, time: %dsec, speed: %dkB/sec, result: %s' % \
+      print ' Patching done, time: %.2fsec, speed: %dkB/sec, result: %s' % \
             (a,(debsize / 1024 /  (a+.001)), (newdeb))
 
 ##################################################### compute delta
@@ -1385,15 +1385,15 @@ def do_delta(olddeb,newdeb,delta,TD):
   #script is done
   script.close()
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
-  if  (patchsize > newdebsize / 10 and patchsize > 512 ) or patchsize > 4*1024:
-    v=''
-    if VERBOSE > 1 : print '  patch.sh is quite large: using bzip2 ' ; v='-v'
-    system('bzip2 -9  '+v+'  PATCH/patch.sh', TD)
+  v=''
+  #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
+  system('bzip2 --keep -9  '+v+'  PATCH/patch.sh 2>&1', TD)
+  system('gzip -9 -n '+v+' PATCH/patch.sh 2>&1', TD)  
+  if  os.path.getsize(TD+'PATCH/patch.sh.gz') > os.path.getsize(TD+'PATCH/patch.sh.bz2') :
+    if VERBOSE > 1 : print '  bzip2 wins on patch.sh  '
     patch_append('patch.sh.bz2')
   else:
-    v=''
-    if VERBOSE > 1 : print '  patch.sh is small: using gzip ' ; v='-v'
-    system('gzip -9 -n '+v+' PATCH/patch.sh', TD)  
+    if VERBOSE > 1 : print '  gzip wins on patch.sh  '
     patch_append('patch.sh.gz')
 
   deltasize = os.stat(delta)[ST_SIZE]
@@ -1403,7 +1403,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   if VERBOSE:
     print ' deb delta is  %3.1f%% of deb; that is, %dkB are saved, on a total of %dkB.' \
           % ( percent , (( newdebsize -deltasize ) / 1024),( newdebsize/ 1024))
-    print ' delta time: %.1f sec, speed: %dkB /sec, (%s time: %.1fsec speed  %dkB /sec)' %  \
+    print ' delta time: %.2f sec, speed: %dkB /sec, (%s time: %.2fsec speed  %dkB /sec)' %  \
           (elaps, newdebsize / 1024. / (elaps+0.001), \
            USE_DELTA_ALGO,bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) )
   return (delta, percent, elaps)
