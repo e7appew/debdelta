@@ -119,7 +119,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','alt=','avoid=','delta-algo=','clean') )
+                 ('help','info','needsold','dir=','alt=','avoid=','delta-algo=','max-percent=','clean') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -131,6 +131,7 @@ else:
     elif o == '--clean' : CLEAN = True
     elif o == '--needsold' :  NEEDSOLD = True
     elif o == '--delta-algo': USE_DELTA_ALGO=v
+    elif o == '--max-percent': MAX_DELTA_PERCENT=int(v)
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
@@ -765,11 +766,14 @@ def do_delta(olddeb,newdeb,delta,TD):
       script.write('bspatch '+o+' '+n+' '+p+'; rm '+p+'\n')
     #seems that 'xdelta' is buggy on 64bit and different-endian machines
     #xdelta does not deal with different endianness!
-    elif algo == 'xdelta' :
-      system('xdelta delta -n -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+    elif algo == 'xdelta-bzip' :
+      system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
       system('bzip2 -9 '+p,TD)
       script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
       p  += '.bz2'
+    elif algo == 'xdelta' :
+      system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+      script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
     else: raise
     return p
 
