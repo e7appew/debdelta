@@ -151,12 +151,12 @@ else:
         print 'Error: --avoid ',AVOID,' does not exist.'
         sys.exit(3)
     elif o == '--dir'  :
-      DIR = v
+      DIR = abspath(v)
       if not os.path.isdir(DIR):
         print 'Error: --dir ',DIR,' does not exist.'
         sys.exit(3)
     elif o == '--alt'  :
-      ALT = v
+      ALT = abspath(v)
       if not os.path.isdir(ALT):
         print 'Error: --alt ',ALT,' does not exist.'
         sys.exit(3)
