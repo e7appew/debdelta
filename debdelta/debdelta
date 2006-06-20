@@ -103,7 +103,7 @@ DIR     = None
 ALT     = None
 AVOID   = None
 CLEAN   = False
-
+ACT     = True
 
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
@@ -119,7 +119,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','alt=','avoid=','delta-algo=','max-percent=','clean') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -128,6 +128,7 @@ else:
     if o == '-v' : VERBOSE += 1
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
+    elif o == '--no-act': ACT=False
     elif o == '--clean' : CLEAN = True
     elif o == '--needsold' :  NEEDSOLD = True
     elif o == '--delta-algo': USE_DELTA_ALGO=v
@@ -151,12 +152,12 @@ else:
         print 'Error: --avoid ',AVOID,' does not exist.'
         sys.exit(3)
     elif o == '--dir'  :
-      DIR = abspath(v)
+      DIR = v
       if not os.path.isdir(DIR):
         print 'Error: --dir ',DIR,' does not exist.'
         sys.exit(3)
     elif o == '--alt'  :
-      ALT = abspath(v)
+      ALT = v
       if not os.path.isdir(ALT):
         print 'Error: --alt ',ALT,' does not exist.'
         sys.exit(3)
@@ -1431,7 +1432,7 @@ def do_delta(olddeb,newdeb,delta,TD):
 
 ##################################################### compute many deltas
 
-def do_deltas(argv):
+def do_deltas(debs):
   original_cwd = os.getcwd()
   start_time = time.time()
   import warnings
@@ -1450,22 +1451,25 @@ def do_deltas(argv):
   else:
     avoid_pack = {}
   
-  debs=[]
-  for i in argv:
-    debs.append(i)
-
   info_by_pack_arch={}
   info_by_file={}
   deb_dir_visited=[]
 
-  def scan_deb(f):
-      if os.path.isdir(f):
-        if f not in deb_dir_visited:
+  def scan_deb_dir(f,pack_filter=None):
+      "pack filter may be a function that matches by basename"
+      assert( os.path.isdir(f))
+      if f not in deb_dir_visited:
+        if pack_filter == None :
           deb_dir_visited.append(f)
-          for d in os.listdir(f):
-            d=os.path.join(f,d)
-            if os.path.isfile(d) and d[-4:] == '.deb' :
-              scan_deb( d )
+        for d in os.listdir(f):
+          dt=os.path.join(f,d)
+          if os.path.isfile(dt) and d[-4:] == '.deb' and \
+                 ( pack_filter == None or  pack_filter(d) ) :
+            scan_deb( dt )
+            
+  def scan_deb(f):
+      assert( os.path.isfile(f) )
+      if f in info_by_file:
         return
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
@@ -1481,15 +1485,18 @@ def do_deltas(argv):
   # contains list of triples (filename,oldversion,newversion)
   old_deltas_by_pack_arch={}
   old_deltas_dir_visited=[]
-  def scan_delta(f):
-    if os.path.isdir(f):
-      if f not in old_deltas_dir_visited:
+  def scan_delta_dir(f,pack_filter=None):
+    assert( os.path.isdir(f) )
+    if f not in old_deltas_dir_visited:
+      if pack_filter == None :
         old_deltas_dir_visited.append(f)
-        for d in os.listdir(f):
-          d=os.path.join(f,d)
-          if os.path.isfile(d):
-            scan_delta( d )
-      return
+      for d in os.listdir(f):
+        dt=os.path.join(f,d)
+        if os.path.isfile(dt) and ( pack_filter == None or  pack_filter(d) ):
+          scan_delta( dt )
+  
+  def scan_delta(f):
+    assert( os.path.isfile(f) )
     if f[-9:] == '.debdelta' :
       a=f[:-9]
     elif f[-17:] == '.debdelta-too-big' :
@@ -1516,11 +1523,18 @@ def do_deltas(argv):
     if altdir:
       if altdir[-2:] == '//' :
         a=altdir+f
-        return make_parents(a)
+        return make_parents(abspath(a)+'/')
       else:
         return altdir
     else:
       return abspath(f)
+
+  def __name_filter__(n):
+    "returns a function that filters by package name"
+    n=os.path.basename(n)
+    n=n.split('_')[0] + '_'
+    l=len(n)
+    return lambda x : x[:l] == n
 
   for f in debs:
     if os.path.isfile(f):
@@ -1528,16 +1542,16 @@ def do_deltas(argv):
         print 'Warning: skipping cmd line argument: ',f
         continue
       scan_deb(f)
-      if ALT:
-        scan_deb(delta_dirname(f,ALT))
+      if ALT:        
+        scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f) )
       if CLEAN:
-        scan_delta(delta_dirname(f,DIR))
+        scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
     elif  os.path.isdir(f) :
-      scan_deb(f)
+      scan_deb_dir(f)
       if ALT:
-        scan_deb(delta_dirname(f,ALT))
+        scan_deb_dir(delta_dirname(f,ALT))
       if CLEAN:
-        scan_delta(delta_dirname(f,DIR))
+        scan_delta_dir(delta_dirname(f,DIR))
     else:
       print 'Warning: '+f+' is not a regular file or a directory.'
 
@@ -1549,12 +1563,11 @@ def do_deltas(argv):
     info=info_by_pack_arch[ (pa,ar) ]
     versions = [ o['Version'] for o in info ]
     if CLEAN and (pa,ar) in old_deltas_by_pack_arch :
-
       for f_d,o_d,n_d in old_deltas_by_pack_arch[ (pa,ar) ] :
         if n_d not in versions:
           if os.path.exists(f_d):
             if VERBOSE: print 'Removing: ',f_d          
-            os.unlink(f_d)
+            if ACT: os.unlink(f_d)
       
     how_many= len( info  )    
     if VERBOSE>2:
@@ -1589,7 +1602,7 @@ def do_deltas(argv):
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
         deltadirname=delta_dirname(new['File'],DIR)
-        make_parents(deltadirname+'/')
+        make_parents(abspath(deltadirname)+'/')
         delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
@@ -1608,6 +1621,10 @@ def do_deltas(argv):
         if free and (free < (newdebsize /2 + 2**15)) :
           if VERBOSE : print 'Not enough disk space for storing ',delta
           break
+
+        if not ACT:
+          print 'Would create:',delta
+          continue
         
         if VERBOSE: print 'Creating :',delta
         ret= None
@@ -1778,10 +1795,12 @@ def delta_upgrade():
           c+=s
           s=os.read(qout,1)
         if c == '\t' or c == '': break
-        (name, delta , newdeb, deb_uri) = pickle.loads(c)      
-        if VERBOSE>=2 : print ' Now patching for: ',name
+        (name, delta , newdeb, deb_uri) = pickle.loads(c)
         debs_time -= time.time()
-        if True:
+        if not ACT:
+          print 'Would create: ',newdeb,'   '
+        else:
+          if VERBOSE>=2 : print ' Now patching for: ',name
           T=tempo()
           try:
             ret=do_patch(delta,'/',newdeb ,T)
