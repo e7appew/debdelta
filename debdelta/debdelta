@@ -1520,7 +1520,7 @@ def do_deltas(argv):
       else:
         return altdir
     else:
-      return f
+      return abspath(f)
 
   for f in debs:
     if os.path.isfile(f):
