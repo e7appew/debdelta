@@ -733,27 +733,33 @@ def do_delta(olddeb,newdeb,delta,TD):
       print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
 
   def delta_files__(o,n,p,algo='bsdiff'):
-    #I   tested bdiff
+    #bdiff
     #http://www.webalice.it/g_pochini/bdiff/
-    #It is extremely slow!! and it performs much worse than other choices
     if algo == 'bdiff':
       system('~/debdelta/bdiff-1.0.5/bdiff -q -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+' ; rm '+p+'\n')
-    #
-    #I tested zdelta
+      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+' ; rm '+p+'\n')    
+    #zdelta
     #http://cis.poly.edu/zdelta/
-    #it is outperformed by xdelta
     elif algo == 'zdelta':
       system('~/debdelta/zdelta-2.1/zdc  '+o+' '+n+' '+p,TD)
       script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+' ; rm '+p+'\n')
-    #
-    #I am also testing rdiff
+    #bdelta 
+    #http://deltup.sf.net
+    elif algo == 'bdelta':
+      system('~/debdelta/bdelta-0.1.0/bdelta  '+o+' '+n+' '+p,TD)
+      script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+' ; rm '+p+'\n')
+    #diffball
+    #http://developer.berlios.de/projects/diffball/
+    elif algo == 'diffball':
+      system('~/debdelta/diffball-0.7.2/differ  '+o+' '+n+' '+p,TD)
+      script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+' ; rm '+p+'\n')
+    #rdiff
     elif algo == 'rdiff':
       system('rdiff signature '+o+' sign_file.tmp  ',TD)
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
       script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
-    #xdelta3 IS buggy and crashes on some inputs
-    #xdelta3 crashes!
+    #xdelta3
+    #crashes!
     #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
     elif algo == 'xdelta3' :
       system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
