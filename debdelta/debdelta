@@ -1086,8 +1086,8 @@ def do_delta(olddeb,newdeb,delta,TD):
       if  (oldname in skip) or shell_not_allowed(oldname) or \
              not oldtarinfo.isreg() or oldtarinfo.size == 0:
         continue
-      if VERBOSE > 2 and oldname != de_bar(oldname):
-        print ' Weird filename in old tar: ' , oldname 
+      if VERBOSE > 3 and oldname != de_bar(oldname):
+        print ' Filename in old tar has weird ./ in front: ' , oldname 
       oldname = de_bar(oldname)
       if oldname in skip:
         continue
@@ -1117,8 +1117,8 @@ def do_delta(olddeb,newdeb,delta,TD):
       ###
       if   not newtarinfo.isreg():
         continue
-      if VERBOSE > 2 and newname != de_bar(newname):
-        print ' Weird filename in new tar: ' , newname 
+      if VERBOSE > 3 and newname != de_bar(newname):
+        print ' Filename in new tar has weird ./ in front: ' , newname 
       newname = de_bar(newname)
       newnames.append(newname)
       newtarinfos[newname] = newtarinfo
@@ -1461,7 +1461,7 @@ def do_deltas(debs):
   info_by_file={}
   deb_dir_visited=[]
 
-  def scan_deb_dir(f,pack_filter=None):
+  def scan_deb_dir(f, pack_filter, label):
       "pack filter may be a function that matches by basename"
       assert( os.path.isdir(f))
       if f not in deb_dir_visited:
@@ -1471,11 +1471,16 @@ def do_deltas(debs):
           dt=os.path.join(f,d)
           if os.path.isfile(dt) and d[-4:] == '.deb' and \
                  ( pack_filter == None or  pack_filter(d) ) :
-            scan_deb( dt )
+            scan_deb( dt , label )
             
-  def scan_deb(f):
+  def scan_deb(f, label):
       assert( os.path.isfile(f) )
+      f=abspath(f)
       if f in info_by_file:
+        #just (in case) promote to status of CMDLINE package
+        if label == 'CMDLINE' :
+          #this changes also the entry in info_by_pack_arch (magic python)
+          info_by_file[f]['Label']=label
         return
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
@@ -1484,6 +1489,7 @@ def do_deltas(debs):
       info_by_file[f]['File'] = f
       pa=info_by_file[f]['Package']
       ar=info_by_file[f]['Architecture']
+      info_by_file[f]['Label'] = label
       if  (pa,ar) not in  info_by_pack_arch :
          info_by_pack_arch[ (pa,ar) ]=[]
       info_by_pack_arch[ (pa,ar) ].append( info_by_file[f] )
@@ -1524,7 +1530,7 @@ def do_deltas(debs):
   def delta_dirname(f,altdir):
     "compute augmented dirname"
     if os.path.isfile(f):
-      f=os.path.dirname(f)
+      f=os.path.dirname(f) or '.'
     assert(os.path.isdir(f))
     if altdir:
       if altdir[-2:] == '//' :
@@ -1547,26 +1553,28 @@ def do_deltas(debs):
       if f[-4: ] != '.deb' :
         print 'Warning: skipping cmd line argument: ',f
         continue
-      scan_deb(f)
+      scan_deb(f, 'CMDLINE')
+      di=os.path.dirname(f) or '.'
+      scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
       if ALT:        
-        scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f) )
+        scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f), 'ALT' )
       if CLEAN:
         scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
     elif  os.path.isdir(f) :
-      scan_deb_dir(f)
+      scan_deb_dir(f, None, 'CMDLINE')
       if ALT:
-        scan_deb_dir(delta_dirname(f,ALT))
+        scan_deb_dir(delta_dirname(f,ALT), None, 'ALT')
       if CLEAN:
         scan_delta_dir(delta_dirname(f,DIR))
     else:
       print 'Warning: '+f+' is not a regular file or a directory.'
-
-      
+  
   def order_by_version(a,b):
     return VersionCompare( a['Version'] , b['Version']  )
   
   for pa,ar in info_by_pack_arch :
     info=info_by_pack_arch[ (pa,ar) ]
+    info.sort(order_by_version)
     versions = [ o['Version'] for o in info ]
     if CLEAN and (pa,ar) in old_deltas_by_pack_arch :
       for f_d,o_d,n_d in old_deltas_by_pack_arch[ (pa,ar) ] :
@@ -1574,27 +1582,38 @@ def do_deltas(debs):
           if os.path.exists(f_d):
             if VERBOSE: print 'Removing: ',f_d          
             if ACT: os.unlink(f_d)
-      
+    
     how_many= len( info  )    
     if VERBOSE>2:
       print 'Package: ',pa,' Versions:',versions
       
-    if how_many > 1 :
-      info.sort(order_by_version)
-      l = how_many - 1
-      while (l>0) and (l >= how_many - N_DELTAS):
-        #os.chdir(original_cwd)
+    if how_many <= 1 :
+      continue
+    
+    while how_many > 0 :
+      new=info[how_many - 1]
+      if pa in avoid_pack and ( avoid_pack[pa]['Version'] == new['Version']) :
+        if VERBOSE > 1 :   print '(Due to new version) avoid: ', new['File']        
+      elif new['Label'] != 'CMDLINE' :
+        if VERBOSE > 1 :   print 'Newest version deb was not in cmdline: ', new['File']
+      else:
+        break
+      how_many -= 1
+
+    if how_many <= 1 :
+      continue
+    
+    l = how_many - 1
+    while (l>0) and (l >= how_many - N_DELTAS):
         l -= 1
         old=info[l]
-        new=info[how_many - 1]
 
         if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
           if VERBOSE > 1 :     print '(Due to old version) avoid: ', new['File']
           continue
-
-        if pa in avoid_pack and ( avoid_pack[pa]['Version'] == new['Version']) :
-          if VERBOSE > 1 :     print '(Due to new version) avoid: ', new['File']
-          break        
+        
+        if  old['Version'] == new['Version'] :
+          continue
         
         newdebsize=os.path.getsize(new['File'])
         #very small packages cannot be effectively delta-ed
