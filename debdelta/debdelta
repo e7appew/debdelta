@@ -25,10 +25,11 @@ Options:
             if DIR ends in // , then the dirname of the cmdline argument
             will be appended to DIR, as well (useful when creating archives)
             
- -n N       how many deltas to produce for each deb package (default 1)
+ -n N       how many deltas to produce for each package (default 1)
 --needsold  create a patch that can only be used if the old .deb is available
   -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
---clean     delete deltas if newer deb is not in archive
+--clean-deltas     delete deltas if newer deb is not in archive
+--clean-alt        delete debs in --alt if too old (see -n )
 """
 
 ## implement : --search    search in the directory of the above debs for older versions
@@ -89,6 +90,11 @@ MAXMEMORY = 1024 * 1024 * 50
 #this is +-10% , depending on the package size
 MAX_DELTA_PERCENT = 70
 
+#min size of .deb that debdelta will consider
+#very small packages cannot be effectively delta-ed
+MIN_DEB_SIZE = 10 * 1024
+
+
 N_DELTAS= 1
 
 
@@ -102,8 +108,10 @@ NEEDSOLD= False
 DIR     = None
 ALT     = None
 AVOID   = None
-CLEAN   = False
 ACT     = True
+CLEAN_DELTAS = False
+CLEAN_ALT    = False
+
 
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
@@ -119,7 +127,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       sys.exit(2)
@@ -129,7 +137,8 @@ else:
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
     elif o == '--no-act': ACT=False
-    elif o == '--clean' : CLEAN = True
+    elif o == '--clean-deltas' : CLEAN_DELTAS = True
+    elif o == '--clean-alt' : CLEAN_ALT = True
     elif o == '--needsold' :  NEEDSOLD = True
     elif o == '--delta-algo': USE_DELTA_ALGO=v
     elif o == '--max-percent': MAX_DELTA_PERCENT=int(v)
@@ -1489,7 +1498,12 @@ def do_deltas(debs):
       info_by_file[f]['File'] = f
       pa=info_by_file[f]['Package']
       ar=info_by_file[f]['Architecture']
+      ve=info_by_file[f]['Version']
       info_by_file[f]['Label'] = label
+      if pa in avoid_pack and ( avoid_pack[pa]['Version'] == ve ):
+        #note that 'f' is in  info_by_file and not in info_by_pack_arch
+        if VERBOSE > 1 :     print 'Avoid: ', new['File']
+        return
       if  (pa,ar) not in  info_by_pack_arch :
          info_by_pack_arch[ (pa,ar) ]=[]
       info_by_pack_arch[ (pa,ar) ].append( info_by_file[f] )
@@ -1548,6 +1562,7 @@ def do_deltas(debs):
     l=len(n)
     return lambda x : x[:l] == n
 
+  #scan cmdline arguments and prepare list of debs and deltas
   for f in debs:
     if os.path.isfile(f):
       if f[-4: ] != '.deb' :
@@ -1558,13 +1573,13 @@ def do_deltas(debs):
       scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
       if ALT:        
         scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f), 'ALT' )
-      if CLEAN:
+      if CLEAN_DELTAS:
         scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
     elif  os.path.isdir(f) :
       scan_deb_dir(f, None, 'CMDLINE')
       if ALT:
         scan_deb_dir(delta_dirname(f,ALT), None, 'ALT')
-      if CLEAN:
+      if CLEAN_DELTAS:
         scan_delta_dir(delta_dirname(f,DIR))
     else:
       print 'Warning: '+f+' is not a regular file or a directory.'
@@ -1575,58 +1590,62 @@ def do_deltas(debs):
   for pa,ar in info_by_pack_arch :
     info=info_by_pack_arch[ (pa,ar) ]
     info.sort(order_by_version)
+
     versions = [ o['Version'] for o in info ]
-    if CLEAN and (pa,ar) in old_deltas_by_pack_arch :
+
+    versions_not_alt = [ o['Version'] for o in info if o['Label'] != "ALT" ]
+
+    #delete deltas that are useless
+    if CLEAN_DELTAS and (pa,ar) in old_deltas_by_pack_arch :
       for f_d,o_d,n_d in old_deltas_by_pack_arch[ (pa,ar) ] :
-        if n_d not in versions:
+        if n_d not in versions_not_alt :
           if os.path.exists(f_d):
             if VERBOSE: print 'Removing: ',f_d          
             if ACT: os.unlink(f_d)
     
-    how_many= len( info  )    
+    how_many= len( info  )
     if VERBOSE>2:
       print 'Package: ',pa,' Versions:',versions
-      
     if how_many <= 1 :
       continue
     
-    while how_many > 0 :
-      new=info[how_many - 1]
-      if pa in avoid_pack and ( avoid_pack[pa]['Version'] == new['Version']) :
-        if VERBOSE > 1 :   print '(Due to new version) avoid: ', new['File']        
-      elif new['Label'] != 'CMDLINE' :
-        if VERBOSE > 1 :   print 'Newest version deb was not in cmdline: ', new['File']
+    newest = how_many -1
+    while newest >= 0 :
+      new=info[newest]
+      if new['Label'] != 'CMDLINE' :
+        if VERBOSE > 1 :
+          print 'Newest version deb was not in cmdline, skip down one: ', new['File']
       else:
         break
-      how_many -= 1
+      newest -= 1
 
-    if how_many <= 1 :
+    if newest <= 0 :
       continue
-    
-    l = how_many - 1
-    while (l>0) and (l >= how_many - N_DELTAS):
+
+    newdebsize=os.path.getsize(new['File'])
+    #very small packages cannot be effectively delta-ed
+    if newdebsize <= MIN_DEB_SIZE :
+      if VERBOSE > 1:     print '  Skip , too small: ', new['File']
+      continue
+
+    deltadirname=delta_dirname(new['File'],DIR)
+    free=freespace(deltadirname)
+    if free and (free < (newdebsize /2 + 2**15)) :
+      if VERBOSE : print 'Not enough disk space for storing ',delta
+      continue
+
+    l = newest
+    while (l>0) and (l > newest - N_DELTAS):
         l -= 1
         old=info[l]
-
-        if pa in avoid_pack and ( avoid_pack[pa]['Version'] == old['Version']):
-          if VERBOSE > 1 :     print '(Due to old version) avoid: ', new['File']
-          continue
         
         if  old['Version'] == new['Version'] :
           continue
-        
-        newdebsize=os.path.getsize(new['File'])
-        #very small packages cannot be effectively delta-ed
-        if newdebsize <= 4 * 1024 :
-          #this actually affects 1 every ~60 packages in the archives
-          if VERBOSE > 1:     print '  Skip , too small: ', new['File']
-          break
-        
+                
         assert( old['Package'] == pa and pa == new['Package'] )
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
-        deltadirname=delta_dirname(new['File'],DIR)
         make_parents(abspath(deltadirname)+'/')
         delta=os.path.join(deltadirname,deltabasename)
         
@@ -1641,11 +1660,6 @@ def do_deltas(debs):
         if os.path.exists(delta+'-fails'):
           if VERBOSE > 1:     print '  Skip , tried and fails: ',delta
           continue
-
-        free=freespace(deltadirname)
-        if free and (free < (newdebsize /2 + 2**15)) :
-          if VERBOSE : print 'Not enough disk space for storing ',delta
-          break
 
         if not ACT:
           print 'Would create:',delta
@@ -1707,6 +1721,17 @@ def do_deltas(debs):
           #os.chdir(original_cwd)
           if os.path.exists(T):
             rmtree(T)
+    #delete debs in --alt that are too old
+    if CLEAN_ALT:
+      while l>=0:
+        old=info[l]
+        if old['Label'] == 'ALT':
+          f=old['File']
+          if os.path.exists(f):
+            if VERBOSE: print 'Removing alt deb: ',f
+            if ACT: os.unlink(f)
+        l-=1
+
   if VERBOSE: print 'Total running time: %.1f ' % ( -start_time + time.time())
 
 ################################################# main program, do stuff
