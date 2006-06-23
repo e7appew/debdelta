@@ -409,42 +409,27 @@ def check_diff(f):
 
 #################################################################### apply patch
 
-def do_patch(delta,olddeb,newdeb,TD, info=None):
-  if TD[-1] != '/':
-    TD = TD + '/'
-  
-  delta=abspath(delta)
-  if newdeb:
-    newdeb=abspath(newdeb)
-  if olddeb != '/':
-    olddeb=abspath(olddeb)
-    
-  start_sec = time.time()
-  
-  check_diff(delta)
-
-  if INFO:
-    system('ar x  '+delta+' patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
-           TD+'/PATCH')
-  else:    
-    if olddeb != '/':
-      check_deb(olddeb)
-    if  newdeb and os.path.exists(newdeb) :
-      os.rename(newdeb,newdeb+'~')
-    system('ar xo '+delta,  TD+'/PATCH')
-    
-  os.symlink(minigzip,TD+'minigzip')
-
+def _delta_info_unzip_(TD):
+  if os.path.exists(TD+'PATCH/info.gz'):
+    system('gunzip PATCH/info.gz',TD)
   if os.path.exists(TD+'PATCH/patch.sh.gz'):
     system('gunzip PATCH/patch.sh.gz',TD)
   elif os.path.exists(TD+'PATCH/patch.sh.bz2'):
     system('bunzip2 PATCH/patch.sh.bz2',TD)  
 
-  if not os.path.isfile(TD+'PATCH/patch.sh'):
-    die('Error. File '+delta+' is not a debdelta file.')
-
-  #lets scan parameters, to see what it does and what it requires
-  if info == None :
+def print_delta_info(delta,TD):
+  if TD[-1] != '/':
+    TD = TD + '/'
+  delta=abspath(delta)
+  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
+         TD+'/PATCH')
+  _delta_info_unzip_(TD)
+  info=_scan_delta_info_(TD)
+  for s in info:
+      print ' info: ',s
+      
+def _scan_delta_info_(TD):
+    info=[]
     if os.path.isfile(TD+'PATCH/info'):
       #new style debdelta, with info file
       p=open(TD+'PATCH/info')
@@ -462,6 +447,39 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
           info.append(s[1:])
         s=p.readline()
       p.close()
+    return info
+
+def do_patch(delta,olddeb,newdeb,TD, info=None):
+  if TD[-1] != '/':
+    TD = TD + '/'
+  
+  delta=abspath(delta)
+  if newdeb:
+    newdeb=abspath(newdeb)
+  if olddeb != '/':
+    olddeb=abspath(olddeb)
+    
+  start_sec = time.time()
+  
+  check_diff(delta)
+
+  if olddeb != '/':
+      check_deb(olddeb)
+  if DEBUG and  newdeb and os.path.exists(newdeb) and os.path.getsize(newdeb) > 0 :
+      die("Don't want to overwrite: "+newdeb)
+  
+  system('ar xo '+delta,  TD+'/PATCH')
+
+  _delta_info_unzip_(TD)
+
+  if not os.path.isfile(TD+'PATCH/patch.sh'):
+    die('Error. File '+delta+' is not a debdelta file.')
+
+  os.symlink(minigzip,TD+'minigzip')
+  
+  #lets scan parameters, to see what it does and what it requires
+  if info == None :
+      info=_scan_delta_info_(TD)
   params={}
   for s in info:
     if ':' in s:
@@ -469,8 +487,6 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
       params[s[:i]] = s[i+2:]
     else:
       params[s] = True
-    if  INFO :
-      print ' info: ',s
   ###
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)
@@ -482,17 +498,14 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
       raise DebDeltaError(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
           ( int(free/1024) , instsize ), True )
 
-  ## really we will apply the patch
-  if not INFO:
-    #unpack the old control structure, if available
-    os.mkdir(TD+'/OLD/CONTROL')
-    if olddeb != '/' :
+  if olddeb != '/':
       os.symlink(olddeb,TD+'/OLD.file')
+      #unpack the old control structure, if available
+      os.mkdir(TD+'/OLD/CONTROL')
       #unpack control.tar.gz
-      system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',\
-             TD)
-    #then we check for the conformance
-    if  DEBUG:
+      system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',TD)
+  #then we check for the conformance
+  if  DEBUG:
       dpkg_params={}
       b=params['OLD/Package']
       if olddeb == '/' :
@@ -515,17 +528,15 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
             die( 'Error : in debdelta , '+a+' = ' +params[a] +\
                  '\nin old/installed deb, '+a+' = ' +dpkg_params[a])
 
-    ###see into parameters: the patch may need extra info
-    #as a whole unpack of 'ar' of the old deb
-    if 'unpack-old' in params:
+  ###see into parameters: the patch may need extra info and data
+  for a in params:
+    if 'unpack-old' == a:
       if olddeb == '/':
         die('This patch needs the old version Debian package')
       unpack ('OLD',olddeb,TD)
-
-    if 'needs-old' in params and olddeb == '/':
+    elif 'needs-old' == a and olddeb == '/':
       die('This patch needs the old version Debian package')
-
-    if 'old-data-tree' in params :
+    elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
         pa=params['OLD/Package']
@@ -570,37 +581,39 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
           for i in dirnames:
             i=os.path.join(dirpath,i)
             chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
+    elif 'old-control-tree' == a:
+        if olddeb == '/':      
+            p=params['OLD/Package']
+            for  b in dpkg_keeps_controls :
+                a='/var/lib/dpkg/info/' + p +'.'+b
+                if os.path.exists(a ):
+                    os.symlink(a,TD+'OLD/CONTROL/'+b)
+        #else... we always unpack the control of a .deb
+    elif params[a] == True:
+        print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
+  ##then , really execute the patch
+  a=''
+  if VERBOSE > 3 : a = '-v'
+  system('/bin/sh -e '+a+' PATCH/patch.sh', TD)
 
-    if 'old-control-tree' in params and olddeb == '/':      
-      p=params['OLD/Package']
-      for  b in dpkg_keeps_controls :
-        a='/var/lib/dpkg/info/' + p +'.'+b
-        if os.path.exists(a ):
-          os.symlink(a,TD+'OLD/CONTROL/'+b)
-
-    ##then , really execute the patch
-    a=''
-    if VERBOSE > 3 : a = '-v'
-    system('/bin/sh -e '+a+' PATCH/patch.sh', TD)
-
-    if DEBUG and 'NEW/MD5sum' in params:
+  if DEBUG and 'NEW/MD5sum' in params:
       if VERBOSE > 1 : print ' verifying MD5 ', params['NEW/MD5sum']
       system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
 
-    if newdeb:
+  if newdeb:
       shutil.move(TD+'NEW.file',newdeb)
 
-    end_sec = time.time()
-    elaps=(end_sec - start_sec)
+  end_sec = time.time()
+  elaps=(end_sec - start_sec)
 
-    if VERBOSE :
+  if VERBOSE :
       if newdeb:
         debsize = os.stat(newdeb)[ST_SIZE]
       else:
         debsize = os.stat(olddeb)[ST_SIZE]
-      print ' Patching done, time: %.2fsec, speed: %dkB/sec, result: %s' % \
-            (elaps,(debsize / 1024 /  (elaps+.001)), (newdeb))
-    return (newdeb,elaps)
+      print ' Patching done, time: %.2fsec, speed: %dkB/sec' % \
+            (elaps,(debsize / 1024 /  (elaps+.001)))
+  return (newdeb,elaps)
 
 ##################################################### compute delta
 
@@ -1789,28 +1802,50 @@ if action == 'patch':
     elif  len(argv) == 0  :
       print ' need a  filename ;  try --help'
       sys.exit(1)
-  elif len(argv) != 3 :  
+    T=tempo()
+    try:
+        delta=abspath(argv[0])
+        check_diff(delta)
+        print_delta_info(delta,T)
+    except DebDeltaError,s:
+        print  str(s)
+        rmtree(T)
+        sys.exit(1)
+    except :
+        print " Unexpected error:",  sys.exc_info()[0]
+        rmtree(T)
+        sys.exit(1)
+    rmtree(T)
+    sys.exit(0)
+  #really patch
+  if len(argv) != 3 :
     print ' need 3 filenames ;  try --help'
     sys.exit(1)
-  
+
+
   newdeb=abspath(argv[2])
+  if newdeb == '/dev/null':
+      newdeb = None
+
   T=tempo()
   try:
     do_patch(abspath(argv[0]), abspath(argv[1]), newdeb ,T)
   except DebDeltaError,s:
     print 'Failed: ',str(s)
-    if os.path.exists(newdeb):
+    if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
     rmtree(T)
     sys.exit(2)
   except KeyboardInterrupt:
-    if os.path.exists(newdeb):
+    if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
+    rmtree(T)
+    sys.exit(0)
   except:
-    if os.path.exists(newdeb):
+    if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
+    rmtree(T)
     raise
-  rmtree(T)
   
 elif action == 'delta' :
   if len(argv) != 3 :  
