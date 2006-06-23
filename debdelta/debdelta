@@ -1192,11 +1192,11 @@ def do_delta(olddeb,newdeb,delta,TD):
     reverse_old_md5={}
     if old_md5:
       for o in old_md5:
-        if o not in oldnames:
-          #would you believe? 'sql-ledger' contains MD5 for files it does not ship...
-          if VERBOSE: print 'Hmmm... there is a md5 but not a file: ',o
-        elif o not in skip:
+        if o in oldnames:
           reverse_old_md5[old_md5[o]] = o
+        else:
+          #would you believe? many packages contain MD5 for files they do not ship...
+          if VERBOSE and o not in skip: print '  Hmmm... there is a md5 but not a file: ',o
 
     oldnames_premangle={}
     for o in oldnames:
