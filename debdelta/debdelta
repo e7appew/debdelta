@@ -69,7 +69,7 @@ minigzip='/usr/lib/debdelta/minigzip'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5
 
 from stat    import ST_SIZE, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -96,6 +96,14 @@ MIN_DEB_SIZE = 10 * 1024
 
 
 N_DELTAS= 1
+
+f=os.popen('grep bogomips /proc/cpuinfo')
+BOGOMIPS=float(f.read().split(':')[-1])
+f.close()
+
+f=os.popen('hostname -f')
+HOSTID=md5.new( f.read() ).hexdigest()
+f.close()
 
 
 USE_DELTA_ALGO  = 'bsdiff'
@@ -239,7 +247,7 @@ def parse_dist(f,d):
     a=f.readline()
 
 
-def scan_control(p,params,prefix=None,script=None,stdout = None):
+def scan_control(p,params,prefix=None,info=None):
   if prefix == None:
     prefix = ''
   else:
@@ -248,12 +256,20 @@ def scan_control(p,params,prefix=None,script=None,stdout = None):
   while a:
     a=de_n(a)
     if a[:4] in ('Pack','Vers','Arch','Stat','Inst','File'):
-      if script : script.write('#'+prefix+a+'\n')
-      if stdout : stdout.write(' ' + a)
+      if info != None :
+        info.append(prefix+a)
       i=a.index(':')
       assert(a[i:i+2] == ': ')
       params[prefix+a[:i]] = a[i+2:]
     a=p.readline()
+
+def append_info(delta,info,TD):
+  #new style : special info file
+  infofile=open(TD+'/PATCH/info','w')
+  for i in info:
+    infofile.write(i+'\n')
+  infofile.close()
+  system(['ar','rSi','0',delta, 'info'],  TD+'/PATCH')
 
 def make_parents(f):
   assert(f[0] == '/')
@@ -393,7 +409,7 @@ def check_diff(f):
 
 #################################################################### apply patch
 
-def do_patch(delta,olddeb,newdeb,TD):
+def do_patch(delta,olddeb,newdeb,TD, info=None):
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -424,29 +440,38 @@ def do_patch(delta,olddeb,newdeb,TD):
   elif os.path.exists(TD+'PATCH/patch.sh.bz2'):
     system('bunzip2 PATCH/patch.sh.bz2',TD)  
 
-  #lets scan parameters, to see what it does and what it requires
-  params={}
   if not os.path.isfile(TD+'PATCH/patch.sh'):
     die('Error. File '+delta+' is not a debdelta file.')
-  p=open(TD+'PATCH/patch.sh')
-  s=p.readline()
-  #skip #!/bin/sh
-  if s[:2] == '#!' :
-    s=p.readline()
-  while s :
-    if s[0] == '#' :
-      s=de_n(s)[1:]
-      if VERBOSE > 1 or (VERBOSE and action != 'deltas' and \
-                         action != 'delta-upgrade' ) or INFO :
-        print ' info: ',s
-      if ':' in s:
-        i=s.index(':')  
-        params[s[:i]] = s[i+2:]
-      else:
-        params[s] = True
-    s=p.readline()
-  p.close()
 
+  #lets scan parameters, to see what it does and what it requires
+  if info == None :
+    if os.path.isfile(TD+'PATCH/info'):
+      #new style debdelta, with info file
+      p=open(TD+'PATCH/info')
+      info=p.read().split('\n')
+      p.close()
+      if info[-1] == '': info.pop()
+    else:
+      #old style debdelta, with info in patch.sh
+      p=open(TD+'PATCH/patch.sh')
+      s=p.readline()
+      s=p.readline()
+      while s:
+        if s[0] == '#' :
+          s=de_n(s)
+          info.append(s[1:])
+        s=p.readline()
+      p.close()
+  params={}
+  for s in info:
+    if ':' in s:
+      i=s.index(':')  
+      params[s[:i]] = s[i+2:]
+    else:
+      params[s] = True
+    if  INFO :
+      print ' info: ',s
+  ###
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
     free=freespace(TD)
     if olddeb == '/':
@@ -565,15 +590,17 @@ def do_patch(delta,olddeb,newdeb,TD):
     if newdeb:
       shutil.move(TD+'NEW.file',newdeb)
 
+    end_sec = time.time()
+    elaps=(end_sec - start_sec)
+
     if VERBOSE :
       if newdeb:
         debsize = os.stat(newdeb)[ST_SIZE]
       else:
         debsize = os.stat(olddeb)[ST_SIZE]
-      end_sec = time.time()
-      a=(end_sec - start_sec)
       print ' Patching done, time: %.2fsec, speed: %dkB/sec, result: %s' % \
-            (a,(debsize / 1024 /  (a+.001)), (newdeb))
+            (elaps,(debsize / 1024 /  (elaps+.001)), (newdeb))
+    return (newdeb,elaps)
 
 ##################################################### compute delta
 
@@ -617,21 +644,20 @@ def do_delta(olddeb,newdeb,delta,TD):
   script.write('#!/bin/sh -e\n')
     
   ##### unpack control.tar.gz, scan control, write  parameters
+  info=[]
   params={}
   for o in 'OLD', 'NEW' :
       os.mkdir(TD+o+'/CONTROL')
       #unpack control.tar.gz
       system('ar p '+TD+o+'.file control.tar.gz | tar -x -z -f - -C '+TD+o+'/CONTROL',TD)
       ## scan control
-      if  VERBOSE  :
-        s=sys.stdout
-        s.write(o+': ')
-      else:
-        s=None
-      p=open(TD+'/'+o+'/CONTROL/control') 
-      scan_control(p,params,o,script,s)
+      p=open(TD+'/'+o+'/CONTROL/control')
+      s=[]
+      scan_control(p,params,o,s)
       p.close()
-      if s: print
+      if  VERBOSE  :
+        sys.stdout.write(o+': '+join([o[4:] for o in  s],' ')+'\n')
+      info = info + s
       del s,p
 
   if DEBUG:
@@ -641,16 +667,20 @@ def do_delta(olddeb,newdeb,delta,TD):
     p.read()
     p.close
     newdeb_md5sum=a[:32]
-    script.write('#NEW/MD5sum: '+ newdeb_md5sum[:32]+'\n')
+    info.append('NEW/MD5sum: '+ newdeb_md5sum[:32])
   else:
     newdeb_md5sum=None
 
   if NEEDSOLD :
     #this delta needs the old deb 
-    script.write('#needs-old\n')
+    info.append('needs-old')
   else:
-    script.write('#old-data-tree\n')
-    script.write('#old-control-tree\n')
+    info.append('old-data-tree')
+    info.append('old-control-tree')
+
+  #backward compatibility
+  for i in info:
+    script.write('#'+i+'\n')
 
   #### check for disk space
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
@@ -1146,7 +1176,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       for o in old_md5:
         if o not in oldnames:
           #would you believe? 'sql-ledger' contains MD5 for files it does not ship...
-          if VERBOSE > 1 : print '  Hmmm... there is a md5 but not a file: ',o
+          if VERBOSE: print 'Hmmm... there is a md5 but not a file: ',o
         elif o not in skip:
           reverse_old_md5[old_md5[o]] = o
 
@@ -1421,8 +1451,11 @@ def do_delta(olddeb,newdeb,delta,TD):
   if DEBUG > 1 and newdeb_md5sum :
     script_md5_check_file("NEW.file",md5=newdeb_md5sum)
 
+
+
   #script is done
   script.close()
+
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   v=''
   #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
@@ -1434,18 +1467,21 @@ def do_delta(olddeb,newdeb,delta,TD):
   else:
     if VERBOSE > 1 : print '  gzip wins on patch.sh  '
     patch_append('patch.sh.gz')
-
-  deltasize = os.stat(delta)[ST_SIZE]
   
+  #OK, OK... this is not yet correct, since I will add the info file later on
   elaps =  time.time() - start_sec
-  percent =  deltasize * 100. /  newdebsize 
+  info.append('DeltaTime: %.2f' % elaps)
+  deltasize = os.stat(delta)[ST_SIZE] + 60 + sum(map(len,info))
+  percent =  deltasize * 100. /  newdebsize
+  info.append('Ratio: %.4f' % (float(deltasize) / float(newdebsize)) )
+
   if VERBOSE:
     print ' deb delta is  %3.1f%% of deb; that is, %dkB are saved, on a total of %dkB.' \
           % ( percent , (( newdebsize -deltasize ) / 1024),( newdebsize/ 1024))
     print ' delta time: %.2f sec, speed: %dkB /sec, (%s time: %.2fsec speed  %dkB /sec) (corr %.2f sec)' %  \
           (elaps, newdebsize / 1024. / (elaps+0.001), \
            USE_DELTA_ALGO,bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) , time_corr )
-  return (delta, percent, elaps)
+  return (delta, percent, elaps, info)
 
 
 ##################################################### compute many deltas
@@ -1672,9 +1708,8 @@ def do_deltas(debs):
         ret= None
         T=tempo()          
         try:
-          ret=do_delta(old['File'],new['File'], delta,T)
+          ret=do_delta(old['File'],new['File'], delta, T)
         except DebDeltaError,s:
-          #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
           if not VERBOSE: print 'Creating: ',delta
@@ -1682,31 +1717,37 @@ def do_deltas(debs):
           if not s.retriable :
             p=open(delta+'-fails','w')
             p.close()
+            rmtree(T)
+            continue
         except:
-          #os.chdir(original_cwd)
           if os.path.exists(delta):
             os.unlink(delta)
           rmtree(T)
           raise
-        #os.chdir(original_cwd)
-        rmtree(T)
 
-        if ret and MAX_DELTA_PERCENT:
-          deltasize=os.stat(delta)[ST_SIZE]
-          if ( ret[1] > (MAX_DELTA_PERCENT+10)  ) or \
-            ( ret[1] > (MAX_DELTA_PERCENT+5) and  deltasize >= 150*1024)  or \
-            ( ret[1] > (MAX_DELTA_PERCENT-5) and  deltasize >= 1500*1024) or \
-            ( ret[1] > (MAX_DELTA_PERCENT-10) and  deltasize >= 15000*1024):
+        if ret == None:
+          rmtree(T)
+          continue
+        
+        (delta_, percent, elaps, info) = ret
+        assert(delta == delta_)
+        info.append('ServerID: '+HOSTID)
+        info.append('ServerBogomips: '+str(BOGOMIPS))
+        
+        if MAX_DELTA_PERCENT and  percent > MAX_DELTA_PERCENT:
             os.unlink(delta)
             if VERBOSE : print ' Warning, too big!'
             p=open(delta+'-too-big','w')
             p.close()
-            ret = None
+            rmtree(T)
+            continue
 
-        if DEBUG > 1 and ret :
+        if DEBUG > 1:
+          rmtree(T)
           T=tempo()
+          pret=None
           try:
-            do_patch(delta,old['File'],None ,T)
+            pret=do_patch(delta,old['File'],None ,T, info)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
             if not  s.retriable :
@@ -1714,16 +1755,18 @@ def do_deltas(debs):
               p.close()              
               if os.path.exists(delta):
                 os.unlink(delta)
+              rmtree(T)
+              continue
           except:
             print " Unexpected error while testing delta:", sys.exc_info()[0]
-            #os.chdir(original_cwd)
             if os.path.exists(delta):
               os.unlink(delta)
             rmtree(T)
             raise
-          #os.chdir(original_cwd)
-          if os.path.exists(T):
-            rmtree(T)
+          (newdeb_,p_elaps)=pret
+          info.append('PatchTime: %.2f' % p_elaps)
+        append_info(delta,info,T)
+        rmtree(T)
     #delete debs in --alt that are too old
     if CLEAN_ALT:
       while l>=0:
@@ -1777,7 +1820,7 @@ elif action == 'delta' :
   T=tempo()
   delta=abspath(argv[2])
   try:
-    do_delta(abspath(argv[0]), abspath(argv[1]), delta ,T)  
+    r = do_delta(abspath(argv[0]), abspath(argv[1]), delta ,T)  
   except DebDeltaError,s:
     print 'Failed: ',str(s)
     rmtree(T)
@@ -1791,6 +1834,8 @@ elif action == 'delta' :
     if os.path.exists(delta):
       os.unlink(delta)
     raise
+  (delta, percent, elaps, info) = r
+  append_info(delta,info,T)
   rmtree(T)
   
 elif action == 'deltas' :
@@ -1872,7 +1917,6 @@ def delta_upgrade():
             debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
               os.unlink(delta)
-          #os.chdir(original_cwd)
           if os.path.exists(T):
             rmtree(T)
         debs_time += time.time()
