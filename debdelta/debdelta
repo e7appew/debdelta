@@ -679,11 +679,11 @@ def do_delta(olddeb,newdeb,delta,TD):
   def scan_md5(n):
     md5={}
     f=open(n)
-    a=1
+    a=de_n(f.readline())
     while a:
-      a=de_n(f.readline())
       m , n = a[:32] ,  de_bar( a[34:] )
       md5[n]=m
+      a=de_n(f.readline())
     f.close()
     return md5
 
@@ -1144,7 +1144,10 @@ def do_delta(olddeb,newdeb,delta,TD):
     reverse_old_md5={}
     if old_md5:
       for o in old_md5:
-        if o not in skip:
+        if o not in oldnames:
+          #would you believe? 'sql-ledger' contains MD5 for files it does not ship...
+          if VERBOSE > 1 : print '  Hmmm... there is a md5 but not a file: ',o
+        elif o not in skip:
           reverse_old_md5[old_md5[o]] = o
 
     oldnames_premangle={}
