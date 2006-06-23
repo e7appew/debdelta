@@ -52,7 +52,9 @@ Usage: debdelta-upgrade
   Downloads all deltas that may be used to 'apt-get upgrade', and apply them
 
 Options:
---dir DIR   directory where to save results (default: /tmp/archive)
+--dir DIR   directory where to save results
+            (default: /var/cache/apt/archives for root,
+              /tmp/archive for non-root users)
 """
 
 
@@ -1891,7 +1893,7 @@ elif action == 'deltas' :
 def delta_upgrade():
   original_cwd = os.getcwd()
 
-  import  thread , pickle, urllib
+  import  thread , pickle, urllib, fcntl, atexit, signal
 
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
@@ -1905,17 +1907,42 @@ def delta_upgrade():
   cache.upgrade()
 
   if DIR == None:
-    DEB_DIR='/tmp/archives'
+    if os.getuid() == 0:
+      DEB_DIR='/var/cache/apt/archives'
+    else:
+      DEB_DIR='/tmp/archives'
   else:
     DEB_DIR=DIR
-  if not os.path.exists(DEB_DIR):    
+  if not os.path.exists(DEB_DIR):
     os.mkdir(DEB_DIR)
-
+  if not os.path.exists(DEB_DIR+'/partial'):
+    os.mkdir(DEB_DIR+'/partial')
+    
+  try:
+    ##APT does (according to strace)
+    #open("/var/lib/dpkg/lock", O_RDWR|O_CREAT|O_TRUNC, 0640) = 4
+    #fcntl64(4, F_SETFD, FD_CLOEXEC)         = 0
+    #fcntl64(4, F_SETLK, {type=F_WRLCK, whence=SEEK_SET, start=0, len=0}) = 0
+    #open("/var/cache/apt/archives/lock", O_RDWR|O_CREAT|O_TRUNC, 0640) = 17
+    #fcntl64(17, F_SETFD, FD_CLOEXEC)        = 0
+    #fcntl64(17, F_SETLK, {type=F_WRLCK, whence=SEEK_SET, start=0, len=0}) = 0
+    a=os.open(DEB_DIR+'/lock', os.O_RDWR | os.O_TRUNC | os.O_CREAT, 0640)
+    fcntl.fcntl(a, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
+    # synopsis lockf(  	fd, operation, [length, [start, [whence]]])
+    fcntl.lockf(a, fcntl.LOCK_EX | fcntl.LOCK_NB, 0,0,0)
+  except IOError, s:
+    if s.errno == 11:
+      if DEB_DIR == '/var/cache/apt/archives' :
+        print 'Could not lock dir: ',DEB_DIR,  ' (is APT running?)'
+    else:
+      print 'Could not lock dir: ',DEB_DIR, str(s)
+    sys.exit(1)
+    
+  print 'Recreated debs are saved in ',DEB_DIR
   
   #these are the packages that do not have a delta
   no_delta = []
 
-  print 'Recreated debs are saved in ',DEB_DIR
   start_sec = time.time()
   len_deltas=0
       
@@ -2009,6 +2036,8 @@ def delta_upgrade():
       return None
   ###################################### test_uri
   def download_uri(conn,uri,outname,conn_time,len_downloaded):
+      outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
+      #should implement Content-Range
       conn.request("GET", urllib.quote(uri))
       r = conn.getresponse()
       if r.status != 200:
@@ -2022,7 +2051,8 @@ def delta_upgrade():
       if free and (free + 2**14 ) < length  :
         print 'Not enough disk space do download: ',os.path.basename(uri)
         return None
-      out=open(outname+'.temp','w')
+
+      out=open(outnametemp,'w')
       a=time.time()
       conn_time-=a      
       j=0
@@ -2041,7 +2071,7 @@ def delta_upgrade():
       r.close()
       conn_time+=time.time()
       sys.stderr.write("Downloaded: ...%s \n" % uri[-60:])
-      os.rename(outname+'.temp',outname)
+      os.rename(outnametemp,outname)
       return  conn_time , (j+len_downloaded)
 
 
