@@ -1098,7 +1098,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   script.write("FTH='"+fake_tar_2nd_echo+"'\n")
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
-
+  
   global time_corr
   time_corr=0
 
@@ -1737,14 +1737,14 @@ def do_deltas(debs):
           if not s.retriable :
             p=open(delta+'-fails','w')
             p.close()
-            rmtree(T)
-            continue
         except:
+          (type, value, trace)=sys.exc_info()
+          print " *** Error while creating delta  ",delta,": ",str(type),str(value)
+          if DEBUG>1:
+            print traceback.print_tb(trace)
           if os.path.exists(delta):
             os.unlink(delta)
-          rmtree(T)
-          raise
-
+        
         if ret == None:
           rmtree(T)
           continue
@@ -1775,14 +1775,18 @@ def do_deltas(debs):
               p.close()              
               if os.path.exists(delta):
                 os.unlink(delta)
-              rmtree(T)
-              continue
           except:
-            print " Unexpected error while testing delta:", sys.exc_info()[0]
+            (type, value, trace)=sys.exc_info()
+            print " *** Error while testing delta  ",delta,": ",str(type),str(value)
+            if DEBUG>1:
+              print traceback.print_tb(trace)
             if os.path.exists(delta):
               os.unlink(delta)
+          
+          if pret == None:
             rmtree(T)
-            raise
+            continue
+          
           (newdeb_,p_elaps)=pret
           info.append('PatchTime: %.2f' % p_elaps)
         append_info(delta,info,T)
@@ -1978,10 +1982,9 @@ def delta_upgrade():
             no_delta.append(deb_uri)
           except:
             (type, value, trace)=sys.exc_info()
+            print " *** Error while applying delta for ",name,": ",str(type),str(value)
             if DEBUG>1:
-              print " Error while applying delta for ",name,": ",str(type),str(value),traceback.print_tb(trace)
-            else:
-              print " Error while applying delta for ",name,": ",str(type),str(value)
+              print traceback.print_tb(trace)
             if os.path.exists(newdeb):
               os.unlink(newdeb)
             no_delta.append(deb_uri)
