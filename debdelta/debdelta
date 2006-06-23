@@ -613,8 +613,11 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
         debsize = os.stat(newdeb)[ST_SIZE]
       else:
         debsize = os.stat(olddeb)[ST_SIZE]
-      print ' Patching done, time: %.2fsec, speed: %dkB/sec' % \
-            (elaps,(debsize / 1024 /  (elaps+.001)))
+      a=''
+      if newdeb != None:
+        a='result: '+os.path.basename(newdeb)
+      print ' Patching done, time: %.2fsec, speed: %dkB/sec %s' % \
+            (elaps,(debsize / 1024 /  (elaps+.001)),a)
   return (newdeb,elaps)
 
 ##################################################### compute delta
