@@ -1521,9 +1521,9 @@ def do_deltas(debs):
                  ( pack_filter == None or  pack_filter(d) ) :
             scan_deb( dt , label )
             
-  def scan_deb(f, label):
-      assert( os.path.isfile(f) )
-      f=abspath(f)
+  def scan_deb(of, label):
+      assert( os.path.isfile(of) )
+      f=abspath(of)
       if f in info_by_file:
         #just (in case) promote to status of CMDLINE package
         if label == 'CMDLINE' :
@@ -1534,7 +1534,7 @@ def do_deltas(debs):
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,info_by_file[f])
       p.close()
-      info_by_file[f]['File'] = f
+      info_by_file[f]['File'] = of
       pa=info_by_file[f]['Package']
       ar=info_by_file[f]['Architecture']
       ve=info_by_file[f]['Version']
