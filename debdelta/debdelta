@@ -380,7 +380,7 @@ def die(s=None):
 
   
 def system(a,TD):
-  if type(a) != type('') :
+  if type(a) != StringType :
     a=string.join(a,' ')
   t=os.getenv('TMPDIR')
   if t == None:
@@ -1061,9 +1061,9 @@ def do_delta(olddeb,newdeb,delta,TD):
   def files_similarity_score(oo,nn):
     if oo == nn :
       return 0
-    if type(oo) == type(''):
+    if type(oo) == StringType:
       oo=file_similarity_premangle(oo)
-    if type(nn) == type(''):
+    if type(nn) == StringType:
       nn=file_similarity_premangle(nn)
     return files_similarity_score__(oo,nn)
 
@@ -1518,7 +1518,7 @@ def do_deltas(debs):
     apt_pkg.InitSystem()
     from apt_pkg import VersionCompare
 
-  if AVOID and type(AVOID) == type(''):
+  if AVOID and type(AVOID) == StringType:
     import shelve
     if VERBOSE: print ' Using avoid dict ',AVOID
     avoid_pack = shelve.open(AVOID,'r')
@@ -1647,12 +1647,12 @@ def do_deltas(debs):
     return VersionCompare( a['Version'] , b['Version']  )
   
   for pa,ar in info_by_pack_arch :
-    info=info_by_pack_arch[ (pa,ar) ]
-    info.sort(order_by_version)
+    info_pack=info_by_pack_arch[ (pa,ar) ]
+    info_pack.sort(order_by_version)
 
-    versions = [ o['Version'] for o in info ]
+    versions = [ o['Version'] for o in info_pack ]
 
-    versions_not_alt = [ o['Version'] for o in info if o['Label'] != "ALT" ]
+    versions_not_alt = [ o['Version'] for o in info_pack if o['Label'] != "ALT" ]
 
     #delete deltas that are useless
     if CLEAN_DELTAS and (pa,ar) in old_deltas_by_pack_arch :
@@ -1662,7 +1662,7 @@ def do_deltas(debs):
             if VERBOSE: print 'Removing: ',f_d          
             if ACT: os.unlink(f_d)
     
-    how_many= len( info  )
+    how_many= len( info_pack  )
     if VERBOSE>2:
       print 'Package: ',pa,' Versions:',versions
     if how_many <= 1 :
@@ -1670,7 +1670,7 @@ def do_deltas(debs):
     
     newest = how_many -1
     while newest >= 0 :
-      new=info[newest]
+      new=info_pack[newest]
       if new['Label'] != 'CMDLINE' :
         if VERBOSE > 1 :
           print 'Newest version deb was not in cmdline, skip down one: ', new['File']
@@ -1696,7 +1696,7 @@ def do_deltas(debs):
     l = newest
     while (l>0) and (l > newest - N_DELTAS):
         l -= 1
-        old=info[l]
+        old=info_pack[l]
         
         if  old['Version'] == new['Version'] :
           continue
@@ -1738,8 +1738,8 @@ def do_deltas(debs):
             p=open(delta+'-fails','w')
             p.close()
         except:
-          (type, value, trace)=sys.exc_info()
-          print " *** Error while creating delta  ",delta,": ",str(type),str(value)
+          (typ, value, trace)=sys.exc_info()
+          print " *** Error while creating delta  ",delta,": ",str(typ),str(value)
           if DEBUG>1:
             print traceback.print_tb(trace)
           if os.path.exists(delta):
@@ -1749,10 +1749,10 @@ def do_deltas(debs):
           rmtree(T)
           continue
         
-        (delta_, percent, elaps, info) = ret
+        (delta_, percent, elaps, info_delta) = ret
         assert(delta == delta_)
-        info.append('ServerID: '+HOSTID)
-        info.append('ServerBogomips: '+str(BOGOMIPS))
+        info_delta.append('ServerID: '+HOSTID)
+        info_delta.append('ServerBogomips: '+str(BOGOMIPS))
         
         if MAX_DELTA_PERCENT and  percent > MAX_DELTA_PERCENT:
             os.unlink(delta)
@@ -1767,7 +1767,7 @@ def do_deltas(debs):
           T=tempo()
           pret=None
           try:
-            pret=do_patch(delta,old['File'],None ,T, info)
+            pret=do_patch(delta,old['File'],None ,T, info_delta)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
             if not  s.retriable :
@@ -1776,8 +1776,8 @@ def do_deltas(debs):
               if os.path.exists(delta):
                 os.unlink(delta)
           except:
-            (type, value, trace)=sys.exc_info()
-            print " *** Error while testing delta  ",delta,": ",str(type),str(value)
+            (typ, value, trace)=sys.exc_info()
+            print " *** Error while testing delta  ",delta,": ",str(typ),str(value)
             if DEBUG>1:
               print traceback.print_tb(trace)
             if os.path.exists(delta):
@@ -1788,13 +1788,12 @@ def do_deltas(debs):
             continue
           
           (newdeb_,p_elaps)=pret
-          info.append('PatchTime: %.2f' % p_elaps)
-        append_info(delta,info,T)
+          info_delta.append('PatchTime: %.2f' % p_elaps)
+        append_info(delta,info_delta,T)
         rmtree(T)
     #delete debs in --alt that are too old
     if CLEAN_ALT:
       while l>=0:
-        old=info[l]
         if old['Label'] == 'ALT':
           f=old['File']
           if os.path.exists(f):
@@ -1981,8 +1980,8 @@ def delta_upgrade():
               os.unlink(newdeb)
             no_delta.append(deb_uri)
           except:
-            (type, value, trace)=sys.exc_info()
-            print " *** Error while applying delta for ",name,": ",str(type),str(value)
+            (typ, value, trace)=sys.exc_info()
+            print " *** Error while applying delta for ",name,": ",str(typ),str(value)
             if DEBUG>1:
               print traceback.print_tb(trace)
             if os.path.exists(newdeb):
