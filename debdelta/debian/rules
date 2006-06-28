@@ -42,6 +42,9 @@ binary-arch:	checkroot build
 	#install -m 755 debian/postinst debian/prerm $(D)/DEBIAN
 	$(INSTALL_PROGRAM)  minigzip $(D)/usr/lib/debdelta/minigzip
 	cp  debdelta $(D)/usr/bin/debdelta
+	install -d $(D)/etc/debdelta
+	cp etc/sources.conf $(D)/etc/debdelta/sources.conf
+	echo /etc/debdelta/sources.conf >> $(D)/DEBIAN/conffiles
 	chmod +x  $(D)/usr/bin/debdelta
 	ln -s debdelta  $(D)/usr/bin/debpatch
 	ln -s debdelta  $(D)/usr/bin/debdeltas

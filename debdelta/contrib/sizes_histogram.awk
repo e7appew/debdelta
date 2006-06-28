@@ -7,8 +7,9 @@ print "# of those, the average percent is ",int(cumul / cou), "%"
 print "# of those, the average saving  is ",int(savin / cou), "kB"
 print "# and the histogram is"
 val=0
-while(val<50) {
- if (hist[val] > 0 ) {
+while(val<=16) {
+ #if (hist[val] > 0 )
+ {
   l=int(100*hist[val]/cou) 
   printf("%2d %2d %s\n", val*5, l,substr("-------------------------------------------------------...",1,l) )
  } 

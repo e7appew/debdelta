@@ -1,3 +1,18 @@
+debdelta (0.15) unstable; urgency=low
+
+  * debdelta : 
+     - faster on .debs with many many files ;
+     - better behaviour when 'out of disk space'  errors occour 
+  * debdeltas: 
+     - added  '--alt DIR' option, to say where older versions of .debs are
+     - added   --clean-alt and --clean-deltas options 
+  * debdelta-upgrade: 
+     - if a delta fails, download the .deb
+     - sources are in /etc/debdelta/sources.conf or ~/.debdelta/sources.conf
+  * corrected many bugs
+  
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 28 Jun 2006 16:23:28 +0200
+
 debdelta (0.14) unstable; urgency=low
 
   * debdeltas: can --clean unusable debdeltas
