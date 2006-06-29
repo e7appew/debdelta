@@ -83,9 +83,6 @@ import shutil
 
 ################################################# main program, read options
 
-
-DELTA_URL="http://tonelli.sns.it/mirror/debian-deltas"
-
 #target of: maximum memory that bsdiff will use
 MAXMEMORY = 1024 * 1024 * 50
 
@@ -131,7 +128,7 @@ else:
   
   if action not in actions:
     print 'wrong filename: should be "deb" + '+repr(actions)
-    sys.exit(0)
+    raise SystemExit(0)
 
   __doc__ = doc[action] + doc_common
 
@@ -140,7 +137,7 @@ else:
                  ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
-      sys.exit(2)
+      raise SystemExit(2)
 
   for  o , v  in  opts :
     if o == '-v' : VERBOSE += 1
@@ -155,7 +152,7 @@ else:
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
-        sys.exit(1)
+        raise SystemExit(1)
       if int(v) <= 12:
         print 'Warning: "-M ',int(v),'" is quite small.'
       MAXMEMORY = 1024 * 1024 * int(v)
@@ -163,29 +160,29 @@ else:
       N_DELTAS = int(v)
       if N_DELTAS <= 0:
         print 'Error: -n ',v,' is negative or zero.'
-        sys.exit(3) 
+        raise SystemExit(3) 
     elif o == '--info' and action == 'patch' : INFO = True
     elif o == '--avoid'  :
       AVOID = v
       if not os.path.isfile(AVOID):
         print 'Error: --avoid ',AVOID,' does not exist.'
-        sys.exit(3)
+        raise SystemExit(3)
     elif o == '--dir'  :
       DIR = v
       if not os.path.isdir(DIR):
         print 'Error: --dir ',DIR,' does not exist.'
-        sys.exit(3)
+        raise SystemExit(3)
     elif o == '--alt'  :
       ALT = v
       if not os.path.isdir(ALT):
         print 'Error: --alt ',ALT,' does not exist.'
-        sys.exit(3)
+        raise SystemExit(3)
     elif o ==  '--help' or o ==  '-h':
       print __doc__
-      sys.exit(0)
+      raise SystemExit(0)
     else:
       print ' option ',o,'is unknown, try --help'
-      sys.exit(1)
+      raise SystemExit(1)
 
 def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
@@ -367,7 +364,7 @@ def tempo():
 ##########
 
 
-class DebDeltaError:
+class DebDeltaError(Exception):  #should derive from (Exception):http://docs.python.org/dev/whatsnew/pep-352.html
   def __init__(self,s,retriable=False):
     self.__str = s
     self.retriable = retriable
@@ -1811,7 +1808,7 @@ if action == 'patch':
       print '(printing info - extra arguments are ignored)'
     elif  len(argv) == 0  :
       print ' need a  filename ;  try --help'
-      sys.exit(1)
+      raise SystemExit(1)
     T=tempo()
     try:
         delta=abspath(argv[0])
@@ -1820,17 +1817,17 @@ if action == 'patch':
     except DebDeltaError,s:
         print  str(s)
         rmtree(T)
-        sys.exit(1)
+        raise SystemExit(1)
     except :
         print " Unexpected error:",  sys.exc_info()[0]
         rmtree(T)
-        sys.exit(1)
+        raise SystemExit(1)
     rmtree(T)
-    sys.exit(0)
+    raise SystemExit(0)
   #really patch
   if len(argv) != 3 :
     print ' need 3 filenames ;  try --help'
-    sys.exit(1)
+    raise SystemExit(1)
 
 
   newdeb=abspath(argv[2])
@@ -1845,12 +1842,12 @@ if action == 'patch':
     if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
     rmtree(T)
-    sys.exit(2)
+    raise SystemExit(2)
   except KeyboardInterrupt:
     if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
     rmtree(T)
-    sys.exit(0)
+    raise SystemExit(0)
   except:
     if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
@@ -1860,7 +1857,7 @@ if action == 'patch':
 elif action == 'delta' :
   if len(argv) != 3 :  
     print ' need 3 filenames ;  try --help'
-    sys.exit(1)
+    raise SystemExit(1)
     
   T=tempo()
   delta=abspath(argv[2])
@@ -1871,7 +1868,7 @@ elif action == 'delta' :
     rmtree(T)
     if os.path.exists(delta):
       os.unlink(delta)
-    sys.exit(2)
+    raise SystemExit(2)
   except KeyboardInterrupt:
     if os.path.exists(delta):
       os.unlink(delta)
@@ -1888,7 +1885,7 @@ elif action == 'deltas' :
     do_deltas(argv)
   except DebDeltaError,s:
     print 'Failed: ',str(s)
-    sys.exit(2)
+    raise SystemExit(2)
 
   
 ##################################################### delta-upgrade
@@ -1896,18 +1893,35 @@ elif action == 'deltas' :
 def delta_upgrade():
   original_cwd = os.getcwd()
 
-  import  thread , pickle, urllib, fcntl, atexit, signal
+  import  thread , pickle, urllib, fcntl, atexit, signal, ConfigParser
 
+  config=ConfigParser.SafeConfigParser()
+  a=config.read(['/etc/debdelta/sources.conf', os.path.expanduser('~/.debdelta/sources.conf')  ])
+  # FIXME this does not work as documented in Python
+  #if VERBOSE > 1 : print 'Read config files: ',repr(a)
+  
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
-
-  import  apt, apt_pkg
+  
+  try:
+    import  apt_pkg
+  except ImportError:
+    print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
+    raise SystemExit
+  
+  try:
+    import  apt
+  except ImportError:
+    print 'ERROR!!! python module "apt" is missing. Please install a newer version of python-apt (newer than 0.6.12)'
+    raise SystemExit
+  
   apt_pkg.init()
 
   from apt import SizeToStr
 
   cache=apt.Cache()
   cache.upgrade()
+
 
   if DIR == None:
     if os.getuid() == 0:
@@ -1939,11 +1953,10 @@ def delta_upgrade():
     if DEB_DIR == '/var/cache/apt/archives' :
       a=a+' (is APT running?)'
     print 'Could not lock dir: ',DEB_DIR, a
-    sys.exit(1)
+    raise SystemExit(1)
     
   print 'Recreated debs are saved in ',DEB_DIR
 
-  time.sleep(3)
   #these are the packages that do not have a delta
   no_delta = []
 
@@ -2005,18 +2018,40 @@ def delta_upgrade():
   import httplib
   from urlparse import urlparse
 
-  a=urlparse(DELTA_URL)
-  assert(a[0] == 'http')
-  deltas_conn=httplib.HTTPConnection(a[1])
-  delta_http_base=a[2]
+  #keeps a cache of all connections, by URL
+  http_conns={}
+  def conn_by_url(url):
+    if url[:7] == 'http://' :
+      url = urlparse(url)[1]
+    if url not in http_conns:
+      http_conns[url] = httplib.HTTPConnection(url)
+    return http_conns[url]
 
-  ###################################### download_uri
-  def test_uri(conn,uri):
+  def delta_uri_from_config(**dictio):
+    secs=config.sections()
+    for s in secs:
+      opt=config.options(s)
+      if 'delta_uri' not in opt:
+        print 'Error!! config file section ',s,'does not contain delta_uri'
+        raise SystemExit(1)
+      for a in dictio:
+        if a not in opt or dictio[a] != config.get( s, a) :
+          break
+      return  config.get( s, 'delta_uri' )
+    if VERBOSE:
+      print 'Warning: no configured source for', repr(dictio)
+  
+  
+  ###################################### test_uri
+  def test_uri(uri):
+      conn=conn_by_url(uri)
+      uri_p=urlparse(uri)
+      assert(uri_p[0] == 'http')
       a='Url'
       if uri[-9:] == '.debdelta':
         a='Debdelta'
       s=uri[-60:]
-      conn.request("HEAD", urllib.quote(uri))
+      conn.request("HEAD", urllib.quote(uri_p[2]))
       r = conn.getresponse()
       r.read()
       r.close()
@@ -2037,11 +2072,14 @@ def delta_upgrade():
       else:
         print a,'is not available (',repr(r.status), r.reason,'): ', s
       return None
-  ###################################### test_uri
-  def download_uri(conn,uri,outname,conn_time,len_downloaded):
+  ###################################### download_uri
+  def download_uri(uri,outname,conn_time,len_downloaded):
+      conn=conn_by_url(uri)
+      uri_p=urlparse(uri)
+      assert(uri_p[0] == 'http')
       outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
       #should implement Content-Range
-      conn.request("GET", urllib.quote(uri))
+      conn.request("GET", urllib.quote(uri_p[2]))
       r = conn.getresponse()
       if r.status != 200:
         if VERBOSE: print 'Not present: ...',uri
@@ -2052,7 +2090,7 @@ def delta_upgrade():
       assert( r.length == int(r.getheader('content-length')) )
       free=freespace(os.path.dirname(outname))
       if free and (free + 2**14 ) < length  :
-        print 'Not enough disk space do download: ',os.path.basename(uri)
+        print 'Not enough disk space to download: ',os.path.basename(uri)
         return None
 
       out=open(outnametemp,'w')
@@ -2082,9 +2120,7 @@ def delta_upgrade():
   deltas_down_time=0
 
   for p in cache :
-    if p.isInstalled and  p.markedUpgrade \
-           and p.candidateOrigin[0].origin == 'Debian':
-
+    if p.isInstalled and  p.markedUpgrade :
       #thanks a lot to Michael Vogt
       p._lookupRecord(True)
       dpkg_params = apt_pkg.ParseSection(p._records.Record)
@@ -2094,7 +2130,7 @@ def delta_upgrade():
         indexfile = cache._list.FindIndex(packagefile)
         if indexfile:
           deb_uri=indexfile.ArchiveURI(deb_path)
-          break      
+          break
       
       arch=dpkg_params['Architecture']      
       
@@ -2103,28 +2139,38 @@ def delta_upgrade():
              os.path.exists('/var/cache/apt/archives/'+newdeb):
         if VERBOSE > 1 : print  'Already downloaded: ',newdeb
         continue
+      newdeb = DEB_DIR+'/'+newdeb
 
       if VERBOSE > 1:
         print 'Looking for a delta for %s from %s to %s ' % \
               ( p.name, p.installedVersion, p.candidateVersion )
-      
-      newdeb = DEB_DIR+'/'+newdeb
+      delta_uri_base=delta_uri_from_config(Origin=p.candidateOrigin[0].origin,
+                                           Label=p.candidateOrigin[0].label,
+                                           Site=p.candidateOrigin[0].site,
+                                           Archive=p.candidateOrigin[0].archive,
+                                           PackageName=p.name)
+      if delta_uri_base == None:
+        continue
+
+      deltas_conn=conn_by_url(delta_uri_base)
+      a=urlparse(delta_uri_base)
+      assert(a[0] == 'http')
 
       #delta name
       delta_name=p.name+'_'+version_mangle(p.installedVersion)+\
                   '_'+ version_mangle(p.candidateVersion)+'_'+\
                   arch+'.debdelta'
 
-      uri=delta_http_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
-
+      uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
+      
       #download delta
       if not os.path.exists(DEB_DIR+'/'+delta_name):
         if VERBOSE:
-          r=test_uri(deltas_conn,uri)
+          r=test_uri(uri)
         else:
           r=True
         if r:
-          r=download_uri(deltas_conn,uri, DEB_DIR+'/'+delta_name,deltas_down_time,deltas_down_size)
+          r=download_uri(uri, DEB_DIR+'/'+delta_name,deltas_down_time,deltas_down_size)
         if r == None:
           no_delta.append(deb_uri)
         else:
@@ -2137,8 +2183,6 @@ def delta_upgrade():
         c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
 
-  deltas_conn.close()
-
   #terminate queue
   os.write(qin,'\t\t\t')
   if threads:
@@ -2147,28 +2191,20 @@ def delta_upgrade():
   #do something useful in the meantime
   debs_down_size=0
   debs_down_time=0
-  deb_conns={}
-  if threads and no_delta:
-    if VERBOSE > 1 :
-      print ' Downloading deltas done, downloading debs while waiting for patching thread.'
-    while threads and no_delta:
-      a = no_delta.pop()
-      a=urlparse(a)
-      assert(a[0] == 'http')
-      if a[1] not in deb_conns:        
-        deb_conns[a[1]] = httplib.HTTPConnection(a[1])
-      r=download_uri(deb_conns[a[1]], a[2] , \
-                   DEB_DIR+'/'+os.path.basename(a[2]),debs_down_time, debs_down_size )
+  if  threads and no_delta and VERBOSE > 1 :
+    print ' Downloading deltas done, downloading debs while waiting for patching thread.'
+  while threads:
+    while no_delta:
+      uri = no_delta.pop()
+      r=download_uri(uri , DEB_DIR+'/'+os.path.basename(uri), debs_down_time, debs_down_size )
       if r:
         debs_down_time = r[0]
         debs_down_size = r[1]
-    for i in deb_conns:
-      deb_conns[i].close()
-    
-  if VERBOSE > 1 : print ' Downloading done, waiting for patching thread. '
-  while threads:
     time.sleep(0.2)
-
+  
+  for i in http_conns:
+    http_conns[i].close()
+  
   elaps =  time.time() - start_sec
   print 'Delta-upgrade statistics:'
   if VERBOSE:
@@ -2304,5 +2340,5 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
         time.sleep(1)      
     except KeyboardInterrupt:
       pass
-  sys.exit(0)
+  raise SystemExit(0)
 
