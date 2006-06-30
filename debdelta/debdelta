@@ -120,7 +120,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.79 2006/06/30 14:13:12 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.80 2006/06/30 14:20:40 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1551,6 +1551,16 @@ def do_deltas(debs):
           #this changes also the entry in info_by_pack_arch (magic python)
           info_by_file[f]['Label']=label
         return
+      p=open(f)
+      if p.read(21) != "!<arch>\ndebian-binary" :
+	  p.close()
+	  if os.path.getsize(f) == 0 :
+	      print ('Warning: '+f+ ' is an empty file; removing it. ')
+	      os.unlink(f)
+	  else:  
+	      print ('Error: '+f+ ' does not seem to be a Debian package ')
+	  return
+      p.close()
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,info_by_file[f])
@@ -1795,6 +1805,7 @@ def do_deltas(debs):
     #delete debs in --alt that are too old
     if CLEAN_ALT:
       while l>=0:
+        old=info_pack[l]
         if old['Label'] == 'ALT':
           f=old['File']
           if os.path.exists(f):
