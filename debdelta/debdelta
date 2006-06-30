@@ -73,7 +73,7 @@ minigzip='/usr/lib/debdelta/minigzip'
 
 import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback
 
-from stat    import ST_SIZE, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
+from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
 from copy    import copy
 
@@ -119,6 +119,10 @@ ACT     = True
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
+
+RCS_VERSION="$Id: debdelta,v 1.79 2006/06/30 14:13:12 debdev Exp $"
+
+HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
@@ -2012,9 +2016,6 @@ def delta_upgrade():
       returns['debs_size']=debs_size
       returns['debs_time']=debs_time
 
-  threads=[]
-  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads,no_delta, thread_returns) ) )
-
   import httplib
   from urlparse import urlparse
 
@@ -2042,83 +2043,168 @@ def delta_upgrade():
       print 'Warning: no configured source for', repr(dictio)
   
   
+  ################################################# various HTTP facilities
+  def _http_whine_(uri,r):
+    a='Url'
+    if uri[-9:] == '.debdelta':
+      a='Debdelta'
+    if  r.status == 200 or  r.status == 206:
+      pass
+    if r.status == 404:
+      print a,' is not present: ',uri
+    else:
+      print a,' is not available (',repr(r.status), r.reason,'): ', uri
+
+
+  def _parse_ContentRange(r):
+    #bytes 0-1023/25328
+    s=r.getheader('Content-Range')
+    if s == None: return
+    if s[:6] != "bytes " :
+      print "Malformed Content-Range",s
+      return
+    a=s[6:].split('/')
+    if len(a) != 2 :
+      print "Malformed Content-Range",s
+      return
+    b=a[0].split('-')
+    if len(b) != 2 :
+      print "Malformed Content-Range",s
+      return
+    return int(b[0]),int(b[1]),int(a[1])
   ###################################### test_uri
   def test_uri(uri):
       conn=conn_by_url(uri)
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
-      a='Url'
-      if uri[-9:] == '.debdelta':
-        a='Debdelta'
-      s=uri[-60:]
-      conn.request("HEAD", urllib.quote(uri_p[2]))
+      conn.request("HEAD", urllib.quote(uri_p[2]),headers=HTTP_USER_AGENT)
       r = conn.getresponse()
+      _http_whine_(uri,r)
       r.read()
       r.close()
       if r.status == 200:
-        if VERBOSE > 2: print a,' is present: ',s
         return r
-      if not VERBOSE: return None        
+      if not VERBOSE: return False
       if uri[-9:] == '.debdelta':
-        conn.request("HEAD", urllib.quote(uri+'-too-big'))
+        conn.request("HEAD", urllib.quote(uri_p[2]+'-too-big'))
         r2 = conn.getresponse()
         r2.read()
         r2.close()
         if r2.status == 200:
-          print a,' is too big: ',s
-          return None
-      if r.status == 404:
-        print a,'is not present: ',s
+          print 'Too big: ',uri
+          return False
+      _http_whine_(uri,r)
+      return False
+
+  ###################################### download_1k_uri
+  def download_1k_uri(uri,outname):
+      conn=conn_by_url(uri)
+      uri_p=urlparse(uri)
+      assert(uri_p[0] == 'http')
+      re=copy(HTTP_USER_AGENT)
+      re["Range"] =  "bytes=0-1023"
+      conn.request("GET", urllib.quote(uri_p[2]),headers=re)
+      r = conn.getresponse()
+      #print '1K Content-Range', r.getheader('Content-Range') #HACK
+      if r.status == 206:
+        outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
+      elif r.status == 200:
+        outnametemp=outname
       else:
-        print a,'is not available (',repr(r.status), r.reason,'): ', s
-      return None
+        _http_whine_(uri,r)
+        r.read()
+        r.close()
+        return False, False
+      if os.path.exists(outnametemp) and os.path.getsize(outnametemp) >= 1023 :
+        r.read()
+        r.close()
+        return r, outnametemp
+      out=open(outnametemp,'w')
+      out.write(r.read())
+      #print '1K OK', outnametemp, out.tell() #HACK
+      out.close()
+      r.close()
+      return r, outnametemp
+
   ###################################### download_uri
   def download_uri(uri,outname,conn_time,len_downloaded):
       conn=conn_by_url(uri)
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
       outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
-      #should implement Content-Range
-      conn.request("GET", urllib.quote(uri_p[2]))
+      re=copy(HTTP_USER_AGENT)
+      #content range
+      l=None
+      if os.path.exists(outnametemp):
+        #shamelessly adapted from APT, methods/http.cc
+        s=os.stat(outnametemp)
+        l=s[ST_SIZE]
+        #t=s[ST_MTIME]
+        ### unfortunately these do not yet work
+        #thank god for http://docs.python.org/lib/module-time.html
+        #actually APT does
+        #t=time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(t))
+        ##re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(t))
+        ####re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(t))
+        re["Range"] =  "bytes=%li-" % ( (long(l)-1) )
+      conn.request("GET", urllib.quote(uri_p[2]),headers=re)
       r = conn.getresponse()
-      if r.status != 200:
-        if VERBOSE: print 'Not present: ...',uri
+      if not ( r.status == 200 or ( r.status == 206 and l != None ) ):
+        if VERBOSE : _http_whine_(uri,r)
         r.read()
         r.close()
         return None
-      length=r.length
+      #print 'ooK Content-Range', r.getheader('Content-Range') #HACK
+      if l and r.status == 200 :
+        print ' Hmmm... our HTTP range request failed, ',repr(re),r.status,r.reason
       assert( r.length == int(r.getheader('content-length')) )
       free=freespace(os.path.dirname(outname))
-      if free and (free + 2**14 ) < length  :
+      if free and (free + 2**14 ) < r.length  :
         print 'Not enough disk space to download: ',os.path.basename(uri)
+        r.read()
+        r.close()
         return None
-
-      out=open(outnametemp,'w')
+      if r.status == 200 :
+        out=open(outnametemp,'w')
+        total_len = r.length
+      elif r.status == 206 :
+        #APT does scanf of    "bytes %lu-%*u/%lu",&StartPos,&Size
+        #first-byte-pos "-" last-byte-pos "/" instance-length
+        a,b,total_len =_parse_ContentRange(r)
+        out=open(outnametemp,'a')
+        out.seek(a)
+        out.truncate()
       a=time.time()
-      conn_time-=a      
-      j=0
-      s=r.read(min(1024,r.length))
-      while s and j < length:
+      conn_time-=a
+      j=out.tell()
+      s=r.read(1024)
+      while s and j < total_len :
         j+=len(s)
         out.write(s)
         if a + 0.5 < time.time() :
           a=time.time()
           sys.stderr.write("%d%% (%4s/s) for ...%s \r" % \
-                           (100*j / length,
+                           (100*j / total_len,
                             SizeToStr((j+len_downloaded)/(a+conn_time)),\
                             uri[-50:]))
-        s=r.read(min(1024,r.length))
+        s=r.read(1024)
       out.close()
       r.close()
       conn_time+=time.time()
       sys.stderr.write("Downloaded: ...%s \n" % uri[-60:])
       os.rename(outnametemp,outname)
+      #FIXME this is incorrect by 1024 bytes
       return  conn_time , (j+len_downloaded)
 
-
+  ###################################### end of HTTP stuff
+  
   deltas_down_size=0
   deltas_down_time=0
 
+  #this is a list of tuples of .....
+  available_deltas=[]
+
+  ## first merry-go-round, use package cache to fill available_deltas
   for p in cache :
     if p.isInstalled and  p.markedUpgrade :
       #thanks a lot to Michael Vogt
@@ -2163,25 +2249,51 @@ def delta_upgrade():
 
       uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
       
-      #download delta
-      if not os.path.exists(DEB_DIR+'/'+delta_name):
-        if VERBOSE:
-          r=test_uri(uri)
+      #download first part of delta
+      abs_delta_name= DEB_DIR+'/'+delta_name
+      if os.path.exists(abs_delta_name):
+        l=os.path.getsize(abs_delta_name)
+        print 'Present ',uri,r.status
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
+        continue
+      r,tempname = download_1k_uri(uri,abs_delta_name)
+      #print '1K down? ',r and r.status,uri
+      if r:
+        if r.status == 206:
+          a,b,l = _parse_ContentRange(r)
         else:
-          r=True
-        if r:
-          r=download_uri(uri, DEB_DIR+'/'+delta_name,deltas_down_time,deltas_down_size)
-        if r == None:
-          no_delta.append(deb_uri)
-        else:
-          deltas_down_time = r[0]
-          deltas_down_size = r[1]
+          l=int(r.getheader('content-length'))
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname  ) )
+      else:
+        no_delta.append(deb_uri)
+
+
+  available_deltas.sort()
+
+  threads=[]
+  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads,no_delta, thread_returns) ) )
+  
+  ## second merry-go-round, try downloading available delta
+  for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
+    if  not os.path.exists(abs_delta_name) and os.path.exists(tempname) and os.path.getsize(tempname) == delta_len:
+      print 'just Rename ',name
+      os.rename(tempname,abs_delta_name)
+      
+    if not os.path.exists(abs_delta_name):
+      r=download_uri(uri , abs_delta_name , deltas_down_time,deltas_down_size)
+      if r == None:
+        print 'Disappeared ?? ',uri
+      else:
+        deltas_down_time = r[0]
+        deltas_down_size = r[1]
 
       #queue to apply delta
-      if os.path.exists(DEB_DIR+'/'+delta_name):
+    if os.path.exists(abs_delta_name):
         #append to queue
-        c=pickle.dumps(  (p.name, DEB_DIR+'/'+delta_name  ,newdeb, deb_uri ) )
+        c=pickle.dumps(  (name, abs_delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
+    else:
+      no_delta.append(deb_uri)
 
   #terminate queue
   os.write(qin,'\t\t\t')
