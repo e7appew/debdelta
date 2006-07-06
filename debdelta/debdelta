@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.81 2006/07/06 16:52:03 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.82 2006/07/06 16:57:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -395,7 +395,7 @@ def system(a,TD):
     print 'Warning "system()" in ',TD,' for ',a
   ret = os.system("cd '" +TD +"' ; "+a)  
   if ret == 2:
-    return KeyboardInterrupt
+    raise KeyboardInterrupt
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
     die('Error , non zero return status '+str(ret)+' for command "'+a+'"')
 
