@@ -6,6 +6,7 @@ Usage: debdelta [ option...  ] fromfile tofile patchout
   Computes a delta from fromfile to tofile and writes it to patchout
 
 Options:
+--no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
   -M Mb     maximum memory  to use (for 'bsdiff' or 'xdelta')
 """
@@ -26,6 +27,7 @@ Options:
             will be appended to DIR, as well (useful when creating archives)
             
  -n N       how many deltas to produce for each package (default 1)
+--no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
   -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
 --clean-deltas     delete deltas if newer deb is not in archive
@@ -45,6 +47,7 @@ Usage: debpatch --info  patch
   Write info on patch.
 
 Options:
+--no-md5   do not verify MD5 (if found in info in debdelta)
 """
 
 doc['delta-upgrade']="""\
@@ -60,11 +63,10 @@ Options:
 
 doc_common="""\
   -v      verbose (can be added multiple times)
-  -k      keep temporary files
+ --no-act do not do that (whatever it is!)
+  -d      add extra debugging checks
+  -k      keep temporary files (use for debugging)
 """
-
-## currently this is always true:
-## -d      debug : add md5sums, check that  versions do match
 
 minigzip='/usr/lib/debdelta/minigzip'
 
@@ -107,7 +109,7 @@ f.close()
 
 USE_DELTA_ALGO  = 'bsdiff'
 
-DEBUG   = 1
+DEBUG   = 0
 VERBOSE = 0
 KEEP    = False
 INFO    = False
@@ -116,11 +118,13 @@ DIR     = None
 ALT     = None
 AVOID   = None
 ACT     = True
+DO_MD5  = True
+
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.80 2006/06/30 14:20:40 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.81 2006/07/06 16:52:03 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -138,7 +142,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
@@ -148,6 +152,7 @@ else:
     elif o == '-d' : DEBUG += 1
     elif o == '-k' : KEEP = True
     elif o == '--no-act': ACT=False
+    elif o == '--no-md5': DO_MD5=False
     elif o == '--clean-deltas' : CLEAN_DELTAS = True
     elif o == '--clean-alt' : CLEAN_ALT = True
     elif o == '--needsold' :  NEEDSOLD = True
@@ -497,7 +502,8 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
       instsize=int(params['NEW/Installed-Size'])
     else:
       instsize=int(params['NEW/Installed-Size'])+int(params['OLD/Installed-Size'])
-    if free and free < ( instsize * 1024 + 2**23 + MAXMEMORY / 6 ) :
+    instsize +=  2**14
+    if free and free < ( instsize * 1024  ) :
       raise DebDeltaError(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
           ( int(free/1024) , instsize ), True )
 
@@ -509,6 +515,7 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
       system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',TD)
   #then we check for the conformance
   if  DEBUG:
+      #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
       dpkg_params={}
       b=params['OLD/Package']
       if olddeb == '/' :
@@ -599,10 +606,12 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
   ##then , really execute the patch
   a=''
   if VERBOSE > 3 : a = '-v'
+  script_time = - time.time()
   system('/bin/sh -e '+a+' PATCH/patch.sh', TD)
+  script_time += time.time()
 
-  if DEBUG and 'NEW/MD5sum' in params:
-      if VERBOSE > 1 : print ' verifying MD5 ', params['NEW/MD5sum']
+  if DO_MD5 and 'NEW/MD5sum' in params:
+      if VERBOSE > 1 : print ' verifying MD5  for ',os.path.basename(newdeb)
       system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
 
   if newdeb:
@@ -619,8 +628,8 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
       a=''
       if newdeb != None:
         a='result: '+os.path.basename(newdeb)
-      print ' Patching done, time: %.2fsec, speed: %dkB/sec %s' % \
-            (elaps,(debsize / 1024 /  (elaps+.001)),a)
+      print ' Patching done, time: %.2fsec, speed: %dkB/sec %s (script time %.2fsec ) ' % \
+            (elaps,(debsize / 1024 /  (elaps+.001)),a , script_time)
   return (newdeb,elaps)
 
 ##################################################### compute delta
@@ -681,7 +690,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       info = info + s
       del s,p
 
-  if DEBUG:
+  if DO_MD5 :
     # compute a MD5 of NEW deb
     p=os.popen('md5sum '+TD+'NEW.file')
     a=p.readline()
@@ -995,7 +1004,7 @@ def do_delta(olddeb,newdeb,delta,TD):
     delta_files(p+'.old',p+'.new')
     os.rename(TD+p+'.faked.gz',TD+o)
     script.write("mv "+p+".new '"+o[:-3]+"' ;  gzip "+gzip_flags+" '"+o[:-3]+"'\n")
-    if DEBUG > 2 :  script_md5_check_file(o)
+    if DEBUG > 1 :  script_md5_check_file(o)
     os.unlink(TD+p+'.new.gz')
     
   ########### helper sh functions for script, for delta_tar()
@@ -1469,11 +1478,10 @@ def do_delta(olddeb,newdeb,delta,TD):
     if VERBOSE > 2: print '   ar leftover character: ',repr(s)
     append_NEW_file(s)
 
-  if DEBUG > 1 and newdeb_md5sum :
+  #this is done already from the receiving end
+  if DEBUG > 2 and newdeb_md5sum :
     script_md5_check_file("NEW.file",md5=newdeb_md5sum)
-
-
-
+  
   #script is done
   script.close()
 
@@ -1751,7 +1759,7 @@ def do_deltas(debs):
         except:
           (typ, value, trace)=sys.exc_info()
           print " *** Error while creating delta  ",delta,": ",str(typ),str(value)
-          if DEBUG>1:
+          if DEBUG :
             print traceback.print_tb(trace)
           if os.path.exists(delta):
             os.unlink(delta)
@@ -1773,7 +1781,7 @@ def do_deltas(debs):
             rmtree(T)
             continue
 
-        if DEBUG > 1:
+        if DEBUG :
           rmtree(T)
           T=tempo()
           pret=None
@@ -1789,7 +1797,7 @@ def do_deltas(debs):
           except:
             (typ, value, trace)=sys.exc_info()
             print " *** Error while testing delta  ",delta,": ",str(typ),str(value)
-            if DEBUG>1:
+            if DEBUG > 1:
               print traceback.print_tb(trace)
             if os.path.exists(delta):
               os.unlink(delta)
@@ -2010,7 +2018,7 @@ def delta_upgrade():
           except:
             (typ, value, trace)=sys.exc_info()
             print " *** Error while applying delta for ",name,": ",str(typ),str(value)
-            if DEBUG>1:
+            if DEBUG > 1:
               print traceback.print_tb(trace)
             if os.path.exists(newdeb):
               os.unlink(newdeb)
@@ -2194,15 +2202,15 @@ def delta_upgrade():
         out.write(s)
         if a + 0.5 < time.time() :
           a=time.time()
-          sys.stderr.write("%d%% (%4s/s) for ...%s \r" % \
+          sys.stderr.write("%d%% (%4s/s) %s \r" % \
                            (100*j / total_len,
                             SizeToStr((j+len_downloaded)/(a+conn_time)),\
-                            uri[-50:]))
+                            os.path.basename(uri)[:50] ))
         s=r.read(1024)
       out.close()
       r.close()
       conn_time+=time.time()
-      sys.stderr.write("Downloaded: ...%s \n" % uri[-60:])
+      sys.stderr.write("Downloaded:  %s\n" % os.path.basename(uri) )
       os.rename(outnametemp,outname)
       #FIXME this is incorrect by 1024 bytes
       return  conn_time , (j+len_downloaded)
@@ -2264,7 +2272,7 @@ def delta_upgrade():
       abs_delta_name= DEB_DIR+'/'+delta_name
       if os.path.exists(abs_delta_name):
         l=os.path.getsize(abs_delta_name)
-        print 'Present ',uri,r.status
+        print 'Already here: ',abs_delta_name
         available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
         continue
       r,tempname = download_1k_uri(uri,abs_delta_name)
