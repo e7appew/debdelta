@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.82 2006/07/06 16:57:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.83 2006/07/07 11:55:35 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -196,6 +196,8 @@ else:
 def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
 
+TMPDIR = os.getenv('TMPDIR') or '/tmp'
+
 if KEEP:
   def unlink(a):
     if VERBOSE > 4: print ' would unlink ',a
@@ -205,11 +207,8 @@ if KEEP:
     if VERBOSE > 4: print ' would rm -r ',a
 else:
   def __wrap__(a,cmd):
-    t=os.getenv('TMPDIR')
-    if t == None:
-      t='/tmp'
     c=cmd.__name__+"("+a+")"
-    if a[ : len(t)+4 ] != t+'/tmp' :
+    if a[ : len(TMPDIR)+9 ] != TMPDIR+'/debdelta' :
       raise DebDeltaError,'Internal error! refuse to  '+c
     try:
       cmd(a)
@@ -356,15 +355,7 @@ def version_demangle(v):
     return v
   
 def tempo():
-  TD = abspath(tempfile.mkdtemp())
-  t=os.getenv('TMPDIR')
-  if t == None:
-    t='/tmp'
-  #this is fascist but still I do not trust my code
-  # and if this fails, then __wrap_ fails as well
-  if TD[ : len(t) ] != t :
-    raise DebDeltaError; ('Sorry I do not like the temp dir "%s"' % TD)
-  #
+  TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
   for i in 'OLD','NEW','PATCH' :
     os.mkdir(TD+'/'+i)
   if  VERBOSE > 2 or KEEP :  print 'Temporary in '+TD
@@ -388,10 +379,7 @@ def die(s=None):
 def system(a,TD):
   if type(a) != StringType :
     a=string.join(a,' ')
-  t=os.getenv('TMPDIR')
-  if t == None:
-    t='/tmp'
-  if VERBOSE and TD[: (len(t)+4) ] != t+'/tmp' :
+  if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
     print 'Warning "system()" in ',TD,' for ',a
   ret = os.system("cd '" +TD +"' ; "+a)  
   if ret == 2:
