@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.92 2006/07/07 20:12:56 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.93 2006/07/07 20:21:05 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2299,7 +2299,7 @@ def delta_upgrade():
         continue
       
       if not r:
-        no_delta.append( (deb_uri, newdeb) )
+        no_delta.append(deb_uri)
         continue
       
       r,tempname = r
