@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.94 2006/07/07 20:24:25 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.95 2006/07/07 20:42:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -451,7 +451,22 @@ def _scan_delta_info_(TD):
       p.close()
     return info
 
-def do_patch(delta,olddeb,newdeb,TD, info=None):
+
+def scan_diversions():
+  f=open('/var/lib/dpkg/diversions')
+  d={}
+  a=1
+  while 1:
+    a=f.readline()
+    if not a: break
+    a=de_n(a)
+    b=de_n(f.readline())
+    p=de_n(f.readline())
+    d[a]=(b,p)
+  f.close()
+  return d
+
+def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -532,6 +547,78 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
             die( 'Error : in debdelta , '+a+' = ' +params[a] +\
                  '\nin old/installed deb, '+a+' = ' +dpkg_params[a])
 
+  ### some auxiliary routines, separated to make code more readable
+
+  def dpkg_L_faster(pa,diversions):
+    " 'diversions' must be prepared by scan_diversions() "
+    s=[]
+    f=open('/var/lib/dpkg/info/'+pa+'.list')
+    while 1:
+      a=f.readline()
+      if not a: break
+      a=de_n(a)
+      if a in diversions:
+        b,p= diversions[a]
+        if p != pa:    s.append((a,b))
+        else:     s.append((a,a))
+      else: s.append((a,a))
+    f.close()
+    return s
+
+  def dpkg_L(pa):
+    s=[]
+    p=os.popen('env -i dpkg -L '+pa)
+    a=p.readline()
+    while a:
+      a=de_n(a)
+      #support diversions
+      if a[:26] == 'package diverts others to:':
+        continue
+      if s and a[:11] == 'diverted by' or  a[:20] == 'locally diverted to:':
+        orig,divert=s.pop()
+        i = a.index(':')
+        divert = a[i+2:]
+        s.append( (orig,divert) )
+      else:
+        s.append( (a,a) )
+      a=p.readline()
+    p.close()
+    return s
+
+  def _symlink_data_tree(pa,TD,diversions):
+    if diversions:
+      s=dpkg_L_faster(pa,diversions)
+    else:
+      s=dpkg_L(pa)
+    for orig,divert in s:          
+      if os.path.isfile(divert) and not os.path.islink(divert) :            
+        a=make_parents(TD+'/OLD/DATA'+orig)
+        if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
+        os.symlink(divert, a)
+      else:
+        if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
+
+
+  def chmod_add(n,m):
+    "same as 'chmod ...+...  n '"
+    om=S_IMODE(os.stat(n)[ST_MODE])
+    nm=om | m
+    if nm != om :
+      if VERBOSE > 1 : print ' Performing chmod ',n,oct(om),oct(nm)
+      os.chmod(n,nm)
+  
+  def _fix_data_tree_(TD):
+    for (dirpath, dirnames, filenames) in os.walk(TD+'OLD/DATA'):
+      chmod_add(dirpath,  S_IRUSR | S_IWUSR| S_IXUSR  )
+      for i in filenames:
+        i=os.path.join(dirpath,i)
+        if os.path.isfile(i):
+          chmod_add(i,  S_IRUSR |  S_IWUSR )
+      for i in dirnames:
+        i=os.path.join(dirpath,i)
+        chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
+
+
   ###see into parameters: the patch may need extra info and data
   for a in params:
     if 'unpack-old' == a:
@@ -544,47 +631,10 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
         pa=params['OLD/Package']
-        s=[]
-        p=os.popen('env -i dpkg -L '+pa)
-        a=p.readline()
-        while a:
-          a=de_n(a)
-          #support diversions
-          if a[:26] == 'package diverts others to:':
-            continue
-          if s and a[:11] == 'diverted by' or  a[:20] == 'locally diverted to:':
-            orig,divert=s.pop()            
-            i = a.index(':')
-            divert = a[i+2:]
-            s.append( (orig,divert) )
-          else:
-            s.append( (a,a) )
-          a=p.readline()
-        p.close()        
-        for orig,divert in s:          
-          if os.path.isfile(divert) and not os.path.islink(divert) :            
-            a=make_parents(TD+'/OLD/DATA'+orig)
-            if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
-            os.symlink(divert, a)
-          else:
-            if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
+        _symlink_data_tree(pa,TD,diversions)
       else:
         system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
-        def chmod_add(n,m):
-          om=S_IMODE(os.stat(n)[ST_MODE])
-          nm=om | m
-          if nm != om:
-            if VERBOSE > 1 : print ' Performing chmod ',n,oct(om),oct(nm)
-            os.chmod(n,nm)
-        for (dirpath, dirnames, filenames) in os.walk(TD+'OLD/DATA'):
-          chmod_add(dirpath,  S_IRUSR | S_IWUSR| S_IXUSR  )
-          for i in filenames:
-            i=os.path.join(dirpath,i)
-            if os.path.isfile(i):
-              chmod_add(i,  S_IRUSR |  S_IWUSR )
-          for i in dirnames:
-            i=os.path.join(dirpath,i)
-            chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
+        _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
         if olddeb == '/':
           if not os.path.isdir(TD+'OLD/CONTROL'):
@@ -1785,7 +1835,7 @@ def do_deltas(debs):
           T=tempo()
           pret=None
           try:
-            pret=do_patch(delta,old['File'],None ,T, info_delta)
+            pret=do_patch(delta,old['File'],None ,T, info=info_delta)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
             if not  s.retriable :
@@ -1945,6 +1995,7 @@ def delta_upgrade():
   cache=apt.Cache()
   cache.upgrade()
 
+  diversions=scan_diversions()
 
   if DIR == None:
     if os.getuid() == 0:
@@ -2008,7 +2059,7 @@ def delta_upgrade():
           if VERBOSE>=2 : print ' Now patching for: ',name
           T=tempo()
           try:
-            ret=do_patch(delta,'/',newdeb ,T)
+            ret=do_patch(delta,'/',newdeb ,T, diversions=diversions)
             if VERBOSE == 0 : print 'Created ',newdeb,'   '
           except KeyboardInterrupt:
             if os.path.exists(newdeb):
