@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.84 2006/07/07 11:56:06 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.85 2006/07/07 11:57:01 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -395,7 +395,7 @@ def check_deb(f):
     die('Error: '+f+ ' does not seem to be a Debian package ')
   p.close()
 
-def check_diff(f):
+def check_is_delta(f):
   if not  os.path.isfile(f) :
     die('Error: '+f + ' does not exist.')
   p=open(f)
@@ -457,7 +457,7 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
     
   start_sec = time.time()
   
-  check_diff(delta)
+  check_is_delta(delta)
 
   if olddeb != '/':
       check_deb(olddeb)
@@ -1823,7 +1823,7 @@ if action == 'patch':
     T=tempo()
     try:
         delta=abspath(argv[0])
-        check_diff(delta)
+        check_is_delta(delta)
         print_delta_info(delta,T)
     except DebDeltaError,s:
         print  str(s)
