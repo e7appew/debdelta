@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.93 2006/07/07 20:21:05 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.94 2006/07/07 20:24:25 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2020,12 +2020,12 @@ def delta_upgrade():
             print ' Error: applying of delta for ',name,'failed: ',str(s)
             if os.path.exists(newdeb):
               os.unlink(newdeb)
-            no_delta.append(deb_uri)
+            no_delta.append( (deb_uri, newdeb) )
           except:
             puke( " *** Error while applying delta for "+name+": ")
             if os.path.exists(newdeb):
               os.unlink(newdeb)
-            no_delta.append(deb_uri)
+            no_delta.append( (deb_uri, newdeb) )
           else:
             debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
@@ -2272,6 +2272,7 @@ def delta_upgrade():
                                            Archive=p.candidateOrigin[0].archive,
                                            PackageName=p.name)
       if delta_uri_base == None:
+        no_delta.append( (deb_uri, newdeb) )
         continue
 
       deltas_conn=conn_by_url(delta_uri_base)
@@ -2299,7 +2300,7 @@ def delta_upgrade():
         continue
       
       if not r:
-        no_delta.append(deb_uri)
+        no_delta.append( (deb_uri, newdeb) )
         continue
       
       r,tempname = r
@@ -2339,7 +2340,7 @@ def delta_upgrade():
         c=pickle.dumps(  (name, abs_delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
     else:
-      no_delta.append(deb_uri)
+      no_delta.append( (deb_uri, newdeb) )
 
   #terminate queue
   os.write(qin,'\t\t\t')
@@ -2353,8 +2354,8 @@ def delta_upgrade():
     print ' Downloading deltas done, downloading debs while waiting for patching thread.'
   while threads:
     while no_delta:
-      uri = no_delta.pop()
-      r=download_uri(uri , DEB_DIR+'/'+os.path.basename(uri), debs_down_time, debs_down_size )
+      uri, newdeb  = no_delta.pop()
+      r=download_uri(uri , newdeb, debs_down_time, debs_down_size )
       if isinstance(r, httplib.HTTPException) :
         if VERBOSE : print ' You may wish to rerun, to get also: ',uri
         continue
