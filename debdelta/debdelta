@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.91 2006/07/07 20:08:16 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.92 2006/07/07 20:12:56 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2255,7 +2255,8 @@ def delta_upgrade():
       
       arch=dpkg_params['Architecture']      
       
-      newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
+      #newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
+      newdeb=os.path.basename(deb_uri)
       if os.path.exists(DEB_DIR+'/'+newdeb) or \
              os.path.exists('/var/cache/apt/archives/'+newdeb):
         if VERBOSE > 1 : print  'Already downloaded: ',newdeb
