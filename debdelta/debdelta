@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.90 2006/07/07 20:03:14 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.91 2006/07/07 20:08:16 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -402,6 +402,12 @@ def check_is_delta(f):
   if p.read(8) != "!<arch>\n" :
     die('Error: '+f+ ' does not seem to be a Debian delta ')
   p.close()
+
+def puke(s,e=''):
+  (typ, value, trace)=sys.exc_info()
+  if VERBOSE or e == '':    print s,e,str(typ),str(value)
+  else: print s,e
+  if DEBUG : print traceback.print_tb(trace)
 
 #################################################################### apply patch
 
@@ -1753,10 +1759,7 @@ def do_deltas(debs):
           print 'KeyboardInterrupt'
           raise SystemExit(2)
         except:
-          (typ, value, trace)=sys.exc_info()
-          print " *** Error while creating delta  ",delta,": ",str(typ),str(value)
-          if DEBUG :
-            print traceback.print_tb(trace)
+          puke( " *** Error while creating delta  "+delta+": ")
           if os.path.exists(delta):
             os.unlink(delta)
         
@@ -1795,10 +1798,7 @@ def do_deltas(debs):
             print 'KeyboardInterrupt'
             raise SystemExit(2)
           except:
-            (typ, value, trace)=sys.exc_info()
-            print " *** Error while testing delta  ",delta,": ",str(typ),str(value)
-            if DEBUG > 1:
-              print traceback.print_tb(trace)
+            puke(" *** Error while testing delta  "+delta+": ")
             if os.path.exists(delta):
               os.unlink(delta)
           
@@ -1842,7 +1842,7 @@ if action == 'patch':
         rmtree(T)
         raise SystemExit(1)
     except :
-        print " Unexpected error:",  sys.exc_info()[0]
+        puke( " Unexpected error: " )
         rmtree(T)
         raise SystemExit(1)
     rmtree(T)
@@ -2022,10 +2022,7 @@ def delta_upgrade():
               os.unlink(newdeb)
             no_delta.append(deb_uri)
           except:
-            (typ, value, trace)=sys.exc_info()
-            print " *** Error while applying delta for ",name,": ",str(typ),str(value)
-            if DEBUG > 1:
-              print traceback.print_tb(trace)
+            puke( " *** Error while applying delta for "+name+": ")
             if os.path.exists(newdeb):
               os.unlink(newdeb)
             no_delta.append(deb_uri)
@@ -2133,8 +2130,12 @@ def delta_upgrade():
       assert(uri_p[0] == 'http')
       re=copy(HTTP_USER_AGENT)
       re["Range"] =  "bytes=0-1023"
-      conn.request("GET", urllib.quote(uri_p[2]),headers=re)
-      r = conn.getresponse()
+      try:
+        conn.request("GET", urllib.quote(uri_p[2]),headers=re)
+        r = conn.getresponse()
+      except httplib.HTTPException,e:
+        puke('Connection error: ',e)
+        return e
       #print '1K Content-Range', r.getheader('Content-Range') #HACK
       if r.status == 206:
         outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
@@ -2144,7 +2145,7 @@ def delta_upgrade():
         _http_whine_(uri,r)
         r.read()
         r.close()
-        return False, False
+        return False
       if os.path.exists(outnametemp) and os.path.getsize(outnametemp) >= 1023 :
         r.read()
         r.close()
@@ -2177,8 +2178,12 @@ def delta_upgrade():
         ##re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(t))
         ####re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(t))
         re["Range"] =  "bytes=%li-" % ( (long(l)-1) )
-      conn.request("GET", urllib.quote(uri_p[2]),headers=re)
-      r = conn.getresponse()
+      try:
+        conn.request("GET", urllib.quote(uri_p[2]),headers=re)
+        r = conn.getresponse()
+      except httplib.HTTPException,e:
+        puke( 'Connection error: ',e)
+        return e
       if not ( r.status == 200 or ( r.status == 206 and l != None ) ):
         if VERBOSE : _http_whine_(uri,r)
         r.read()
@@ -2286,16 +2291,23 @@ def delta_upgrade():
         print 'Already here: ',abs_delta_name
         available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
         continue
-      r,tempname = download_1k_uri(uri,abs_delta_name)
-      #print '1K down? ',r and r.status,uri
-      if r:
-        if r.status == 206:
-          a,b,l = _parse_ContentRange(r)
-        else:
-          l=int(r.getheader('content-length'))
-        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname  ) )
+      r = download_1k_uri(uri,abs_delta_name)
+
+      if  isinstance(r, httplib.HTTPException) :
+        if VERBOSE : print ' You may wish to rerun, to get also: ',uri
+        continue
+      
+      if not r:
+        no_delta.append( (deb_uri, newdeb) )
+        continue
+      
+      r,tempname = r
+      
+      if r.status == 206:
+        a,b,l = _parse_ContentRange(r)
       else:
-        no_delta.append(deb_uri)
+        l=int(r.getheader('content-length'))
+      available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname  ) )
 
 
   available_deltas.sort()
@@ -2311,8 +2323,11 @@ def delta_upgrade():
       
     if not os.path.exists(abs_delta_name):
       r=download_uri(uri , abs_delta_name , deltas_down_time,deltas_down_size)
-      if r == None:
+      if r == None or r == False:
         print 'Disappeared ?? ',uri
+      elif isinstance(r, httplib.HTTPException) :
+        if VERBOSE : print ' You may wish to rerun, to get also: ',uri
+        continue
       else:
         deltas_down_time = r[0]
         deltas_down_size = r[1]
@@ -2339,6 +2354,9 @@ def delta_upgrade():
     while no_delta:
       uri = no_delta.pop()
       r=download_uri(uri , DEB_DIR+'/'+os.path.basename(uri), debs_down_time, debs_down_size )
+      if isinstance(r, httplib.HTTPException) :
+        if VERBOSE : print ' You may wish to rerun, to get also: ',uri
+        continue
       if r:
         debs_down_time = r[0]
         debs_down_size = r[1]
