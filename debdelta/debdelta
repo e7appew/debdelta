@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.87 2006/07/07 12:01:56 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.88 2006/07/07 12:04:27 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2058,14 +2058,14 @@ def delta_upgrade():
     for s in secs:
       opt=config.options(s)
       if 'delta_uri' not in opt:
-        print 'Error!! config file section ',s,'does not contain delta_uri'
+        print 'Error!! sources.conf section ',s,'does not contain delta_uri'
         raise SystemExit(1)
       for a in dictio:
         if a not in opt or dictio[a] != config.get( s, a) :
           break
       return  config.get( s, 'delta_uri' )
     if VERBOSE:
-      print 'Warning: no configured source for', repr(dictio)
+      print 'Warning: sources.conf does not provide a server for', repr(dictio)
   
   
   ################################################# various HTTP facilities
