@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.88 2006/07/07 12:04:27 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.89 2006/07/07 12:41:53 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -600,9 +600,9 @@ def do_patch(delta,olddeb,newdeb,TD, info=None):
 
   if DO_MD5:
     if 'NEW/MD5sum' in params:
-      if VERBOSE > 1 : print ' verifying MD5  for ',os.path.basename(newdeb)
+      if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
       system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
-    else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb)
+    else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
 
   if newdeb:
       shutil.move(TD+'NEW.file',newdeb)
