@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.86 2006/07/07 11:59:07 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.87 2006/07/07 12:01:56 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1746,6 +1746,12 @@ def do_deltas(debs):
           if not s.retriable :
             p=open(delta+'-fails','w')
             p.close()
+        except KeyboardInterrupt:
+          if os.path.exists(delta):
+            os.unlink(delta)
+          rmtree(T)
+          print 'KeyboardInterrupt'
+          raise SystemExit(2)
         except:
           (typ, value, trace)=sys.exc_info()
           print " *** Error while creating delta  ",delta,": ",str(typ),str(value)
@@ -1784,6 +1790,10 @@ def do_deltas(debs):
               p.close()              
               if os.path.exists(delta):
                 os.unlink(delta)
+          except KeyboardInterrupt:
+            rmtree(T)
+            print 'KeyboardInterrupt'
+            raise SystemExit(2)
           except:
             (typ, value, trace)=sys.exc_info()
             print " *** Error while testing delta  ",delta,": ",str(typ),str(value)
@@ -2000,6 +2010,12 @@ def delta_upgrade():
           try:
             ret=do_patch(delta,'/',newdeb ,T)
             if VERBOSE == 0 : print 'Created ',newdeb,'   '
+          except KeyboardInterrupt:
+            if os.path.exists(newdeb):
+              os.unlink(newdeb)
+            thread.interrupt_main()
+            rmtree(T)
+            return
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
             if os.path.exists(newdeb):
