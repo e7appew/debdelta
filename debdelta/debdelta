@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.96 2006/07/09 07:22:34 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.97 2006/07/09 08:21:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -588,7 +588,7 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
       #unpack control.tar.gz
       system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',TD)
   #then we check for the conformance
-  if  DEBUG:
+  if  DEBUG or olddeb != '/':
       #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
       dpkg_params={}
       b=params['OLD/Package']
@@ -1224,7 +1224,7 @@ def do_delta(olddeb,newdeb,delta,TD):
   time_corr=0
 
   ####################  vvv     delta_tar    vvv ###########################
-  def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}):
+  def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}, chunked_p=True):
     " compute delta of two tar files, and prepare the script consequently"
     assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
     if os.path.exists(TD+'OLD/mega_cat'):
@@ -1429,9 +1429,9 @@ def do_delta(olddeb,newdeb,delta,TD):
         script_md5_check_file("OLD/mega_cat")
       #progressive mega_cat
       a=mega_cat.tell()
-      if (a >=  max_chunk_size * chunk_discount) or \
+      if chunked_p and ((a >=  max_chunk_size * chunk_discount) or \
          (a >= max_chunk_size * chunk_discount * 0.9 and one_old_file ) or \
-         (a>0 and (a+newtarinfo.size) >= max_chunk_size * chunk_discount ):
+         (a>0 and (a+newtarinfo.size) >= max_chunk_size * chunk_discount )):
         #provide some old unused files, if any
         while one_old_file:
           w="OLD/"+CWD+"/"+one_old_file
@@ -1489,6 +1489,7 @@ def do_delta(olddeb,newdeb,delta,TD):
       rmtree(TD+'/OLD/'+CWD)
     if os.path.getsize(TD+'OLD/mega_cat') > 0 :
       if progressive_new_offset > 0 :
+        assert(chunked_p)
         mega_cat_chunk(progressive_new_offset, os.path.getsize(TD+new_filename))
       else:
         delta_files('OLD/mega_cat',new_filename)
@@ -1554,7 +1555,8 @@ def do_delta(olddeb,newdeb,delta,TD):
         if a not in dpkg_keeps_controls:
           skip.append(a)
       #delta it
-      delta_tar(o,n,'CONTROL',skip)
+      #never chunked .. otherwise the first file in the ar will not be '0'!
+      delta_tar(o,n,'CONTROL',skip, chunked_p=False)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       o = 'OLD/'+name
