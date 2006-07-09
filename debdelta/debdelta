@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.98 2006/07/09 08:42:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.99 2006/07/09 17:02:02 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2045,6 +2045,55 @@ elif action == 'deltas' :
 
   
 ##################################################### delta-upgrade
+
+class predictor:
+  def __init__():
+    s=os.path.expanduser('~/.debdelta/upgrade.db')
+    if not os.path.exists(s) and DEBUG < 2 :
+      self.upgrade_stats=None
+      self.patch_time_predictor=patch_time_predictor_simple
+    else:
+      if not os.path.exists(s):
+        print 'Creating: ',s
+      make_parents(s)
+      import shelve
+      self.upgrade_stats=shelve.open(s)
+      self.patch_time_predictor=patch_time_predictor_math
+
+  def patch_time_predictor_math(p,t=None):
+    "Predicts time to patch. If t is given, adapts."
+    #save delta info
+    n=p['NEW/Package']
+    d=copy(p)
+    d['LocalDeltaTime']=t
+    upgrade_stats['Package:'+n]=d
+    #
+    if 'PatchTime' not in p:
+      return None
+    ut=float(p[ 'PatchTime'])
+    #
+    s='ServerID'
+    if s not in p :
+      return patch_time_predictor_simple(p,t)
+    s=s+':'+p[s]
+    if s not in upgrade_stats:
+      r=1
+      if 'ServerBogomips' in p :
+        r=   float(p['ServerBogomips']) / BOGOMIPS
+      upgrade_stats[s]={ 'PatchSpeedRatio' : r }
+    r=upgrade_stats[s]['PatchSpeedRatio']
+    if t:
+      nr =  0.8 * r + 0.2 * (  t / ut )
+      a=upgrade_stats[s]
+      a['PatchSpeedRatio'] = nr
+      upgrade_stats[s]=a
+      #upgrade_stats.sync()
+      #if VERBOSE > 1 :
+      #  print ' Upstream ',ut,'PatchSpeedRatio from ',r,' to ',nr
+      #  print upgrade_stats[s]['PatchSpeedRatio']
+    return r * ut
+
+
     
 def delta_upgrade():
   original_cwd = os.getcwd()
@@ -2076,7 +2125,7 @@ def delta_upgrade():
   from apt import SizeToStr
 
   cache=apt.Cache()
-  cache.upgrade()
+  cache.upgrade(True)
 
   diversions=scan_diversions()
 
@@ -2375,7 +2424,7 @@ def delta_upgrade():
       out.close()
       r.close()
       conn_time+=time.time()
-      sys.stderr.write("Downloaded:  %s\n" % os.path.basename(uri) )
+      sys.stderr.write("Downloaded:  %s \n" % os.path.basename(uri) )
       os.rename(outnametemp,outname)
       #FIXME this is incorrect by 1024 bytes
       return  conn_time , (j+len_downloaded)
@@ -2473,7 +2522,7 @@ def delta_upgrade():
       #FIXME may check that parameters are conformant to what we expect
 
       available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname  ) )
-
+  ## end of first merry-go-round
 
   available_deltas.sort()
 
@@ -2511,6 +2560,7 @@ def delta_upgrade():
         os.write(qin, c + '\t' )
     else:
       no_delta.append( (deb_uri, newdeb) )
+  ## end of second merry-go-round
 
   #terminate queue
   os.write(qin,'\t\t\t')
@@ -2533,6 +2583,8 @@ def delta_upgrade():
         debs_down_time = r[0]
         debs_down_size = r[1]
     time.sleep(0.2)
+
+  #save predictor...
   
   for i in http_conns:
     http_conns[i].close()
