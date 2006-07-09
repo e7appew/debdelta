@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.97 2006/07/09 08:21:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.98 2006/07/09 08:42:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -254,7 +254,7 @@ def parse_dist(f,d):
     a=f.readline()
 
 
-def scan_control(p,params,prefix=None,info=None):
+def scan_control(p,params=None,prefix=None,info=None):
   if prefix == None:
     prefix = ''
   else:
@@ -265,9 +265,10 @@ def scan_control(p,params,prefix=None,info=None):
     if a[:4] in ('Pack','Vers','Arch','Stat','Inst','File'):
       if info != None :
         info.append(prefix+a)
-      i=a.index(':')
-      assert(a[i:i+2] == ': ')
-      params[prefix+a[:i]] = a[i+2:]
+      if params != None:
+        i=a.index(':')
+        assert(a[i:i+2] == ': ')
+        params[prefix+a[:i]] = a[i+2:]
     a=p.readline()
 
 def append_info(delta,info,TD):
@@ -511,19 +512,21 @@ def patch_check_tmp_space(params,olddeb):
     print '(Warning... Installed size unknown...)'
     return True
   free=freespace(TMPDIR)
+  if free == None : return True
+  free = free / 1024
   if olddeb == '/':
     instsize=int(params['NEW/Installed-Size'])
     #the last action of the script is to gzip the data.tar, so
     if 'NEW/Size' in params :
-      instsize += int(params['NEW/Size'])
+      instsize += int(params['NEW/Size']) / 1024
     else:
       instsize = instsize * 1.8
   else:
     instsize=int(params['NEW/Installed-Size'])+int(params['OLD/Installed-Size'])
   instsize +=  2**13
-  if free and free < ( instsize * 1024  ) :
+  if free <  instsize :
     return 'not enough disk space (%dkB) in %s for applying delta (needs %dkB).' % \
-        ( int(free/1024) , TMPDIR, instsize )
+        ( int(free) , TMPDIR, instsize )
   else:
     return True
 
@@ -588,6 +591,11 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
       #unpack control.tar.gz
       system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',TD)
   #then we check for the conformance
+  if olddeb != '/' and 'OLD/Size' in params:
+    olddebsize = os.stat(olddeb)[ST_SIZE]
+    if olddebsize != int(params['OLD/Size']):
+      raise DebDeltaError('Old deb size is '+str(olddebsize)+' instead of '+params['OLD/Size'])
+  
   if  DEBUG or olddeb != '/':
       #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
       dpkg_params={}
@@ -596,7 +604,7 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
         p=os.popen('env -i dpkg -s '+b)
       else:        
         p=open(TD+'OLD/CONTROL/control')
-      scan_control(p,dpkg_params,'OLD')
+      scan_control(p,params=dpkg_params,prefix='OLD')
       p.close()
       if  olddeb == '/' :
         if 'OLD/Status' not in dpkg_params:
@@ -605,7 +613,7 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
           die('Error: package %s is not installed, status is %s.'
             % ( b , dpkg_params['OLD/Status'] ) )
       for a in  params:
-        if a[:3] == 'OLD' and a != 'OLD/Installed-Size':
+        if a[:3] == 'OLD' and a != 'OLD/Installed-Size' and a != 'OLD/Size':
           if a not in dpkg_params:
             die('Error parsing old control file , parameter %s not found' % a)
           elif  params[a] != dpkg_params[a] :
@@ -719,6 +727,12 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
   system('/bin/sh -e '+a+' PATCH/patch.sh', TD)
   script_time += time.time()
 
+  #then we check for the conformance
+  if  'NEW/Size' in params:
+    newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
+    if newdebsize != int(params['NEW/Size']):
+      raise DebDeltaError('New deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
+
   if DO_MD5:
     if 'NEW/MD5sum' in params:
       if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
@@ -758,7 +772,8 @@ def do_delta(olddeb,newdeb,delta,TD):
   olddeb=abspath(olddeb)
   check_deb(olddeb)
   os.symlink(olddeb,TD+'/OLD.file')
-
+  olddebsize = os.stat(olddeb)[ST_SIZE]
+  
   newdeb=abspath(newdeb)
   check_deb(newdeb)
   os.symlink(newdeb,TD+'/NEW.file')
@@ -786,7 +801,6 @@ def do_delta(olddeb,newdeb,delta,TD):
     
   ##### unpack control.tar.gz, scan control, write  parameters
   info=[]
-  params={}
   for o in 'OLD', 'NEW' :
       os.mkdir(TD+o+'/CONTROL')
       #unpack control.tar.gz
@@ -794,13 +808,16 @@ def do_delta(olddeb,newdeb,delta,TD):
       ## scan control
       p=open(TD+'/'+o+'/CONTROL/control')
       s=[]
-      scan_control(p,params,o,s)
+      scan_control(p,params=None,prefix=o,info=s)
       p.close()
       if  VERBOSE  :
         sys.stdout.write(o+': '+join([o[4:] for o in  s],' ')+'\n')
       info = info + s
       del s,p
-
+  info.append('OLD/Size: '+str(olddebsize))
+  info.append('NEW/Size: '+str(newdebsize))
+  params=info_2_db(info)
+  
   if DO_MD5 :
     # compute a MD5 of NEW deb
     p=os.popen('md5sum '+TD+'NEW.file')
@@ -1684,7 +1701,7 @@ def do_deltas(debs):
       p.close()
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
-      scan_control(p,info_by_file[f])
+      scan_control(p,params=info_by_file[f])
       p.close()
       info_by_file[f]['File'] = of
       pa=info_by_file[f]['Package']
