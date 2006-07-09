@@ -79,7 +79,7 @@ from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXU
 from os.path import abspath
 from copy    import copy
 
-from types import StringType, FunctionType, TupleType, ListType
+from types import StringType, FunctionType, TupleType, ListType, DictType
 
 import shutil
 
@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.95 2006/07/07 20:42:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.96 2006/07/09 07:22:34 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -411,6 +411,8 @@ def puke(s,e=''):
 
 #################################################################### apply patch
 
+########### info auxiliary routines
+
 def _delta_info_unzip_(TD):
   if os.path.exists(TD+'PATCH/info.gz'):
     system('gunzip PATCH/info.gz',TD)
@@ -419,17 +421,56 @@ def _delta_info_unzip_(TD):
   elif os.path.exists(TD+'PATCH/patch.sh.bz2'):
     system('bunzip2 PATCH/patch.sh.bz2',TD)  
 
-def print_delta_info(delta,TD):
+def get_info_slow(delta,T=None):
+  if T:
+    TD=T
+  else:
+    TD=tempo()
   if TD[-1] != '/':
     TD = TD + '/'
   delta=abspath(delta)
   system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
          TD+'/PATCH')
   _delta_info_unzip_(TD)
-  info=_scan_delta_info_(TD)
-  for s in info:
-      print ' info: ',s
-      
+  info = _scan_delta_info_(TD)
+  if T == None:
+    rmtree(TD)
+  return info
+
+def get_info_fast(delta):
+  f=open(delta)
+  s=f.readline()
+  if  "!<arch>\n" != s :
+    raise DebdeltaError('This is not a debdelta file: '+delta)
+  s = f.read(60)
+  if len(s) != 60 :
+    print '(Warning, cannot get info from  truncated: '+delta+' )'
+    return None
+  if s[:4] != 'info':
+    #old style debdelta, with info in patch.sh
+    if VERBOSE > 1 :
+      print '(Warning, cannot get info from old style: '+delta+' )'
+    return None
+  ##parse ar segment
+  ## see /usr/include/ar.h
+  if s[-2:] != '`\n' :
+    print '(Warning, cannot get info from  '+delta+' , format not known)'
+    return None
+  l=int(s[ -12:-2 ])
+  s=f.read(l)
+  if len(s) != l :
+    print '(Warning, cannot get info from truncated: '+delta+' )'
+    return None
+  info= s.split('\n')
+  f.close()
+  return info
+
+def get_info(delta,TD=None):
+  info=get_info_fast(delta)
+  if info == None:
+    info=get_info_slow(delta,TD)
+  return info
+
 def _scan_delta_info_(TD):
     info=[]
     if os.path.isfile(TD+'PATCH/info'):
@@ -451,6 +492,41 @@ def _scan_delta_info_(TD):
       p.close()
     return info
 
+def info_2_db(info):
+  params={}
+  for s in info:
+    if ':' in s:
+      i=s.index(':')  
+      params[s[:i]] = s[i+2:]
+    elif s:
+      params[s] = True
+  return params
+
+########### other auxiliary routines
+
+def patch_check_tmp_space(params,olddeb):
+  if type(params) != DictType:
+    params=info_2_db(params)
+  if 'NEW/Installed-Size' not in params or 'OLD/Installed-Size' not in params:
+    print '(Warning... Installed size unknown...)'
+    return True
+  free=freespace(TMPDIR)
+  if olddeb == '/':
+    instsize=int(params['NEW/Installed-Size'])
+    #the last action of the script is to gzip the data.tar, so
+    if 'NEW/Size' in params :
+      instsize += int(params['NEW/Size'])
+    else:
+      instsize = instsize * 1.8
+  else:
+    instsize=int(params['NEW/Installed-Size'])+int(params['OLD/Installed-Size'])
+  instsize +=  2**13
+  if free and free < ( instsize * 1024  ) :
+    return 'not enough disk space (%dkB) in %s for applying delta (needs %dkB).' % \
+        ( int(free/1024) , TMPDIR, instsize )
+  else:
+    return True
+
 
 def scan_diversions():
   f=open('/var/lib/dpkg/diversions')
@@ -465,6 +541,8 @@ def scan_diversions():
     d[a]=(b,p)
   f.close()
   return d
+
+############ do_patch
 
 def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
   if TD[-1] != '/':
@@ -497,24 +575,11 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
   #lets scan parameters, to see what it does and what it requires
   if info == None :
       info=_scan_delta_info_(TD)
-  params={}
-  for s in info:
-    if ':' in s:
-      i=s.index(':')  
-      params[s[:i]] = s[i+2:]
-    else:
-      params[s] = True
+  params=info_2_db(info)
   ###
-  if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
-    free=freespace(TD)
-    if olddeb == '/':
-      instsize=int(params['NEW/Installed-Size'])
-    else:
-      instsize=int(params['NEW/Installed-Size'])+int(params['OLD/Installed-Size'])
-    instsize +=  2**14
-    if free and free < ( instsize * 1024  ) :
-      raise DebDeltaError(' Not enough disk space (%dkB) for applying delta (needs %dkB).' % \
-          ( int(free/1024) , instsize ), True )
+  s=patch_check_tmp_space(params,olddeb)
+  if s != True:
+    raise DebDeltaError('Sorry, '+s, True )
 
   if olddeb != '/':
       os.symlink(olddeb,TD+'/OLD.file')
@@ -1882,20 +1947,19 @@ if action == 'patch':
     elif  len(argv) == 0  :
       print ' need a  filename ;  try --help'
       raise SystemExit(1)
-    T=tempo()
     try:
         delta=abspath(argv[0])
         check_is_delta(delta)
-        print_delta_info(delta,T)
+        info=get_info(delta)
+        for s in info:
+          if s:
+            print ' info: ',s
     except DebDeltaError,s:
         print  str(s)
-        rmtree(T)
         raise SystemExit(1)
     except :
         puke( " Unexpected error: " )
-        rmtree(T)
         raise SystemExit(1)
-    rmtree(T)
     raise SystemExit(0)
   #really patch
   if len(argv) != 3 :
@@ -2036,7 +2100,18 @@ def delta_upgrade():
 
   start_sec = time.time()
   len_deltas=0
-      
+
+  ##### predictor for patching time
+  def patch_time_predictor_simple(p,t=None):
+    if 'ServerBogomips' in p and 'PatchTime' in p:
+      return (float(p[ 'PatchTime']) / BOGOMIPS * float(p['ServerBogomips']) )
+    else:
+      return None
+    
+  #this is a dictonary (key is package name) of parameters of deltas
+  #(to add some math in the future)
+  params_of_delta={}
+  
   (qout,qin)=os.pipe()
   thread_returns={}
   ######################## thread_do_patch
@@ -2061,6 +2136,10 @@ def delta_upgrade():
           try:
             ret=do_patch(delta,'/',newdeb ,T, diversions=diversions)
             if VERBOSE == 0 : print 'Created ',newdeb,'   '
+            if name in params_of_delta :
+              p= params_of_delta[name]
+              p=patch_time_predictor_simple(p)
+              if p and VERBOSE > 1 : print '   (Predicted %.3f sec )'  % p
           except KeyboardInterrupt:
             if os.path.exists(newdeb):
               os.unlink(newdeb)
@@ -2341,7 +2420,10 @@ def delta_upgrade():
       abs_delta_name= DEB_DIR+'/'+delta_name
       if os.path.exists(abs_delta_name):
         l=os.path.getsize(abs_delta_name)
-        print 'Already here: ',abs_delta_name
+        if VERBOSE > 1 : print 'Already here: ',abs_delta_name
+        s=get_info_fast(abs_delta_name)
+        if s:
+          params_of_delta[p.name]=info_2_db(s)
         available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
         continue
       r = download_1k_uri(uri,abs_delta_name)
@@ -2360,6 +2442,17 @@ def delta_upgrade():
         a,b,l = _parse_ContentRange(r)
       else:
         l=int(r.getheader('content-length'))
+      s=get_info_fast(tempname)
+      if s:
+        params_of_delta[p.name]=info_2_db(s)
+        s=patch_check_tmp_space(params_of_delta[p.name],  '/')
+        if s != True:
+          print p.name,' : sorry '+s
+          #neither download deb nor delta..
+          #the user may wish to free space and retry
+          continue
+      #FIXME may check that parameters are conformant to what we expect
+
       available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname  ) )
 
 
@@ -2373,7 +2466,14 @@ def delta_upgrade():
     if  not os.path.exists(abs_delta_name) and os.path.exists(tempname) and os.path.getsize(tempname) == delta_len:
       print 'just Rename ',name
       os.rename(tempname,abs_delta_name)
-      
+
+    if name in params_of_delta:
+      s=patch_check_tmp_space(params_of_delta[name],  '/')
+      if s != True:
+        print name,' : sorry, '+s
+        #argh, we ran out of space in meantime
+        continue
+    
     if not os.path.exists(abs_delta_name):
       r=download_uri(uri , abs_delta_name , deltas_down_time,deltas_down_size)
       if r == None or r == False:
