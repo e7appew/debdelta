@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.99 2006/07/09 17:02:02 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.100 2006/07/12 15:10:13 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -271,13 +271,15 @@ def scan_control(p,params=None,prefix=None,info=None):
         params[prefix+a[:i]] = a[i+2:]
     a=p.readline()
 
-def append_info(delta,info,TD):
+def append_info(delta,info):
   #new style : special info file
-  infofile=open(TD+'/PATCH/info','w')
+  TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
+  infofile=open(TD+'/info','w')
   for i in info:
     infofile.write(i+'\n')
   infofile.close()
-  system(['ar','rSi','0',delta, 'info'],  TD+'/PATCH')
+  system(['ar','rSi','0',delta, 'info'],  TD)
+  rmtree(TD)
 
 def make_parents(f):
   assert(f[0] == '/')
@@ -366,11 +368,19 @@ def tempo():
 
 
 class DebDeltaError(Exception):  #should derive from (Exception):http://docs.python.org/dev/whatsnew/pep-352.html
+  # Subclasses that define an __init__ must call Exception.__init__
+  # or define self.args.  Otherwise, str() will fail.
   def __init__(self,s,retriable=False):
-    self.__str = s
+    self.args = s
     self.retriable = retriable
   def __str__(self):
-    return self.__str
+    if DEBUG:
+      if self.retriable:
+        return self.args + ' (retriable) '
+      else:
+        return self.args + ' (non retriable) '
+    else:
+      return self.args
 
 def die(s=None):
   #if s : sys.stderr.write(s+'\n')
@@ -547,7 +557,19 @@ def scan_diversions():
 
 ############ do_patch
 
-def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
+def do_patch(delta,olddeb,newdeb, info=None, diversions=None):
+  try:
+    T=tempo()
+    r=do_patch_(delta,olddeb,newdeb,TD=T, info=info, diversions=diversions)
+  except:
+    rmtree(T)
+    if newdeb and os.path.exists(newdeb):
+      os.unlink(newdeb)
+    raise
+  rmtree(T)
+  return r
+
+def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -579,6 +601,7 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
   if info == None :
       info=_scan_delta_info_(TD)
   params=info_2_db(info)
+  
   ###
   s=patch_check_tmp_space(params,olddeb)
   if s != True:
@@ -758,8 +781,19 @@ def do_patch(delta,olddeb,newdeb,TD, info=None, diversions=None):
   return (newdeb,elaps)
 
 ##################################################### compute delta
+def do_delta(olddeb,newdeb,delta):
+  try:
+    T=tempo()
+    r=do_delta_(olddeb,newdeb,delta,TD=T)
+  except:
+    if delta and os.path.exists(delta):
+      os.unlink(delta)
+    rmtree(T)
+    raise
+  rmtree(T)
+  return r
 
-def do_delta(olddeb,newdeb,delta,TD):
+def do_delta_(olddeb,newdeb,delta,TD):
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -1875,30 +1909,21 @@ def do_deltas(debs):
         
         if VERBOSE: print 'Creating :',delta
         ret= None
-        T=tempo()          
         try:
-          ret=do_delta(old['File'],new['File'], delta, T)
+          ret=do_delta(old['File'],new['File'], delta)
         except DebDeltaError,s:
-          if os.path.exists(delta):
-            os.unlink(delta)
           if not VERBOSE: print 'Creating: ',delta
           print ' Creation of delta failed, reason: ',str(s)
           if not s.retriable :
             p=open(delta+'-fails','w')
             p.close()
         except KeyboardInterrupt:
-          if os.path.exists(delta):
-            os.unlink(delta)
-          rmtree(T)
           print 'KeyboardInterrupt'
           raise SystemExit(2)
         except:
           puke( " *** Error while creating delta  "+delta+": ")
-          if os.path.exists(delta):
-            os.unlink(delta)
-        
+
         if ret == None:
-          rmtree(T)
           continue
         
         (delta_, percent, elaps, info_delta) = ret
@@ -1911,24 +1936,20 @@ def do_deltas(debs):
             if VERBOSE : print ' Warning, too big!'
             p=open(delta+'-too-big','w')
             p.close()
-            rmtree(T)
             continue
 
         if DEBUG :
-          rmtree(T)
-          T=tempo()
           pret=None
           try:
-            pret=do_patch(delta,old['File'],None ,T, info=info_delta)
+            pret=do_patch(delta,old['File'],None , info=info_delta)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
             if not  s.retriable :
               p=open(delta+'-fails','w')
-              p.close()              
+              p.close()
               if os.path.exists(delta):
                 os.unlink(delta)
           except KeyboardInterrupt:
-            rmtree(T)
             print 'KeyboardInterrupt'
             raise SystemExit(2)
           except:
@@ -1937,13 +1958,11 @@ def do_deltas(debs):
               os.unlink(delta)
           
           if pret == None:
-            rmtree(T)
             continue
           
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
-        append_info(delta,info_delta,T)
-        rmtree(T)
+        append_info(delta,info_delta)
     #delete debs in --alt that are too old
     if CLEAN_ALT:
       while l>=0:
@@ -1990,57 +2009,40 @@ if action == 'patch':
   if newdeb == '/dev/null':
       newdeb = None
 
-  T=tempo()
   try:
-    do_patch(abspath(argv[0]), abspath(argv[1]), newdeb ,T)
+    do_patch(abspath(argv[0]), abspath(argv[1]), newdeb)
   except DebDeltaError,s:
-    print 'Failed: ',str(s)
-    if newdeb and os.path.exists(newdeb):
-      os.unlink(newdeb)
-    rmtree(T)
+    puke( 'Failed: ',s)
     raise SystemExit(2)
   except KeyboardInterrupt:
-    if newdeb and os.path.exists(newdeb):
-      os.unlink(newdeb)
-    rmtree(T)
     raise SystemExit(0)
   except:
-    if newdeb and os.path.exists(newdeb):
-      os.unlink(newdeb)
-    rmtree(T)
-    raise
+    puke( 'Failed: ',s)
+    raise SystemExit(3)
   
 elif action == 'delta' :
   if len(argv) != 3 :  
     print ' need 3 filenames ;  try --help'
     raise SystemExit(1)
-    
-  T=tempo()
+  
   delta=abspath(argv[2])
   try:
-    r = do_delta(abspath(argv[0]), abspath(argv[1]), delta ,T)  
+    r = do_delta(abspath(argv[0]), abspath(argv[1]), delta)
   except DebDeltaError,s:
-    print 'Failed: ',str(s)
-    rmtree(T)
-    if os.path.exists(delta):
-      os.unlink(delta)
+    puke('Failed: ',s)
     raise SystemExit(2)
   except KeyboardInterrupt:
-    if os.path.exists(delta):
-      os.unlink(delta)
+    raise SystemExit(0)
   except:
-    if os.path.exists(delta):
-      os.unlink(delta)
     raise
   (delta, percent, elaps, info) = r
   append_info(delta,info,T)
-  rmtree(T)
   
 elif action == 'deltas' :
   try:
     do_deltas(argv)
-  except DebDeltaError,s:
-    print 'Failed: ',str(s)
+  except e:
+    puke( 'debdeltas failed: ',e)
     raise SystemExit(2)
 
   
@@ -2094,8 +2096,15 @@ class predictor:
     return r * ut
 
 
-    
 def delta_upgrade():
+  try:
+    delta_upgrade_()
+  except:
+    puke('Failed: ')
+    raise SystemExit(2)
+  raise SystemExit(0)
+  
+def delta_upgrade_():
   original_cwd = os.getcwd()
 
   import  thread , pickle, urllib, fcntl, atexit, signal, ConfigParser
@@ -2175,7 +2184,7 @@ def delta_upgrade():
       return (float(p[ 'PatchTime']) / BOGOMIPS * float(p['ServerBogomips']) )
     else:
       return None
-    
+
   #this is a dictonary (key is package name) of parameters of deltas
   #(to add some math in the future)
   params_of_delta={}
@@ -2200,36 +2209,26 @@ def delta_upgrade():
           print 'Would create: ',newdeb,'   '
         else:
           if VERBOSE>=2 : print ' Now patching for: ',name
-          T=tempo()
           try:
-            ret=do_patch(delta,'/',newdeb ,T, diversions=diversions)
+            ret=do_patch(delta,'/',newdeb , diversions=diversions)
             if VERBOSE == 0 : print 'Created ',newdeb,'   '
+          except KeyboardInterrupt:
+            thread.interrupt_main()
+            return
+          except DebDeltaError,s:
+            print ' Error: applying of delta for ',name,'failed: ',str(s)
+            no_delta.append( (deb_uri, newdeb) )
+          except:
+            puke( " *** Error while applying delta for "+name+": ")
+            no_delta.append( (deb_uri, newdeb) )
+          else:
             if name in params_of_delta :
               p= params_of_delta[name]
               p=patch_time_predictor_simple(p)
               if p and VERBOSE > 1 : print '   (Predicted %.3f sec )'  % p
-          except KeyboardInterrupt:
-            if os.path.exists(newdeb):
-              os.unlink(newdeb)
-            thread.interrupt_main()
-            rmtree(T)
-            return
-          except DebDeltaError,s:
-            print ' Error: applying of delta for ',name,'failed: ',str(s)
-            if os.path.exists(newdeb):
-              os.unlink(newdeb)
-            no_delta.append( (deb_uri, newdeb) )
-          except:
-            puke( " *** Error while applying delta for "+name+": ")
-            if os.path.exists(newdeb):
-              os.unlink(newdeb)
-            no_delta.append( (deb_uri, newdeb) )
-          else:
             debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
               os.unlink(delta)
-          if os.path.exists(T):
-            rmtree(T)
         debs_time += time.time()
       threads.pop()
       if VERBOSE > 1 : print ' Patching thread ended , bye bye. '
