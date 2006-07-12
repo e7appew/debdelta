@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.100 2006/07/12 15:10:13 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.101 2006/07/12 20:14:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2048,51 +2048,85 @@ elif action == 'deltas' :
   
 ##################################################### delta-upgrade
 
-class predictor:
-  def __init__():
-    s=os.path.expanduser('~/.debdelta/upgrade.db')
-    if not os.path.exists(s) and DEBUG < 2 :
-      self.upgrade_stats=None
-      self.patch_time_predictor=patch_time_predictor_simple
+class Predictor:
+  def __init__(self):
+    import shelve
+    #self.shelve=shelve
+    if os.getuid() == 0:
+      self.dir=os.path.expanduser('/var/lib/debdelta')
+    else:
+      self.dir=os.path.expanduser('~/.debdelta')
+    s=os.path.join(self.dir,'upgrade.db')
+    if not os.path.exists(s):
+      print 'Creating: ',s
+    make_parents(s)
+    self.upgrade_stats=shelve.open(s)
+
+    s=os.path.join(self.dir,'packages_stats.db')
+    
+    if not os.path.exists(s) and DEBUG == 0 :
+      self.package_stats = None
     else:
       if not os.path.exists(s):
         print 'Creating: ',s
       make_parents(s)
-      import shelve
-      self.upgrade_stats=shelve.open(s)
-      self.patch_time_predictor=patch_time_predictor_math
+      self.package_stats=shelve.open(s)
 
-  def patch_time_predictor_math(p,t=None):
-    "Predicts time to patch. If t is given, adapts."
+    self.patch_time_predictor=self.patch_time_predictor_math
+
+  ##### predictor for patching time
+  def patch_time_predictor_simple(self,p):
+    if 'ServerBogomips' in p and 'PatchTime' in p:
+      return (float(p[ 'PatchTime']) / BOGOMIPS * float(p['ServerBogomips']) )
+    else:
+      return None
+
+  def update(self,p,t):
     #save delta info
-    n=p['NEW/Package']
-    d=copy(p)
-    d['LocalDeltaTime']=t
-    upgrade_stats['Package:'+n]=d
-    #
+    if self.package_stats:
+      n=p['NEW/Package']
+      d=copy(p)
+      d['LocalDeltaTime']=t
+      self.package_stats[n]=d
+    
+    s='ServerID'
+    if s not in p :
+      return
+    s=s+':'+p[s]
+    if s not in self.upgrade_stats:
+      r=1
+      if 'ServerBogomips' in p :
+        r=   float(p['ServerBogomips']) / BOGOMIPS
+      self.upgrade_stats[s]={ 'PatchSpeedRatio' : r }
+
+    if 'PatchTime' not in p:
+      return
+    ut=float(p[ 'PatchTime'])
+
+    r=self.upgrade_stats[s]['PatchSpeedRatio']
+    
+    nr =  0.95 * r + 0.05 * (  t / ut )
+    a=self.upgrade_stats[s]
+    a['PatchSpeedRatio'] = nr
+    self.upgrade_stats[s]=a
+    if VERBOSE > 1 :
+      print ' Upstream ',ut,'PatchSpeedRatio from ',r,' to ',nr
+      print self.upgrade_stats[s]['PatchSpeedRatio']
+      
+  def patch_time_predictor_math(self,p):
+    "Predicts time to patch."
     if 'PatchTime' not in p:
       return None
     ut=float(p[ 'PatchTime'])
     #
     s='ServerID'
     if s not in p :
-      return patch_time_predictor_simple(p,t)
+      return self.patch_time_predictor_simple(p)
     s=s+':'+p[s]
-    if s not in upgrade_stats:
-      r=1
-      if 'ServerBogomips' in p :
-        r=   float(p['ServerBogomips']) / BOGOMIPS
-      upgrade_stats[s]={ 'PatchSpeedRatio' : r }
-    r=upgrade_stats[s]['PatchSpeedRatio']
-    if t:
-      nr =  0.8 * r + 0.2 * (  t / ut )
-      a=upgrade_stats[s]
-      a['PatchSpeedRatio'] = nr
-      upgrade_stats[s]=a
-      #upgrade_stats.sync()
-      #if VERBOSE > 1 :
-      #  print ' Upstream ',ut,'PatchSpeedRatio from ',r,' to ',nr
-      #  print upgrade_stats[s]['PatchSpeedRatio']
+    if s not in self.upgrade_stats:
+      return self.patch_time_predictor_simple(p)
+
+    r=self.upgrade_stats[s]['PatchSpeedRatio']
     return r * ut
 
 
@@ -2178,12 +2212,9 @@ def delta_upgrade_():
   start_sec = time.time()
   len_deltas=0
 
+
   ##### predictor for patching time
-  def patch_time_predictor_simple(p,t=None):
-    if 'ServerBogomips' in p and 'PatchTime' in p:
-      return (float(p[ 'PatchTime']) / BOGOMIPS * float(p['ServerBogomips']) )
-    else:
-      return None
+  predictor = Predictor()
 
   #this is a dictonary (key is package name) of parameters of deltas
   #(to add some math in the future)
@@ -2224,8 +2255,11 @@ def delta_upgrade_():
           else:
             if name in params_of_delta :
               p= params_of_delta[name]
-              p=patch_time_predictor_simple(p)
-              if p and VERBOSE > 1 : print '   (Predicted %.3f sec )'  % p
+              name,elaps=ret
+              predictor.update(p,elaps)
+              if VERBOSE > 1 :
+                t=predictor.patch_time_predictor(p)
+                if t: print '   (Predicted %.3f sec )'  % t
             debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
               os.unlink(delta)
