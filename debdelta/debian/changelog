@@ -1,3 +1,15 @@
+debdelta (0.16) unstable; urgency=low
+  
+  * debdelta_upgrade
+    - is faster (particularly on small debs - by avoiding calls to dpkg)
+    - avoids downloading deltas if not enough disk space for applying them
+    - identifies itself as User-Agent =  'Debian debdelta-upgrade'
+  * md5 generation and verification may be disabled by option  --no-md5
+  * now temporary directories are of the form  ${TMPDIR}/debdeltaXXXXXX
+  * better checking for exceptions
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 12 Jul 2006 22:15:51 +0200
+
 debdelta (0.15) unstable; urgency=low
 
   * debdelta : 

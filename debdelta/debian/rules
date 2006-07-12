@@ -40,6 +40,7 @@ binary-arch:	checkroot build
 	rm -rf $(D)
 	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(D)/usr/lib/debdelta
 	#install -m 755 debian/postinst debian/prerm $(D)/DEBIAN
+	install -m 755 debian/postrm $(D)/DEBIAN/
 	$(INSTALL_PROGRAM)  minigzip $(D)/usr/lib/debdelta/minigzip
 	cp  debdelta $(D)/usr/bin/debdelta
 	install -d $(D)/etc/debdelta

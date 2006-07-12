@@ -55,8 +55,8 @@ set out "${PREFIX}sizes_by_size.png"
 set ylabel "% of patch size / new deb size"
 set xlabel "installed size of new deb (in kB)"
 set logscale x 2
-set arrow from 1600,${sizes_by_instsize_avg} to 3200,${sizes_by_instsize_avg} nohead 
-set label "avg ${sizes_by_instsize_avg}" at  3200,${sizes_by_instsize_avg}
+set arrow from 1600,${sizes_by_instsize_avg} to 3200,${sizes_by_instsize_avg} nohead  front
+set label "avg ${sizes_by_instsize_avg}" at  3200,${sizes_by_instsize_avg} front
 plot "$sizes_by_instsize" w points
 set out "${PREFIX}speeds_by_size.png"
 unset arrow
@@ -66,10 +66,10 @@ set xlabel "installed size of new deb (in kB)"
 set logscale x 2
 set yrange [4:16384]
 set logscale y 2
-set arrow from 1600,${delta_speeds_by_instsize_avg} to 3200,${delta_speeds_by_instsize_avg} nohead 
-set label "create avg ${delta_speeds_by_instsize_avg}" at  5000,${delta_speeds_by_instsize_avg}
-set arrow from 1600,${patch_speeds_by_instsize_avg} to 3200,${patch_speeds_by_instsize_avg} nohead 
-set label "patch avg ${patch_speeds_by_instsize_avg}" at 3200,${patch_speeds_by_instsize_avg} 
+set arrow from 1600,${delta_speeds_by_instsize_avg} to 3200,${delta_speeds_by_instsize_avg} nohead front
+set label "create avg ${delta_speeds_by_instsize_avg}" at  5000,${delta_speeds_by_instsize_avg} front
+set arrow from 1600,${patch_speeds_by_instsize_avg} to 3200,${patch_speeds_by_instsize_avg} nohead  front
+set label "patch avg ${patch_speeds_by_instsize_avg}" at 3200,${patch_speeds_by_instsize_avg} front
 plot "$delta_speeds_by_instsize" w points title "create" , "$patch_speeds_by_instsize" w points title "patch" 
 quit
 EOF
