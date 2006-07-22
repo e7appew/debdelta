@@ -1,3 +1,11 @@
+debdelta (0.17) unstable; urgency=medium
+
+  * debpatch : since 'echo -n -e' doesnt works with all shells ,
+	  patch script will test for it
+  * debdelta : use bash to run patch script (until #379227 is fixed )
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 22 Jul 2006 22:15:51 +0200
+
 debdelta (0.16) unstable; urgency=low
   
   * debdelta_upgrade
