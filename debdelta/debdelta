@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.101 2006/07/12 20:14:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.102 2006/07/23 09:15:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -329,19 +329,85 @@ def list_tar(f):
   p.close()
   return ar_list
 
+#####################################################################
 
-ALLOWED = '<>()[]{}.,;:!_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+ALLOWED = '<>()[]{}.,;:!_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
-def prepare_for_echo(s):
+ECHO_TEST = r"""c='\0151\0141'
+echo='echo -ne'
+if test c`$echo 'i'"$c" `o = ciiao  ; then
+ :
+else
+ echo='echo -n'
+ if test c`$echo  'i'"$c" `o = ciiao  ; then 
+  :
+ else
+  #echo WARNING : BUILTIN echo DOES NOT WORK OK
+  echo='/bin/echo -ne'
+  test c`$echo  'i'"$c" `o = ciiao  
+ fi
+fi
+"""
+
+def prepare_for_echo__(s):
+  assert ( type (s) == StringType )
   r=''
-  while s:
-    a=s[0]
-    s=s[1:]
+  shortquoted=False
+  for a in s:
     if a in ALLOWED :
       r += a
+      shortquoted = False
+    elif a in '0123456789' :
+      if shortquoted :
+        a = "\\" + ('000' +oct(ord(a)))[-4:]
+      shortquoted = False
+      r += a
     else:
-      r += "\\" + ( '0000' +oct(ord(a)))[-4:]
+      a = "\\" + oct(ord(a))
+      r += a
+      shortquoted = len(a) < 5
   return r
+
+def apply_prepare_for_echo(shell,repres):
+    a=ECHO_TEST  + " $echo '" + repres +  "' \n exit "
+    o,i=os.popen2(shell)
+    o.write(a)
+    o.close()
+    a=i.read()
+    i.close()
+    return a
+
+#ack! I wanted to use 'dash' as preferred shell, but bug 379227 stopped me
+SHELL = '/bin/bash'
+#check my code
+s='\x00'+'1ciao88\n77\r566'+'\x00'+'99\n'
+r=prepare_for_echo__(s)
+a=apply_prepare_for_echo(SHELL,r)
+if a != s :
+    print 'string='+repr(s)
+    print 'repres='+repr(r)
+    print 'shell='+SHELL
+    print 'output='+repr(a)
+    print 'Errror in prepare_for_echo.'
+    raise SystemExit(2)
+
+###
+
+def prepare_for_echo(s):
+    r=prepare_for_echo__(s)
+    if DEBUG > 1 :
+        a=apply_prepare_for_echo(SHELL,r)
+        if a != s:
+            print 'Errror in prepare_for_echo.'
+            if DEBUG or VERBOSE > 2 :
+                print 'string='+repr(s)
+                print 'repres='+repr(r)
+                print 'shell='+SHELL
+                print 'output='+repr(a)
+            raise SystemExit(2)
+    return r
+
+#####################################################################
 
 from string import join
 
@@ -382,10 +448,9 @@ class DebDeltaError(Exception):  #should derive from (Exception):http://docs.pyt
     else:
       return self.args
 
-def die(s=None):
+def die(s):
   #if s : sys.stderr.write(s+'\n')
   raise DebDeltaError,s
-
   
 def system(a,TD):
   if type(a) != StringType :
@@ -416,8 +481,8 @@ def check_is_delta(f):
 
 def puke(s,e=''):
   (typ, value, trace)=sys.exc_info()
-  if VERBOSE or e == '':    print s,e,str(typ),str(value)
-  else: print s,e
+  if VERBOSE or e == '':    print s,' : ',e,str(typ),str(value)
+  else: print s,' : ',e
   if DEBUG : print traceback.print_tb(trace)
 
 #################################################################### apply patch
@@ -747,7 +812,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
   a=''
   if VERBOSE > 3 : a = '-v'
   script_time = - time.time()
-  system('/bin/sh -e '+a+' PATCH/patch.sh', TD)
+  system(SHELL+' -e '+a+' PATCH/patch.sh', TD)
   script_time += time.time()
 
   #then we check for the conformance
@@ -1268,6 +1333,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   fake_tar_2nd=fake_tar_header_2nd()
   fake_tar_2nd_echo=prepare_for_echo(fake_tar_2nd)
   script.write("FTH='"+fake_tar_2nd_echo+"'\n")
+  script.write(ECHO_TEST)
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
   
@@ -1502,7 +1568,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #recreate also parts of the tar headers
       mega_cat.write(newtarinfo.name+fake_tar_2nd)
       s=prepare_for_echo(newtarinfo.name)
-      script.write("echo -n -e '"+ s +"'\"$FTH\" >> OLD/mega_cat\n")
+      script.write("$echo '"+ s +"'\"${FTH}\" >> OLD/mega_cat\n")
 
       if newtarinfo.isdir():
         if VERBOSE > 2 : print '   directory   in new : ', name
@@ -1557,7 +1623,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def append_NEW_file(s):
     'appends some data to NEW.file'
     s=prepare_for_echo(s)
-    script.write("echo -n -e '"+ s +"' >> NEW.file\n")
+    script.write("$echo '"+ s +"' >> NEW.file\n")
     
   #this following is actually
   #def delta_debs_using_old(old,new):
@@ -1632,7 +1698,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       script.write('cat '+n+cn+' >> NEW.file ;  rm '+n+'\n')
       unlink(TD+n)
     else:
-      die('internal error')
+      die('internal error j98')
     #pad new deb
     if extrachar :
       append_NEW_file(extrachar)
@@ -1918,10 +1984,9 @@ def do_deltas(debs):
             p=open(delta+'-fails','w')
             p.close()
         except KeyboardInterrupt:
-          print 'KeyboardInterrupt'
-          raise SystemExit(2)
+          raise
         except:
-          puke( " *** Error while creating delta  "+delta+": ")
+          puke( " *** Error while creating delta  "+delta)
 
         if ret == None:
           continue
@@ -1950,10 +2015,9 @@ def do_deltas(debs):
               if os.path.exists(delta):
                 os.unlink(delta)
           except KeyboardInterrupt:
-            print 'KeyboardInterrupt'
-            raise SystemExit(2)
+            raise
           except:
-            puke(" *** Error while testing delta  "+delta+": ")
+            puke(" *** Error while testing delta  "+delta)
             if os.path.exists(delta):
               os.unlink(delta)
           
@@ -1992,11 +2056,13 @@ if action == 'patch':
         for s in info:
           if s:
             print ' info: ',s
+    except (KeyboardInterrupt, SystemExit):
+        if DEBUG : puke('debpatch exited')
     except DebDeltaError,s:
         print  str(s)
         raise SystemExit(1)
     except :
-        puke( " Unexpected error: " )
+        puke( "Unexpected error" )
         raise SystemExit(1)
     raise SystemExit(0)
   #really patch
@@ -2011,14 +2077,11 @@ if action == 'patch':
 
   try:
     do_patch(abspath(argv[0]), abspath(argv[1]), newdeb)
-  except DebDeltaError,s:
-    puke( 'Failed: ',s)
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debpatch exited')
+  except Exception,s:
+    puke( 'debpatch failed',s)
     raise SystemExit(2)
-  except KeyboardInterrupt:
-    raise SystemExit(0)
-  except:
-    puke( 'Failed: ',s)
-    raise SystemExit(3)
   
 elif action == 'delta' :
   if len(argv) != 3 :  
@@ -2028,23 +2091,27 @@ elif action == 'delta' :
   delta=abspath(argv[2])
   try:
     r = do_delta(abspath(argv[0]), abspath(argv[1]), delta)
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debdeltas exited')
   except DebDeltaError,s:
     puke('Failed: ',s)
     raise SystemExit(2)
-  except KeyboardInterrupt:
-    raise SystemExit(0)
   except:
-    raise
-  (delta, percent, elaps, info) = r
-  append_info(delta,info,T)
+    puke('debdelta failed' )
+    raise SystemExit(3)
+  else:
+    (delta, percent, elaps, info) = r
+    append_info(delta,info,T)
   
 elif action == 'deltas' :
   try:
     do_deltas(argv)
-  except e:
-    puke( 'debdeltas failed: ',e)
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debdeltas exited')
+  except:
+    puke( 'debdeltas failed')
     raise SystemExit(2)
-
+  
   
 ##################################################### delta-upgrade
 
@@ -2053,7 +2120,7 @@ class Predictor:
     import shelve
     #self.shelve=shelve
     if os.getuid() == 0:
-      self.dir=os.path.expanduser('/var/lib/debdelta')
+      self.dir='/var/lib/debdelta'
     else:
       self.dir=os.path.expanduser('~/.debdelta')
     s=os.path.join(self.dir,'upgrade.db')
@@ -2129,14 +2196,6 @@ class Predictor:
     r=self.upgrade_stats[s]['PatchSpeedRatio']
     return r * ut
 
-
-def delta_upgrade():
-  try:
-    delta_upgrade_()
-  except:
-    puke('Failed: ')
-    raise SystemExit(2)
-  raise SystemExit(0)
   
 def delta_upgrade_():
   original_cwd = os.getcwd()
@@ -2651,7 +2710,15 @@ def delta_upgrade_():
 if action == 'delta-upgrade':
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
-  delta_upgrade()
+  try:
+    delta_upgrade_()
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debdelta-upgrade exited')
+  except:
+    puke('delta-upgrade failed')
+    raise SystemExit(2)
+  raise SystemExit(0)
+
 
 ##################################################### apt method
 
