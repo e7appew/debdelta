@@ -1,3 +1,9 @@
+debdelta (0.18) UNRELEASED; urgency=low
+
+  * debdelta-upgrade : retries on httplib errors
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sat, 29 Jul 2006 15:18:24 +0200
+
 debdelta (0.17) unstable; urgency=medium
 
   * debpatch : since 'echo -n -e' doesnt works with all shells ,

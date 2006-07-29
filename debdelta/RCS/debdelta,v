@@ -1,7 +1,8 @@
 head	1.102;
 access;
 symbols;
-locks; strict;
+locks
+	debdev:1.102; strict;
 comment	@# @;
 
 
