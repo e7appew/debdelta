@@ -1,10 +1,15 @@
-head	1.102;
+head	1.103;
 access;
 symbols;
 locks
-	debdev:1.102; strict;
+	debdev:1.103; strict;
 comment	@# @;
 
+
+1.103
+date	2006.09.07.18.47.01;	author debdev;	state Exp;
+branches;
+next	1.102;
 
 1.102
 date	2006.07.23.09.15.04;	author debdev;	state Exp;
@@ -521,21 +526,13 @@ desc
 @@
 
 
-1.102
+1.103
 log
-@do_patch() : add ECHO_TEST in script, to test if using 'echo -ne' or 'echo -n'
+@strip / from TMPDIR
 
-prepare_for_echo() : shorter quoted strings
+correct Predictor so that it really save stats
 
-apply_prepare_for_echo() :  check that they work
-
-SHELL is currently /bin/bash
-
-do_patch() : use SHELL in invoking PATCH/patch.sh
-
-----
-
-reviewed exception handling, corrected one error
+debdelta-upgrade : close and reopen connection on some errors
 @
 text
 @#!/usr/bin/python
@@ -664,7 +661,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.101 2006/07/12 20:14:36 debdev Exp debdev $"
+RCS_VERSION="$Id: debdelta,v 1.102 2006/07/23 09:15:04 debdev Exp debdev $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -736,7 +733,7 @@ else:
 def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
 
-TMPDIR = os.getenv('TMPDIR') or '/tmp'
+TMPDIR = ( os.getenv('TMPDIR') or '/tmp' ).rstrip('/')
 
 if KEEP:
   def unlink(a):
@@ -2656,28 +2653,28 @@ elif action == 'deltas' :
 ##################################################### delta-upgrade
 
 class Predictor:
+  package_stats = None
+  upgrade_stats = None
   def __init__(self):
     import shelve
     #self.shelve=shelve
     if os.getuid() == 0:
-      self.dir='/var/lib/debdelta'
+      basedir='/var/lib/debdelta'
     else:
-      self.dir=os.path.expanduser('~/.debdelta')
-    s=os.path.join(self.dir,'upgrade.db')
+      basedir=os.path.expanduser('~/.debdelta')
+    s=os.path.join(basedir,'upgrade.db')
     if not os.path.exists(s):
       print 'Creating: ',s
     make_parents(s)
-    self.upgrade_stats=shelve.open(s)
+    self.upgrade_stats=shelve.open(s,flag='c')
 
-    s=os.path.join(self.dir,'packages_stats.db')
+    s=os.path.join(basedir,'packages_stats.db')
     
-    if not os.path.exists(s) and DEBUG == 0 :
-      self.package_stats = None
-    else:
+    if  os.path.exists(s) or DEBUG :
       if not os.path.exists(s):
         print 'Creating: ',s
       make_parents(s)
-      self.package_stats=shelve.open(s)
+      self.package_stats=shelve.open(s,flag='c')
 
     self.patch_time_predictor=self.patch_time_predictor_math
 
@@ -2690,7 +2687,7 @@ class Predictor:
 
   def update(self,p,t):
     #save delta info
-    if self.package_stats:
+    if self.package_stats != None :
       n=p['NEW/Package']
       d=copy(p)
       d['LocalDeltaTime']=t
@@ -2868,17 +2865,37 @@ def delta_upgrade_():
       returns['debs_size']=debs_size
       returns['debs_time']=debs_time
 
-  import httplib
+  import socket, httplib
   from urlparse import urlparse
 
+  #################### manage connections
   #keeps a cache of all connections, by URL
   http_conns={}
-  def conn_by_url(url):
+  
+  def __host_by_url__(url):
     if url[:7] == 'http://' :
       url = urlparse(url)[1]
+    return url
+
+  def conn_by_url(url):
+    url=__host_by_url__(url)
     if url not in http_conns:
+      if (DEBUG or VERBOSE > 1) :
+        print '-Opening connection to: ',url
       http_conns[url] = httplib.HTTPConnection(url)
     return http_conns[url]
+  
+  def conn_close(url,fatal=False):
+    url=__host_by_url__(url)
+    conn=http_conns.get(url)
+    if fatal:
+      http_conns[url] = None
+    else:
+      del http_conns[url]
+    if conn != None :
+      if (DEBUG or VERBOSE > 1)  :
+        print '-Closing connection to: ',url
+      conn.close()
 
   def delta_uri_from_config(**dictio):
     secs=config.sections()
@@ -2955,16 +2972,18 @@ def delta_upgrade_():
 
   ###################################### download_1k_uri
   def download_1k_uri(uri,outname):
-      conn=conn_by_url(uri)
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
       re=copy(HTTP_USER_AGENT)
       re["Range"] =  "bytes=0-1023"
       try:
+        conn=conn_by_url(uri)
+        if conn == None : return
         conn.request("GET", urllib.quote(uri_p[2]),headers=re)
         r = conn.getresponse()
-      except httplib.HTTPException,e:
+      except (httplib.HTTPException, socket.error),e:
         puke('Connection error: ',e)
+        conn_close(uri)
         return e
       #print '1K Content-Range', r.getheader('Content-Range') #HACK
       if r.status == 206:
@@ -2989,7 +3008,6 @@ def delta_upgrade_():
 
   ###################################### download_uri
   def download_uri(uri,outname,conn_time,len_downloaded):
-      conn=conn_by_url(uri)
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
       outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
@@ -3009,11 +3027,24 @@ def delta_upgrade_():
         ####re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(t))
         re["Range"] =  "bytes=%li-" % ( (long(l)-1) )
       try:
+        conn=conn_by_url(uri)
+        if conn == None : return
         conn.request("GET", urllib.quote(uri_p[2]),headers=re)
         r = conn.getresponse()
-      except httplib.HTTPException,e:
-        puke( 'Connection error: ',e)
-        return e
+      except (httplib.HTTPException,socket.error),e:
+        if DEBUG or VERBOSE > 1 : puke( 'Connection error (retrying): ',e)
+        try:
+          conn_close(uri)
+          conn=conn_by_url(uri)
+          if conn == None : return
+          conn.request("GET", urllib.quote(uri_p[2]),headers=re)
+          r = conn.getresponse()
+        except (httplib.HTTPException,socket.error),e:
+          puke( 'Connection error (fatal): ',e)
+          try:
+            conn_close(uri,fatal=True)
+          except: pass
+          return e
       if not ( r.status == 200 or ( r.status == 206 and l != None ) ):
         if VERBOSE : _http_whine_(uri,r)
         r.read()
@@ -3046,7 +3077,7 @@ def delta_upgrade_():
       while s and j < total_len :
         j+=len(s)
         out.write(s)
-        if a + 0.5 < time.time() :
+        if not DEBUG and a + 0.5 < time.time() :
           a=time.time()
           sys.stderr.write("%d%% (%4s/s) %s \r" % \
                            (100*j / total_len,
@@ -3056,10 +3087,14 @@ def delta_upgrade_():
       out.close()
       r.close()
       conn_time+=time.time()
-      sys.stderr.write("Downloaded:  %s \n" % os.path.basename(uri) )
+      if DEBUG:
+        a = time.time() - a
+        print "Downloaded, time: %.2fsec speed: %4s/sec uri: %s " % (a , SizeToStr(total_len / (a+0.001)) , uri)
+      else:
+        sys.stderr.write("Downloaded:  %s \n" % os.path.basename(uri) )
       os.rename(outnametemp,outname)
       #FIXME this is incorrect by 1024 bytes
-      return  conn_time , (j+len_downloaded)
+      return  conn_time , (j+len_downloaded)      
 
   ###################################### end of HTTP stuff
   
@@ -3105,7 +3140,6 @@ def delta_upgrade_():
         no_delta.append( (deb_uri, newdeb) )
         continue
 
-      deltas_conn=conn_by_url(delta_uri_base)
       a=urlparse(delta_uri_base)
       assert(a[0] == 'http')
 
@@ -3128,7 +3162,7 @@ def delta_upgrade_():
         continue
       r = download_1k_uri(uri,abs_delta_name)
 
-      if  isinstance(r, httplib.HTTPException) :
+      if  r == None or isinstance(r, httplib.HTTPException) or isinstance(r, socket.error) :
         if VERBOSE : print ' You may wish to rerun, to get also: ',uri
         continue
       
@@ -3176,10 +3210,8 @@ def delta_upgrade_():
     
     if not os.path.exists(abs_delta_name):
       r=download_uri(uri , abs_delta_name , deltas_down_time,deltas_down_size)
-      if r == None or r == False:
-        print 'Disappeared ?? ',uri
-      elif isinstance(r, httplib.HTTPException) :
-        if VERBOSE : print ' You may wish to rerun, to get also: ',uri
+      if r == None or isinstance(r, httplib.HTTPException) :
+        if VERBOSE : print ' You may wish to rerun,  to get also: ',uri
         continue
       else:
         deltas_down_time = r[0]
@@ -3219,7 +3251,8 @@ def delta_upgrade_():
   #save predictor...
   
   for i in http_conns:
-    http_conns[i].close()
+    if http_conns[i] != None :
+      http_conns[i].close()
   
   elaps =  time.time() - start_sec
   print 'Delta-upgrade statistics:'
@@ -3366,6 +3399,105 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.102
+log
+@do_patch() : add ECHO_TEST in script, to test if using 'echo -ne' or 'echo -n'
+
+prepare_for_echo() : shorter quoted strings
+
+apply_prepare_for_echo() :  check that they work
+
+SHELL is currently /bin/bash
+
+do_patch() : use SHELL in invoking PATCH/patch.sh
+
+----
+
+reviewed exception handling, corrected one error
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.101 2006/07/12 20:14:36 debdev Exp debdev $"
+d199 1
+a199 1
+TMPDIR = os.getenv('TMPDIR') or '/tmp'
+d2119 2
+d2125 1
+a2125 1
+      self.dir='/var/lib/debdelta'
+d2127 2
+a2128 2
+      self.dir=os.path.expanduser('~/.debdelta')
+    s=os.path.join(self.dir,'upgrade.db')
+d2132 1
+a2132 1
+    self.upgrade_stats=shelve.open(s)
+d2134 1
+a2134 1
+    s=os.path.join(self.dir,'packages_stats.db')
+d2136 1
+a2136 3
+    if not os.path.exists(s) and DEBUG == 0 :
+      self.package_stats = None
+    else:
+d2140 1
+a2140 1
+      self.package_stats=shelve.open(s)
+d2153 1
+a2153 1
+    if self.package_stats:
+d2331 1
+a2331 1
+  import httplib
+d2334 1
+d2337 2
+a2338 1
+  def conn_by_url(url):
+d2341 4
+d2346 2
+d2350 12
+a2437 1
+      conn=conn_by_url(uri)
+d2443 2
+d2447 1
+a2447 1
+      except httplib.HTTPException,e:
+d2449 1
+a2473 1
+      conn=conn_by_url(uri)
+d2493 2
+d2497 14
+a2510 3
+      except httplib.HTTPException,e:
+        puke( 'Connection error: ',e)
+        return e
+d2543 1
+a2543 1
+        if a + 0.5 < time.time() :
+d2553 5
+a2557 1
+      sys.stderr.write("Downloaded:  %s \n" % os.path.basename(uri) )
+d2560 1
+a2560 1
+      return  conn_time , (j+len_downloaded)
+a2605 1
+      deltas_conn=conn_by_url(delta_uri_base)
+d2628 1
+a2628 1
+      if  isinstance(r, httplib.HTTPException) :
+d2676 2
+a2677 4
+      if r == None or r == False:
+        print 'Disappeared ?? ',uri
+      elif isinstance(r, httplib.HTTPException) :
+        if VERBOSE : print ' You may wish to rerun, to get also: ',uri
+d2717 2
+a2718 1
+    http_conns[i].close()
 @
 
 
