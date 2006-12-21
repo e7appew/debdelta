@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.104 2006/09/07 19:02:57 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.105 2006/12/21 13:02:11 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -142,14 +142,14 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5','--debug') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
 
   for  o , v  in  opts :
     if o == '-v' : VERBOSE += 1
-    elif o == '-d' : DEBUG += 1
+    elif o == '-d' or o == '--debug' : DEBUG += 1
     elif o == '-k' : KEEP = True
     elif o == '--no-act': ACT=False
     elif o == '--no-md5': DO_MD5=False
