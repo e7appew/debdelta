@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.105 2006/12/21 13:02:11 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.106 2007/04/13 09:49:03 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1055,11 +1055,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
       script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     #xdelta3
-    #crashes!
+    #http://code.google.com/p/xdelta/downloads/detail?name=xdelta30m.tar.gz
+    #used to crash
     #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
     elif algo == 'xdelta3' :
-      system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
-      script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      system(' ~/debdelta/xdelta30m/xdelta3 -9 -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30m/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
@@ -1077,6 +1078,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif algo == 'xdelta' :
       system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
       script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+    elif algo == 'jojodiff' :
+      system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
+      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     else: raise
     return p
 
