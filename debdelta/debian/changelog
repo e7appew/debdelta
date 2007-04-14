@@ -1,3 +1,11 @@
+debdelta (0.20) unstable; urgency=low
+
+  * added man pages. thanks  Pierre-yves Jégou (Closes: 376598)
+  * fix bug in name/len file matching when building
+    debdeltas (debdelta would die of "division by zero" sometimes)
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sat, 14 Apr 2007 09:26:07 +0200
+
 debdelta (0.19) unstable; urgency=low
 
   * Bug fix: append_info(delta,info,T) is wrong

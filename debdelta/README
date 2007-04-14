@@ -7,7 +7,7 @@ the changes between Debian packages.  This suite contains
 'debdelta-upgrade', that downloads debdeltas and use them to create
 all Debian packages needed for an 'apt-get upgrade'.
 
-debdelta is  Copyright (C) 2006 Andrea Mennucci
+debdelta is  Copyright (C) 2006-07 Andrea Mennucci
 
 debdelta is free software.  See the file COPYING for copying conditions.
 
@@ -23,9 +23,6 @@ minigzip is Copyright (C) 1995-2002 Jean-loup Gailly
 ---------- Description
 
 The debdelta  application suite is really composed of different applications.
-
-Warning: all these applications are still at a beta stage, do not run them as
-'root' user.
 
 ---- debdelta
 
@@ -58,7 +55,7 @@ It will generate delta files with names such as
  package_old-version_new-version_architecture.debdelta
 and put them in the directory where the new .deb is.
 
-If the delta exceeds ~70% of the deb, 'debdeltas' will delete it
+If the delta exceeds ~80% of the deb, 'debdeltas' will delete it
 and leave a stamp of the form
  package_old-version_new-version_architecture.debdelta-too-big
 
@@ -89,116 +86,69 @@ This is currently a hack; it should be replaced by an APT method
 (this is work in progress); but for this I need help from APT and python-apt
 authors.
 
-By default, debs are saved in /tmp/archives : do not forget to
-move them in /var/cache/apt/archives
+Example usage:
+# apt-get update && debdelta-upgrade && apt-get upgrade
+
+If run by a non-root user, debs are saved in /tmp/archives : do not
+ forget to move them in /var/cache/apt/archives
+
+debdelta-upgrade will also download .debs for which no delta is
+available (this is done in parallel to patching, to maximize speed).
+
+Work is in progress so  that debdelta-upgrade will actually choose if
+- download a delta and use it to create the .deb
+- download the deb
+depending on which one would be faster.
+Unfortunately, this decision must depend on a good model
+to predict the speed of patching... and this I still cannot
+achieve.
+
 
 -------------- Statistics
 
 I am currently running 'debdeltas' in a mirror that mirrors
 'etch' and 'sid' for i386. 
+The backend is currently bsdiff.
 
 Statistics are at
 http://tonelli.sns.it/pub/mennucc1/debdelta/histograms
 and daily logs at
 http://tonelli.sns.it/pub/mennucc1/debdelta/daily-logs/
 
-Currently, on average, debdeltas are 28% of the original .deb
-(28% is the ratio of the total size of the debdelta created / 
+Currently, in my mirror
+  96 % of deltas are <=80% of original;
+  of those, the average percent is  15% .
+(15% is the ratio of the total size of the debdelta created / 
  /  the total size of the .debs processed).
 
 In some cases, though, the benefit of using deltas is much more than that:
 for example, 'debdelta'  can express the difference between 'tetex-doc'
  3.0-17 and 3.0-18 into a delta of mere 260kB !
 
+------------ exact patching and exact recompression
+
+When debdelta recreates a .deb, it must be identical to the desired
+one (otherwise APT will refuse it when cheking signatures).
+
+Suppose a .deb has inside a huge file
+ /usr/share/doc/foobar/document.info.gz
+and this starts with a RCS tag ... then each time it
+is released, the file will be different even though
+just few bytes were changed.
+
+Another examples are manpages that start with the header
+containing the version of the command.
+
+So , to get good compression of the difference, I had
+to be able to gunzip those files, diff them,
+and gzip back them *exactly identical*.
+
+For this reason, I studied gzip formats, and I wrote in debdelta
+some python code that does the trick (90% of the times...).
+
 ------------- Tests and comparisons on backend binary delta difference compressors
-
-Debdelta is just a wrapper that analyzes the .deb files and prepares
-chunks of data to pass to a backend; the backend may be any binary
-delta difference compressor program. Chunks are ~ 4Mb in size, but
-note that (currently) chunks must contain at least one file, so if the
-original .deb contains large files, debdelta will generate large
-chunks (example: the 'gcl' package contains a file of ~ 20Mb size).
-
-Debdelta can use different programs as backend; I did many
-tests, using a pool of 'difficult' debs; results are in
+see README.txt and all files in
 http://tonelli.sns.it/pub/mennucc1/debdelta/tests
-
-So far I tested:
-
-bdiff
-http://www.webalice.it/g_pochini/bdiff/
-Comment: It is extremely slow!! and it performs bad.
-
-
-rdiff 0.9.7-1 
-(package in Debian)
-Average size: 111%
-Comment: On average, deltas are 10% larger than original .deb!
-Altough rsync is a wonderful tecnology, its rdiff counterpart is definitively
-not usable.
-
-
-zdelta 2.1
-http://cis.poly.edu/zdelta/
-Average size: 42%
-Delta speed: 495
-Patch speed: 828
-Comment: it is outperformed by xdelta, both in speed and in size
-
-
-xdelta3 30e
-http://xdelta.sf.net
-It is still too buggy, crashes in many cases (with "assertion failed")
-
-
-bsdiff 4.3-2   (tested with ~ 50Mb RAM limit)
-(package in Debian)
-Average size: 26%
-Delta speed: 97
-Patch speed: 761
-Comment: The king of delta compression; in my tests it achieves an
-average of 26% , so it is the best choice for archiving. But it is
-very slow, even when patching, so it may not be the best choice for
-people who download deltas instead of .debs: if an user has a slow
-CPU, it may be the case that patching would be so slow that the user
-would not gain any benefit w.r.t simply downloading the full
-.deb. Moreover delta creation uses a LOT of memory (even though I try
-to use small chunks of data), and is very slow on large files
-(i.e. when the .deb contains large files); for example, it took to 8
-hours to create a delta for package gcl !
-
-
-xdelta 1.1.3-6   (with bzip2 compression of deltas)
-(package in Debian)
-Average size: 33%
-Delta speed: 592
-Patch speed: 1602
-Comment: It is so fast that it may be a good replacement for bsdiff
-in many cases (since the difference in size is just an extra 7%); unfortunately
-it does not (currently) work on 64 bit CPUs.
-
-
-bdelta 0.1.0 
-http://deltup.sf.net
-Average size: 83%
-Delta speed: 437
-Patch speed: 1429
-Comment: it was supposed the delta engine behind deltup (that is used in Gentoo)
- it was left at a beta stage, and does not perform well enough
-
-
-diffball 0.7.2
-http://developer.berlios.de/projects/diffball/
-Average size: 76%
-Delta speed: 103
-Patch speed: 1741
-Comment: 
- It does not perform well; moreover,
- as bsdiff, it can be extremely slow on large files 
-
-
-Winners: bsdiff and xdelta
-
 
 -------------- Speed
 

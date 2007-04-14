@@ -1,0 +1,68 @@
+.TH DEBDELTAS "1" "april 2007" "debdelta" "User Commands"
+.SH NAME 
+debdeltas \- compute changes between Debian packages
+.SH SYNOPSIS
+.B debdeltas 
+[\fIOPTION\fR]... \fIFILES\fR ....
+.SH DESCRIPTION
+
+This program computes changes between many Debian packages FILES;
+FILES are grouped by package name and architecture; 
+for each group, N deltas are computed (see "-n" option);
+these are stored in many delta file; the location of
+the delta files is specified by the "--dir" option.
+
+.SH OPTIONS
+.TP
+\fB\-\-dir \fIDIR\fR  force saving of deltas in this DIR
+	(otherwise they go in the dir of the newer deb_file)
+.TP
+\fB\-\-alt \fIDIR\fR  for any cmdline argument, search for debs also in this dir
+.br
+In the above two options, if DIR ends in // , then the dirname
+of the cmdline argument will be appended to DIR, as well; this is
+useful when creating archives, since it can recreate the
+directory tree.
+.TP
+\fB\-n \fIN\fR 
+ how many deltas to produce for each unique package name (default 1)
+.TP
+.BI \--clean-deltas
+	delete deltas if newer deb is not in archive
+.TP
+.BI \--clean-alt
+	delete debs in --alt if too old (see -n )
+.TP
+\fB\-\-no\-md5\fR      do not include MD5 info in debdelta.
+.TP
+\fB\-\-needsold\fR
+create a patch that can only be used if the old .deb is available.
+.TP
+\fB\-M \fIMb\fR         maximum memory  to use (for 'bsdiff' or 'xdelta').
+.TP
+\fB\-v\fR            verbose (can be added multiple times).
+.TP
+\fB\-d\fR            add extra debugging checks.
+.TP
+\fB\-k\fR            keep temporary files (use for debugging).
+.SH SECURITY
+A Debian package that is recreated using debpatch is byte-by-byte
+identical to the original one; so the cryptographic
+archive authentication support for APT (see 
+.BR apt-secure (8)
+) may be used to assert that it can be trusted to be installed. Currently,
+though, the delta file itself is not cryptograhically protected.
+.SH "REPORTING BUGS"
+Report bugs to <mennucc1@debian.org>.
+.SH AUTHORS
+Debdelta was written and is copyright \(co 2006/07 Andrea Mennucci.
+.br
+This man page was written by Jegou Pierre-yves  <pierreyves.jeg@voila.fr>.
+.SH COPYING
+This is free software.  You may redistribute copies of it under the terms of
+the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.
+There is NO WARRANTY, to the extent permitted by law.
+.SH "SEE ALSO"
+.BR debpatch (1),
+.BR debdelta (1),
+.BR /usr/share/doc/debdelta/README.

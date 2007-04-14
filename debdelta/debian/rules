@@ -6,6 +6,7 @@ package = debdelta
 D = debian/tmp
 
 docdir = $(D)/usr/share/doc/$(package)
+mandir = $(D)/usr/share/man/man1/
 
 CC = gcc
 CFLAGS = -g -Wall
@@ -38,7 +39,7 @@ binary-indep:	checkroot build
 binary-arch:	checkroot build
 	$(checkdir)
 	rm -rf $(D)
-	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(D)/usr/lib/debdelta
+	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta
 	#install -m 755 debian/postinst debian/prerm $(D)/DEBIAN
 	install -m 755 debian/postrm $(D)/DEBIAN/
 	$(INSTALL_PROGRAM)  minigzip $(D)/usr/lib/debdelta/minigzip
@@ -52,6 +53,8 @@ binary-arch:	checkroot build
 	ln -s debdelta  $(D)/usr/bin/debdelta-upgrade
 	cp  FAQ README debian/copyright debian/changelog $(docdir)
 	cd $(docdir) && gzip -9 changelog README FAQ
+	cp *.1 $(mandir)
+	gzip -9 $(mandir)/*.1 
 	dpkg-shlibdeps $(D)/usr/lib/debdelta/minigzip
 	dpkg-gencontrol -isp
 	chown -R root:root $(D)

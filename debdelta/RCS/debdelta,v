@@ -1,10 +1,30 @@
-head	1.103;
+head	1.107;
 access;
 symbols;
 locks
-	debdev:1.103; strict;
+	debdev:1.107; strict;
 comment	@# @;
 
+
+1.107
+date	2007.04.13.09.57.31;	author debdev;	state Exp;
+branches;
+next	1.106;
+
+1.106
+date	2007.04.13.09.49.03;	author debdev;	state Exp;
+branches;
+next	1.105;
+
+1.105
+date	2006.12.21.13.02.11;	author debdev;	state Exp;
+branches;
+next	1.104;
+
+1.104
+date	2006.09.07.19.02.57;	author debdev;	state Exp;
+branches;
+next	1.103;
 
 1.103
 date	2006.09.07.18.47.01;	author debdev;	state Exp;
@@ -526,13 +546,9 @@ desc
 @@
 
 
-1.103
+1.107
 log
-@strip / from TMPDIR
-
-correct Predictor so that it really save stats
-
-debdelta-upgrade : close and reopen connection on some errors
+@option --debug was incorrectly passed to getopt
 @
 text
 @#!/usr/bin/python
@@ -661,7 +677,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.102 2006/07/23 09:15:04 debdev Exp debdev $"
+RCS_VERSION="$Id: debdelta,v 1.106 2007/04/13 09:49:03 debdev Exp debdev $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -679,14 +695,14 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5','debug') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
 
   for  o , v  in  opts :
     if o == '-v' : VERBOSE += 1
-    elif o == '-d' : DEBUG += 1
+    elif o == '-d' or o == '--debug' : DEBUG += 1
     elif o == '-k' : KEEP = True
     elif o == '--no-act': ACT=False
     elif o == '--no-md5': DO_MD5=False
@@ -1592,11 +1608,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
       script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     #xdelta3
-    #crashes!
+    #http://code.google.com/p/xdelta/downloads/detail?name=xdelta30m.tar.gz
+    #used to crash
     #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
     elif algo == 'xdelta3' :
-      system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
-      script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      system(' ~/debdelta/xdelta30m/xdelta3 -9 -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30m/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
@@ -1614,6 +1631,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif algo == 'xdelta' :
       system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
       script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+    elif algo == 'jojodiff' :
+      system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
+      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     else: raise
     return p
 
@@ -2638,7 +2658,7 @@ elif action == 'delta' :
     raise SystemExit(3)
   else:
     (delta, percent, elaps, info) = r
-    append_info(delta,info,T)
+    append_info(delta,info)
   
 elif action == 'deltas' :
   try:
@@ -3399,6 +3419,75 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.106
+log
+@code to test  xdelta 30m  and  jojodiff (= jdiff06)
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.105 2006/12/21 13:02:11 debdev Exp debdev $"
+d145 1
+a145 1
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5','--debug') )
+@
+
+
+1.105
+log
+@add --debug option
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.104 2006/09/07 19:02:57 debdev Exp debdev $"
+d1058 2
+a1059 1
+    #crashes!
+d1062 2
+a1063 2
+      system(' ~/debdelta/xdelta30e/xdelta3 -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30e/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+d1081 3
+@
+
+
+1.104
+log
+@fixed stupid grave bug, command 'debdelta' was failing on
+   append_info(delta,info,T)
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.103 2006/09/07 18:47:01 debdev Exp debdev $"
+d145 1
+a145 1
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5') )
+d152 1
+a152 1
+    elif o == '-d' : DEBUG += 1
+@
+
+
+1.103
+log
+@strip / from TMPDIR
+
+correct Predictor so that it really save stats
+
+debdelta-upgrade : close and reopen connection on some errors
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.102 2006/07/23 09:15:04 debdev Exp debdev $"
+d2104 1
+a2104 1
+    append_info(delta,info,T)
 @
 
 

@@ -1,0 +1,4 @@
+reduced default DEBUG to 0 
+
+md5 is not linked to '-d' ; the new option --no-md5 can be used to disable it
+
