@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.107 2007/04/13 09:57:31 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.108 2007/07/16 07:41:39 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1248,14 +1248,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
     return o[:-1]+ ob.split('_')+[oe]
   
   def files_similarity_score__noext__(oo,nn):
-    "warning: destroys the input"
     ln=len(nn)
     lo=len(oo)
     l=0
     while oo and nn:
       while oo and nn and oo[-1] == nn[-1]:
-        oo.pop()
-        nn.pop()
+        oo=oo[:-1]
+        nn=nn[:-1]
       if not oo or not nn: break
       while oo and nn and oo[0] == nn[0]:
         oo=oo[1:]
@@ -1472,18 +1471,20 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #try correspondence by file name and len similarity
       nb,ne=os.path.splitext(newname)
       if oldname == None and ne in oldnames_premangle:
-        basescore=0.6
+        basescore=1.6
         nl=newtarinfo.size
-        np=file_similarity_premangle(nb)        
+        np=file_similarity_premangle(nb)
         for o in oldnames_premangle[ne]:
           op=oldnames_premangle[ne][o]
           l=oldtarinfos[o].size
-          s=files_similarity_score__noext__(op,np) + abs(float(l - nl))/float(l+nl)
-          #print ' diff ',s,o
+          sfile=files_similarity_score__noext__(op,np)
+          slen = abs(float(l - nl))/float(l+nl)
+          s=slen+sfile
+          if VERBOSE > 3 : print '    name/len diff %.2f+%.2f=%.2f ' % (slen,sfile,s), o
           if s < basescore:
               oldname=o
               basescore=s
-        if oldname and VERBOSE > 2 : print '   best similar  ',int(100*basescore),newname,oldname
+        if oldname and VERBOSE > 2 : print '   best similar  ','%.3f' % basescore,newname,oldname
       if not oldname:
         if VERBOSE > 2 : print '   no correspondence for: ',newname
         continue
