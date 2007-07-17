@@ -1,10 +1,19 @@
-head	1.107;
+head	1.109;
 access;
 symbols;
-locks
-	debdev:1.107; strict;
+locks; strict;
 comment	@# @;
 
+
+1.109
+date	2007.07.17.08.09.07;	author debdev;	state Exp;
+branches;
+next	1.108;
+
+1.108
+date	2007.07.16.07.41.39;	author debdev;	state Exp;
+branches;
+next	1.107;
 
 1.107
 date	2007.04.13.09.57.31;	author debdev;	state Exp;
@@ -546,9 +555,9 @@ desc
 @@
 
 
-1.107
+1.109
 log
-@option --debug was incorrectly passed to getopt
+@save header of minigzip output in patch script, since it changes in newer versions of zlib
 @
 text
 @#!/usr/bin/python
@@ -677,7 +686,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.106 2007/04/13 09:49:03 debdev Exp debdev $"
+RCS_VERSION="$Id: debdelta,v 1.108 2007/07/16 07:41:39 debdev Exp debdev $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1539,13 +1548,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
   ############### some routines  to prepare delta of two files
 
   def script_md5_check_file(n,md5=None):
-    assert(os.path.isfile(TD+n))
     if md5==None:
+      assert(os.path.isfile(TD+n))
       pm=os.popen('md5sum '+TD+n)
       a=pm.readline()
       pm.read()
       pm.close
       md5=a[:32]
+    print "    adding extra MD5 for ",n
     script.write('echo "'+md5+'  '+n+'" | md5sum -c > /dev/null\n')
 
   def patch_append(f):
@@ -1575,9 +1585,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
       print 'WARNING ! ',f,' is in BZIP2 format ! please fixme !'
     return (f,c)
 
-  def script_zip(n,cn):
+  def script_zip(n,cn,newhead):
     if cn == '.gz' :
-      script.write('./minigzip -9 '+n+'\n')
+      s=prepare_for_echo(newhead)
+      script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
     elif  cn == '.bz2' :
       print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
 
@@ -1801,14 +1812,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
     return o[:-1]+ ob.split('_')+[oe]
   
   def files_similarity_score__noext__(oo,nn):
-    "warning: destroys the input"
     ln=len(nn)
     lo=len(oo)
     l=0
     while oo and nn:
       while oo and nn and oo[-1] == nn[-1]:
-        oo.pop()
-        nn.pop()
+        oo=oo[:-1]
+        nn=nn[:-1]
       if not oo or not nn: break
       while oo and nn and oo[0] == nn[0]:
         oo=oo[1:]
@@ -1954,6 +1964,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
     else:
       while oldfileobj.read(512):
         pass
+    #save header part of new_filename, since it changes in newer versions
+    f=open(TD+new_filename)
+    new_file_zip_head=f.read(20)
+    f.close()
     (new_filename,new_filename_ext) = unzip(new_filename)
     assert(0 == (os.path.getsize(TD+new_filename)% 512))
     newtar = tarfile.open(TD+new_filename, "r")
@@ -2025,18 +2039,20 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #try correspondence by file name and len similarity
       nb,ne=os.path.splitext(newname)
       if oldname == None and ne in oldnames_premangle:
-        basescore=0.6
+        basescore=1.6
         nl=newtarinfo.size
-        np=file_similarity_premangle(nb)        
+        np=file_similarity_premangle(nb)
         for o in oldnames_premangle[ne]:
           op=oldnames_premangle[ne][o]
           l=oldtarinfos[o].size
-          s=files_similarity_score__noext__(op,np) + abs(float(l - nl))/float(l+nl)
-          #print ' diff ',s,o
+          sfile=files_similarity_score__noext__(op,np)
+          slen = abs(float(l - nl))/float(l+nl)
+          s=slen+sfile
+          if VERBOSE > 3 : print '    name/len diff %.2f+%.2f=%.2f ' % (slen,sfile,s), o
           if s < basescore:
               oldname=o
               basescore=s
-        if oldname and VERBOSE > 2 : print '   best similar  ',int(100*basescore),newname,oldname
+        if oldname and VERBOSE > 2 : print '   best similar  ','%.3f' % basescore,newname,oldname
       if not oldname:
         if VERBOSE > 2 : print '   no correspondence for: ',newname
         continue
@@ -2172,11 +2188,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
       p=verbatim(new_filename)
       script.write('mv '+p+' '+new_filename+ '\n')
     script.write('wait\n')
-    script_zip(new_filename,new_filename_ext)
+    script_zip(new_filename,new_filename_ext,new_file_zip_head)
   ####################  ^^^^    delta_tar    ^^^^ ###########################
 
-  ############ start computing deltas
-    
+  ############ start computing deltas  
   def append_NEW_file(s):
     'appends some data to NEW.file'
     s=prepare_for_echo(s)
@@ -2195,6 +2210,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
   #process all contents of old vs new .deb
   ar_list_old= list_ar(TD+'OLD.file')
   ar_list_new= list_ar(TD+'NEW.file')
+
+  def md5_ar(TD,n,name):
+    "extra md5 check, for tracking strange bugs"
+    pm=os.popen('cd '+TD+'; ar p OLD.file '+name+' | md5sum -')
+    data_tar_md5=pm.readline()[:32]
+    pm.read()
+    pm.close()
+    script_md5_check_file(n,data_tar_md5)
 
   for name in ar_list_new :
     n = 'NEW/'+name
@@ -2231,6 +2254,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #delta it
       #never chunked .. otherwise the first file in the ar will not be '0'!
       delta_tar(o,n,'CONTROL',skip, chunked_p=False)
+      if DEBUG > 3 : md5_ar(TD,n,name)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       o = 'OLD/'+name
@@ -2239,6 +2263,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       def x():
         return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5)
+      if DEBUG > 3 : md5_ar(TD,n,name)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
       p=verbatim(n)
@@ -3419,6 +3444,69 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.108
+log
+@corrected files_similarity_score__noext__() so that it does not eat lists ;
+and reviewed correspondence code
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.107 2007/04/13 09:57:31 debdev Exp debdev $"
+a988 1
+    assert(os.path.isfile(TD+n))
+d990 1
+d996 1
+d1026 1
+a1026 1
+  def script_zip(n,cn):
+d1028 2
+a1029 1
+      script.write('./minigzip -9 '+n+'\n')
+d1405 4
+d1629 1
+a1629 1
+    script_zip(new_filename,new_filename_ext)
+d1632 1
+a1632 2
+  ############ start computing deltas
+    
+d1652 8
+d1695 1
+d1704 1
+@
+
+
+1.107
+log
+@option --debug was incorrectly passed to getopt
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.106 2007/04/13 09:49:03 debdev Exp debdev $"
+a1250 1
+    "warning: destroys the input"
+d1256 2
+a1257 2
+        oo.pop()
+        nn.pop()
+d1474 1
+a1474 1
+        basescore=0.6
+d1476 1
+a1476 1
+        np=file_similarity_premangle(nb)        
+d1480 4
+a1483 2
+          s=files_similarity_score__noext__(op,np) + abs(float(l - nl))/float(l+nl)
+          #print ' diff ',s,o
+d1487 1
+a1487 1
+        if oldname and VERBOSE > 2 : print '   best similar  ',int(100*basescore),newname,oldname
 @
 
 
