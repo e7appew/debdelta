@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.110 2007/07/18 12:20:59 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.111 2007/07/19 12:05:55 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1061,8 +1061,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
     #used to crash
     #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
     elif algo == 'xdelta3' :
-      system(' ~/debdelta/xdelta30m/xdelta3 -9 -s  '+o+' '+n+' '+p,TD)
-      script.write(' ~/debdelta/xdelta30m/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      system(' ~/debdelta/xdelta30q/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30q/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
