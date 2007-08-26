@@ -124,7 +124,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.111 2007/07/19 12:05:55 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.112 2007/08/26 18:10:48 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -935,6 +935,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
     info.append('old-data-tree')
     info.append('old-control-tree')
 
+  info.append('needs-'+USE_DELTA_ALGO)
+
   #backward compatibility
   for i in info:
     script.write('#'+i+'\n')
@@ -1057,12 +1059,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
       script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     #xdelta3
-    #http://code.google.com/p/xdelta/downloads/detail?name=xdelta30m.tar.gz
-    #used to crash
-    #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
     elif algo == 'xdelta3' :
-      system(' ~/debdelta/xdelta30q/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
-      script.write(' ~/debdelta/xdelta30q/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      system('/usr/bin/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
+      script.write('/usr/bin/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
