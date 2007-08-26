@@ -38,6 +38,10 @@ directory tree.
 \fB\-\-needsold\fR
 create a patch that can only be used if the old .deb is available.
 .TP
+\fB\-\-delta-algo\fR \fIALGO\fR 
+use a specific backend for computing
+binary diffs; possible values are: xdelta xdelta-bzip xdelta3 bsdiff
+.TP
 \fB\-M \fIMb\fR         maximum memory  to use (for 'bsdiff' or 'xdelta').
 .TP
 \fB\-v\fR            verbose (can be added multiple times).

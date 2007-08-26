@@ -1,3 +1,10 @@
+debdelta (0.22) unstable; urgency=medium
+
+  * depends on xdelta3 , and correct path in python
+  * document --delta-algo
+
+ -- A Mennucc1 <mennucc1@debian.org>  Tue, 26 Aug 2007 18:09:29 +0200
+
 debdelta (0.21) unstable; urgency=medium
 
   * save header of minigzip output in patch script, since 

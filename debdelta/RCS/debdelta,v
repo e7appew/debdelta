@@ -1,9 +1,29 @@
-head	1.109;
+head	1.113;
 access;
 symbols;
 locks; strict;
 comment	@# @;
 
+
+1.113
+date	2007.08.26.18.20.05;	author debdev;	state Exp;
+branches;
+next	1.112;
+
+1.112
+date	2007.08.26.18.10.48;	author debdev;	state Exp;
+branches;
+next	1.111;
+
+1.111
+date	2007.07.19.12.05.55;	author debdev;	state Exp;
+branches;
+next	1.110;
+
+1.110
+date	2007.07.18.12.20.59;	author debdev;	state Exp;
+branches;
+next	1.109;
 
 1.109
 date	2007.07.17.08.09.07;	author debdev;	state Exp;
@@ -555,9 +575,9 @@ desc
 @@
 
 
-1.109
+1.113
 log
-@save header of minigzip output in patch script, since it changes in newer versions of zlib
+@document --delta-algo ; and reformat help
 @
 text
 @#!/usr/bin/python
@@ -570,7 +590,10 @@ Usage: debdelta [ option...  ] fromfile tofile patchout
 Options:
 --no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
-  -M Mb     maximum memory  to use (for 'bsdiff' or 'xdelta')
+ -M Mb      maximum memory  to use (for 'bsdiff' or 'xdelta')
+--delta-algo ALGO
+            use a specific backend for computing binary diffs;
+            possible values are: xdelta xdelta-bzip xdelta3 bsdiff
 """
 
 
@@ -591,7 +614,10 @@ Options:
  -n N       how many deltas to produce for each package (default 1)
 --no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
-  -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
+--delta-algo ALGO
+            use a specific backend for computing binary diffs;
+            possible values are: xdelta xdelta-bzip xdelta3 bsdiff
+ -M Mb      maximum memory to use (for 'bsdiff' or 'xdelta')
 --clean-deltas     delete deltas if newer deb is not in archive
 --clean-alt        delete debs in --alt if too old (see -n )
 """
@@ -624,10 +650,10 @@ Options:
 
 
 doc_common="""\
-  -v      verbose (can be added multiple times)
- --no-act do not do that (whatever it is!)
-  -d      add extra debugging checks
-  -k      keep temporary files (use for debugging)
+ -v         verbose (can be added multiple times)
+--no-act    do not do that (whatever it is!)
+ -d         add extra debugging checks
+ -k         keep temporary files (use for debugging)
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
@@ -686,7 +712,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.108 2007/07/16 07:41:39 debdev Exp debdev $"
+RCS_VERSION="$Id: debdelta,v 1.112 2007/08/26 18:10:48 debdev Exp debdev $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1497,6 +1523,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
     info.append('old-data-tree')
     info.append('old-control-tree')
 
+  info.append('needs-'+USE_DELTA_ALGO)
+
   #backward compatibility
   for i in info:
     script.write('#'+i+'\n')
@@ -1619,12 +1647,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
       script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     #xdelta3
-    #http://code.google.com/p/xdelta/downloads/detail?name=xdelta30m.tar.gz
-    #used to crash
-    #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
     elif algo == 'xdelta3' :
-      system(' ~/debdelta/xdelta30m/xdelta3 -9 -s  '+o+' '+n+' '+p,TD)
-      script.write(' ~/debdelta/xdelta30m/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      system('/usr/bin/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
+      script.write('/usr/bin/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
@@ -1832,8 +1857,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
         oo=oo[1:]
       if not oo or not nn: break
       if  oo[-1] != nn[-1]:
-        oo.pop()
-        nn.pop()
+        oo=oo[:-1]
+        nn=nn[:-1]
         l+=2
       if not oo or not nn: break
       if oo[0] != nn[0]:
@@ -3444,6 +3469,81 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.112
+log
+@update path of xdelta3 (it is in Debian in /usr/bin/xdelta3)
+
+save delta algo in header
+@
+text
+@d11 4
+a14 1
+  -M Mb     maximum memory  to use (for 'bsdiff' or 'xdelta')
+d35 4
+a38 1
+  -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
+d71 4
+a74 4
+  -v      verbose (can be added multiple times)
+ --no-act do not do that (whatever it is!)
+  -d      add extra debugging checks
+  -k      keep temporary files (use for debugging)
+d133 1
+a133 1
+RCS_VERSION="$Id: debdelta,v 1.111 2007/07/19 12:05:55 debdev Exp debdev $"
+@
+
+
+1.111
+log
+@backend xdelta3 now refers to xdelta30q
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.110 2007/07/18 12:20:59 debdev Exp debdev $"
+d938 2
+a1061 3
+    #http://code.google.com/p/xdelta/downloads/detail?name=xdelta30m.tar.gz
+    #used to crash
+    #http://sourceforge.net/tracker/index.php?func=detail&aid=1506523&group_id=6966&atid=106966
+d1063 2
+a1064 2
+      system(' ~/debdelta/xdelta30q/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30q/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+@
+
+
+1.110
+log
+@(again) corrected files_similarity_score__noext__() so that it does not eat lists
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.109 2007/07/17 08:09:07 debdev Exp debdev $"
+d1064 2
+a1065 2
+      system(' ~/debdelta/xdelta30m/xdelta3 -9 -s  '+o+' '+n+' '+p,TD)
+      script.write(' ~/debdelta/xdelta30m/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+@
+
+
+1.109
+log
+@save header of minigzip output in patch script, since it changes in newer versions of zlib
+@
+text
+@d127 1
+a127 1
+RCS_VERSION="$Id: debdelta,v 1.108 2007/07/16 07:41:39 debdev Exp debdev $"
+d1273 2
+a1274 2
+        oo.pop()
+        nn.pop()
 @
 
 
