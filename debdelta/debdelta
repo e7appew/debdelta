@@ -8,7 +8,10 @@ Usage: debdelta [ option...  ] fromfile tofile patchout
 Options:
 --no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
-  -M Mb     maximum memory  to use (for 'bsdiff' or 'xdelta')
+ -M Mb      maximum memory  to use (for 'bsdiff' or 'xdelta')
+--delta-algo ALGO
+            use a specific backend for computing binary diffs;
+            possible values are: xdelta xdelta-bzip xdelta3 bsdiff
 """
 
 
@@ -29,7 +32,10 @@ Options:
  -n N       how many deltas to produce for each package (default 1)
 --no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
-  -M Mb     maximum memory to use (for 'bsdiff' or 'xdelta')
+--delta-algo ALGO
+            use a specific backend for computing binary diffs;
+            possible values are: xdelta xdelta-bzip xdelta3 bsdiff
+ -M Mb      maximum memory to use (for 'bsdiff' or 'xdelta')
 --clean-deltas     delete deltas if newer deb is not in archive
 --clean-alt        delete debs in --alt if too old (see -n )
 """
@@ -62,10 +68,10 @@ Options:
 
 
 doc_common="""\
-  -v      verbose (can be added multiple times)
- --no-act do not do that (whatever it is!)
-  -d      add extra debugging checks
-  -k      keep temporary files (use for debugging)
+ -v         verbose (can be added multiple times)
+--no-act    do not do that (whatever it is!)
+ -d         add extra debugging checks
+ -k         keep temporary files (use for debugging)
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
@@ -124,7 +130,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.112 2007/08/26 18:10:48 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.113 2007/08/26 18:20:05 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
