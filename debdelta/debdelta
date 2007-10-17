@@ -121,7 +121,7 @@ KEEP    = False
 INFO    = False
 NEEDSOLD= False
 DIR     = None
-ALT     = None
+ALT     = []
 AVOID   = None
 ACT     = True
 DO_MD5  = True
@@ -130,7 +130,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.114 2007/10/17 13:00:24 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.115 2007/10/17 13:11:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -188,9 +188,9 @@ else:
         print 'Error: --dir ',DIR,' does not exist.'
         raise SystemExit(3)
     elif o == '--alt'  :
-      ALT = v
-      if not os.path.isdir(ALT):
-        print 'Error: --alt ',ALT,' does not exist.'
+      ALT.append(v)
+      if not os.path.isdir(v):
+        print 'Error: --alt ',v,' does not exist.'
         raise SystemExit(3)
     elif o ==  '--help' or o ==  '-h':
       print __doc__
@@ -1907,14 +1907,14 @@ def do_deltas(debs):
       scan_deb(f, 'CMDLINE')
       di=os.path.dirname(f) or '.'
       scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
-      if ALT:        
-        scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f), 'ALT' )
+      for alt in ALT:
+        scan_deb_dir(delta_dirname(f,alt), __name_filter__(f), 'ALT' )
       if CLEAN_DELTAS:
         scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
     elif  os.path.isdir(f) :
       scan_deb_dir(f, None, 'CMDLINE')
-      if ALT:
-        scan_deb_dir(delta_dirname(f,ALT), None, 'ALT')
+      for alt in ALT:
+        scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
       if CLEAN_DELTAS:
         scan_delta_dir(delta_dirname(f,DIR))
     else:
