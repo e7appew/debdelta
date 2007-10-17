@@ -130,7 +130,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.113 2007/08/26 18:20:05 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.114 2007/10/17 13:00:24 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -812,6 +812,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
             if os.path.exists(a ):
               os.symlink(a,TD+'OLD/CONTROL/'+b)
         #else... we always unpack the control of a .deb
+    elif 'needs-xdelta3' == a:
+      if not os.path.exists('/usr/bin/xdelta3'):
+        die('This patch needs xdelta3. Please install the Debian package "xdelta3".')
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
   ##then , really execute the patch
