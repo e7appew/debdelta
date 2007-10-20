@@ -130,7 +130,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.115 2007/10/17 13:11:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.116 2007/10/20 17:14:39 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1819,13 +1819,13 @@ def do_deltas(debs):
         return
       p=open(f)
       if p.read(21) != "!<arch>\ndebian-binary" :
-	  p.close()
-	  if os.path.getsize(f) == 0 :
-	      print ('Warning: '+f+ ' is an empty file; removing it. ')
-	      os.unlink(f)
-	  else:  
-	      print ('Error: '+f+ ' does not seem to be a Debian package ')
-	  return
+        p.close()
+        if os.path.getsize(f) == 0 :
+          print ('Warning: '+f+ ' is an empty file; removing it. ')
+          os.unlink(f)
+        else:  
+          print ('Error: '+f+ ' does not seem to be a Debian package ')
+        return
       p.close()
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
@@ -2279,7 +2279,7 @@ def delta_upgrade_():
     ##so
     a=os.open(DEB_DIR+'/lock', os.O_RDWR | os.O_TRUNC | os.O_CREAT, 0640)
     fcntl.fcntl(a, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
-    # synopsis lockf(  	fd, operation, [length, [start, [whence]]])
+    # synopsis lockf(   fd, operation, [length, [start, [whence]]])
     fcntl.lockf(a, fcntl.LOCK_EX | fcntl.LOCK_NB, 0,0,0)
   except IOError, s:
     if s.errno == 11 :
