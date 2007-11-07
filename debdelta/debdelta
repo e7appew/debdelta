@@ -130,7 +130,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.116 2007/10/20 17:14:39 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.117 2007/11/07 10:43:37 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -189,7 +189,7 @@ else:
         raise SystemExit(3)
     elif o == '--alt'  :
       ALT.append(v)
-      if not os.path.isdir(v):
+      if not os.path.exists(v) :
         print 'Error: --alt ',v,' does not exist.'
         raise SystemExit(3)
     elif o ==  '--help' or o ==  '-h':
@@ -1784,7 +1784,7 @@ def do_deltas(debs):
     import apt_pkg
     apt_pkg.InitSystem()
     from apt_pkg import VersionCompare
-
+  
   if AVOID and type(AVOID) == StringType:
     import shelve
     if VERBOSE: print ' Using avoid dict ',AVOID
@@ -1794,20 +1794,98 @@ def do_deltas(debs):
   
   info_by_pack_arch={}
   info_by_file={}
-  deb_dir_visited=[]
+  
+  def info_by_pack_arch_add(f):
+    pack = info_by_file[f]['Package']
+    arch = info_by_file[f]['Architecture']
+    vers = info_by_file[f]['Version']
+    if pack in avoid_pack and ( avoid_pack[pack]['Version'] == vers ):
+      #note that 'f' is in  info_by_file and not in info_by_pack_arch
+      if VERBOSE > 1 :     print 'Avoid: ', f
+      return
+    if  (pack,arch) not in  info_by_pack_arch :
+      info_by_pack_arch[ (pack,arch) ]=[]
+    info_by_pack_arch[ (pack,arch) ].append( info_by_file[f] )
+    
+  def iterate_Packages(packages):
+    packages=abspath(packages)
+    assert os.path.isfile(packages)
+    assert os.path.basename(packages) == 'Packages'
+    dir=os.path.dirname(packages)
+    dir=dir.split('/')
+    try:
+      a=dir.index('dists')
+    except ValueError:
+      sys.stderr.write('Error: pathname "%s" does not contain "dists"\n' % packages)
+      return
+    base = string.join(dir[:a],'/')
+    for l in open(packages):
+      l=l.rstrip('\n')
+      if l[:9] == 'Package: ':
+          pack=l[9:]
+      elif l[:14] == 'Architecture: ':
+          arch = l[14:]
+      elif l[:9] ==  'Version: ':
+          vers = l[9:]
+      elif l[:10] == 'Filename: ':
+            of=l[10:]
+      elif l == '':
+        f=base+'/'+of
+        if f[-4:] == '.udeb':
+          if VERBOSE > 2 : print '  skip udeb: ',f
+          continue
+        elif not os.path.isfile(f):
+          sys.stderr.write('Package missing! '+f+'\n')
+          continue
+        if f not in info_by_file:
+          info_by_file[f]={}
+          info_by_file[f]['File'] = f
+          info_by_file[f]['Filename'] = of
+          info_by_file[f]['Package']  = pack
+          info_by_file[f]['Architecture'] = arch
+          info_by_file[f]['Version'] = vers
+        else:  #this happens e.g. if the package is both in testing and in unstable..
+          if DEBUG > 1: print 'Seen twice, do not re-add info: ',f
+          assert info_by_file[f]['Version'] == vers and \
+                 info_by_file[f]['Package'] == pack and \
+                 info_by_file[f]['Architecture'] == arch
+        yield f
+        del of,pack,vers,arch
+        
+  def scan_Packages(packages, label):
+    for f in iterate_Packages(packages):
+      info_by_file[f]['Label'] = label
+      info_by_pack_arch_add(f)
+  
+  deb_dir_cache={}
+  def cache_deb_dir(f):
+    assert( os.path.isdir(f))
+    if f in deb_dir_cache:
+      return deb_dir_cache[f]
+    cache={}
+    for d in os.listdir(f):
+      if d[-4:] == '.deb':
+        a=os.path.join(f,d)
+        n=d.split('_')[0]
+        if n not in cache:
+          cache[n]=[a]
+        else:
+          cache[n].append(a)
+    deb_dir_cache[f] = cache
+    return cache
+  
+  def scan_deb_dir(f, debname, label):
+    assert( os.path.isdir(f))
+    cache = cache_deb_dir(f)
+    if debname == None:
+      for n in cache:
+        for dt in cache[n]:
+          scan_deb( dt , label )
+    else:
+      if debname in cache:
+        for dt in cache[debname]:
+          scan_deb( dt , label )
 
-  def scan_deb_dir(f, pack_filter, label):
-      "pack filter may be a function that matches by basename"
-      assert( os.path.isdir(f))
-      if f not in deb_dir_visited:
-        if pack_filter == None :
-          deb_dir_visited.append(f)
-        for d in os.listdir(f):
-          dt=os.path.join(f,d)
-          if os.path.isfile(dt) and d[-4:] == '.deb' and \
-                 ( pack_filter == None or  pack_filter(d) ) :
-            scan_deb( dt , label )
-            
   def scan_deb(of, label):
       assert( os.path.isfile(of) )
       f=abspath(of)
@@ -1831,18 +1909,10 @@ def do_deltas(debs):
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,params=info_by_file[f])
       p.close()
-      info_by_file[f]['File'] = of
-      pa=info_by_file[f]['Package']
-      ar=info_by_file[f]['Architecture']
-      ve=info_by_file[f]['Version']
+      info_by_file[f]['Filename'] = of
+      info_by_file[f]['File'] = f
       info_by_file[f]['Label'] = label
-      if pa in avoid_pack and ( avoid_pack[pa]['Version'] == ve ):
-        #note that 'f' is in  info_by_file and not in info_by_pack_arch
-        if VERBOSE > 1 :     print 'Avoid: ', new['File']
-        return
-      if  (pa,ar) not in  info_by_pack_arch :
-         info_by_pack_arch[ (pa,ar) ]=[]
-      info_by_pack_arch[ (pa,ar) ].append( info_by_file[f] )
+      info_by_pack_arch_add(f)
 
   # contains list of triples (filename,oldversion,newversion)
   old_deltas_by_pack_arch={}
@@ -1898,27 +1968,46 @@ def do_deltas(debs):
     l=len(n)
     return lambda x : x[:l] == n
 
+  #reduce ALT, by preprocessing Packages
+  ALT_NOP=[]
+  for f in ALT:
+    if os.path.basename(f) == 'Packages':
+      scan_Packages(f,'ALT')
+    else:
+      ALT_NOP.append(f)
+
   #scan cmdline arguments and prepare list of debs and deltas
   for f in debs:
     if os.path.isfile(f):
-      if f[-4: ] != '.deb' :
+      if os.path.basename(f) == 'Packages':
+        for a in  iterate_Packages(f):
+          info_by_file[a]['Label'] = 'CMDLINE'
+          of=info_by_file[a]['Filename']
+          info_by_pack_arch_add(a)
+          for alt in ALT_NOP:
+            scan_deb_dir(delta_dirname(of,alt), __name_filter__(a), 'ALT' )
+          if CLEAN_DELTAS:
+            scan_delta_dir(delta_dirname(of,DIR), __name_filter__(a) )
+      elif f[-4: ] != '.deb' :
         print 'Warning: skipping cmd line argument: ',f
-        continue
-      scan_deb(f, 'CMDLINE')
-      di=os.path.dirname(f) or '.'
-      scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
-      for alt in ALT:
-        scan_deb_dir(delta_dirname(f,alt), __name_filter__(f), 'ALT' )
-      if CLEAN_DELTAS:
-        scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
+      else:
+        scan_deb(f, 'CMDLINE')
+        di=os.path.dirname(f) or '.'
+        scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
+        for alt in ALT_NOP:
+          scan_deb_dir(delta_dirname(f,alt), __name_filter__(f), 'ALT' )
+        if CLEAN_DELTAS:
+          scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
     elif  os.path.isdir(f) :
       scan_deb_dir(f, None, 'CMDLINE')
-      for alt in ALT:
+      for alt in ALT_NOP:
         scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
       if CLEAN_DELTAS:
         scan_delta_dir(delta_dirname(f,DIR))
     else:
       print 'Warning: '+f+' is not a regular file or a directory.'
+
+  if VERBOSE > 1 : print ' total parsing time: %.1f ' % ( -start_time + time.time())
   
   def order_by_version(a,b):
     return VersionCompare( a['Version'] , b['Version']  )
@@ -1964,7 +2053,7 @@ def do_deltas(debs):
       if VERBOSE > 1:     print '  Skip , too small: ', new['File']
       continue
 
-    deltadirname=delta_dirname(new['File'],DIR)
+    deltadirname=delta_dirname(new['Filename'],DIR)
     free=freespace(deltadirname)
     if free and (free < (newdebsize /2 + 2**15)) :
       if VERBOSE : print 'Not enough disk space for storing ',delta
