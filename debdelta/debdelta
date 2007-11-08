@@ -130,7 +130,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.117 2007/11/07 10:43:37 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.118 2007/11/08 20:24:53 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -286,19 +286,7 @@ def append_info(delta,info):
   infofile.close()
   system(['ar','rSi','0',delta, 'info'],  TD)
   rmtree(TD)
-
-def make_parents(f):
-  assert(f[0] == '/')
-  s=f.split('/')
-  d=''
-  for a in s[:-1] :
-    if a:
-      d=d+'/'+a
-      if not os.path.exists(d):
-        os.mkdir(d)
-  d=d+'/'+s[-1]
-  return d
-
+  
 def de_n(a):
   if a and a[-1] ==  '\n' :
     a = a[:-1]
@@ -759,7 +747,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
       s=dpkg_L(pa)
     for orig,divert in s:          
       if os.path.isfile(divert) and not os.path.islink(divert) :            
-        a=make_parents(TD+'/OLD/DATA'+orig)
+        a=os.path.dirname(TD+'/OLD/DATA'+orig)
+        if not os.path.exists(a):
+          os.makedirs(a)
         if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
         os.symlink(divert, a)
       else:
@@ -1858,25 +1848,27 @@ def do_deltas(debs):
       info_by_pack_arch_add(f)
   
   deb_dir_cache={}
-  def cache_deb_dir(f):
+  delta_dir_cache={}
+  def cache_dir(f,extension='.deb',dacache=deb_dir_cache):
     assert( os.path.isdir(f))
-    if f in deb_dir_cache:
-      return deb_dir_cache[f]
+    if f in dacache:
+      return dacache[f]
     cache={}
     for d in os.listdir(f):
-      if d[-4:] == '.deb':
+      a,b = os.path.splitext(d)
+      if b == extension:
         a=os.path.join(f,d)
         n=d.split('_')[0]
         if n not in cache:
           cache[n]=[a]
         else:
           cache[n].append(a)
-    deb_dir_cache[f] = cache
+    dacache[f] = cache
     return cache
   
   def scan_deb_dir(f, debname, label):
-    assert( os.path.isdir(f))
-    cache = cache_deb_dir(f)
+    assert os.path.isdir(f) and (debname == None or type(debname) == StringType) and type(label) == StringType
+    cache = cache_dir(f)
     if debname == None:
       for n in cache:
         for dt in cache[n]:
@@ -1914,18 +1906,23 @@ def do_deltas(debs):
       info_by_file[f]['Label'] = label
       info_by_pack_arch_add(f)
 
+  def scan_delta_dir(f,debname=None):
+    if not os.path.isdir(f) :
+      if DEBUG > 1 : print ' no such delta dir ',f
+      return
+    assert debname == None or type(debname) == StringType 
+    cache = cache_dir(f,extension='.delta',dacache=delta_dir_cache)
+    if debname == None :
+      for n in cache:
+        for dt in cache[n]:
+          scan_delta( dt )
+    else:
+      if debname in cache:
+        for dt in cache[debname]:
+          scan_delta( dt )
+    
   # contains list of triples (filename,oldversion,newversion)
   old_deltas_by_pack_arch={}
-  old_deltas_dir_visited=[]
-  def scan_delta_dir(f,pack_filter=None):
-    assert( os.path.isdir(f) )
-    if f not in old_deltas_dir_visited:
-      if pack_filter == None :
-        old_deltas_dir_visited.append(f)
-      for d in os.listdir(f):
-        dt=os.path.join(f,d)
-        if os.path.isfile(dt) and ( pack_filter == None or  pack_filter(d) ):
-          scan_delta( dt )
   
   def scan_delta(f):
     assert( os.path.isfile(f) )
@@ -1955,19 +1952,18 @@ def do_deltas(debs):
     if altdir:
       if altdir[-2:] == '//' :
         a=altdir+f
-        return make_parents(abspath(a)+'/')
+        return abspath(a)+'/'
       else:
         return altdir
     else:
       return abspath(f)
 
-  def __name_filter__(n):
-    "returns a function that filters by package name"
+  def package_name(n):
+    "returns the package name from the file name"
     n=os.path.basename(n)
-    n=n.split('_')[0] + '_'
-    l=len(n)
-    return lambda x : x[:l] == n
-
+    n=n.split('_')[0] 
+    return n
+  
   #reduce ALT, by preprocessing Packages
   ALT_NOP=[]
   for f in ALT:
@@ -1984,24 +1980,27 @@ def do_deltas(debs):
           info_by_file[a]['Label'] = 'CMDLINE'
           of=info_by_file[a]['Filename']
           info_by_pack_arch_add(a)
+          pa = package_name(a)
           for alt in ALT_NOP:
-            scan_deb_dir(delta_dirname(of,alt), __name_filter__(a), 'ALT' )
+            scan_deb_dir(delta_dirname(of,alt), pa , 'ALT' )
           if CLEAN_DELTAS:
-            scan_delta_dir(delta_dirname(of,DIR), __name_filter__(a) )
+            scan_delta_dir(delta_dirname(of,DIR), pa )
       elif f[-4: ] != '.deb' :
         print 'Warning: skipping cmd line argument: ',f
       else:
         scan_deb(f, 'CMDLINE')
         di=os.path.dirname(f) or '.'
-        scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
+        pa = package_name(f)
+        scan_deb_dir(di, pa, 'SAMEDIR' )
         for alt in ALT_NOP:
-          scan_deb_dir(delta_dirname(f,alt), __name_filter__(f), 'ALT' )
+          scan_deb_dir(delta_dirname(f,alt), pa, 'ALT')
         if CLEAN_DELTAS:
-          scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
+          scan_delta_dir(delta_dirname(f,DIR), pa)
     elif  os.path.isdir(f) :
       scan_deb_dir(f, None, 'CMDLINE')
       for alt in ALT_NOP:
-        scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
+        if alt[-2:] == '//':
+          scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
       if CLEAN_DELTAS:
         scan_delta_dir(delta_dirname(f,DIR))
     else:
@@ -2053,12 +2052,6 @@ def do_deltas(debs):
       if VERBOSE > 1:     print '  Skip , too small: ', new['File']
       continue
 
-    deltadirname=delta_dirname(new['Filename'],DIR)
-    free=freespace(deltadirname)
-    if free and (free < (newdebsize /2 + 2**15)) :
-      if VERBOSE : print 'Not enough disk space for storing ',delta
-      continue
-
     l = newest
     while (l>0) and (l > newest - N_DELTAS):
         l -= 1
@@ -2071,7 +2064,15 @@ def do_deltas(debs):
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
-        make_parents(abspath(deltadirname)+'/')
+        deltadirname=delta_dirname(new['Filename'],DIR)
+        if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
+          os.makedirs(deltadirname)
+        
+        free=freespace(deltadirname)
+        if free and (free < (newdebsize /2 + 2**15)) :
+          if VERBOSE : print 'Not enough disk space for storing ',delta
+          continue
+        
         delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
@@ -2245,7 +2246,7 @@ class Predictor:
     s=os.path.join(basedir,'upgrade.db')
     if not os.path.exists(s):
       print 'Creating: ',s
-    make_parents(s)
+      os.makedirs(os.path.dirname(s))
     self.upgrade_stats=shelve.open(s,flag='c')
 
     s=os.path.join(basedir,'packages_stats.db')
@@ -2253,7 +2254,7 @@ class Predictor:
     if  os.path.exists(s) or DEBUG :
       if not os.path.exists(s):
         print 'Creating: ',s
-      make_parents(s)
+        os.makedirs(os.path.dirname(s))
       self.package_stats=shelve.open(s,flag='c')
 
     self.patch_time_predictor=self.patch_time_predictor_math
