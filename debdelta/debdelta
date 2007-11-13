@@ -16,7 +16,7 @@ Options:
 
 
 doc['deltas']="""\
-Usage: debdeltas [ option...  ]  [deb_files and dirs]
+Usage: debdeltas [ option...  ]  [deb_files and dirs, or Package files]
   Computes all missing deltas for Debian files.
   It orders by version number and produce deltas to the newest version
 
@@ -26,8 +26,9 @@ Options:
 
 --alt DIR   for any cmdline argument, search for debs also in this dir 
 
-            if DIR ends in // , then the dirname of the cmdline argument
-            will be appended to DIR, as well (useful when creating archives)
+            If DIR ends in // , then the dirname of the cmdline argument
+            will be appended to DIR, as well (useful when creating archives).
+            DIR may also be a Package file, as found in a Debian repository.
             
  -n N       how many deltas to produce for each package (default 1)
 --no-md5    do not include MD5 info in debdelta
@@ -130,7 +131,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.118 2007/11/08 20:24:53 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.119 2007/11/13 13:33:25 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
