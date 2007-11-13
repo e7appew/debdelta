@@ -131,7 +131,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.120 2007/11/13 13:34:39 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.121 2007/11/13 13:47:44 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1890,7 +1890,8 @@ def do_deltas(debs):
       f=abspath(of)
       if f in info_by_file:
         #just (in case) promote to status of CMDLINE package
-        if label == 'CMDLINE' :
+        if label == 'CMDLINE' and info_by_file[f]['Label'] !=  'CMDLINE':
+          if VERBOSE > 2 : print 'Promoting to CMDLINE ',f
           #this changes also the entry in info_by_pack_arch (magic python)
           info_by_file[f]['Label']=label
         return
@@ -1899,7 +1900,7 @@ def do_deltas(debs):
         p.close()
         if os.path.getsize(f) == 0 :
           print ('Warning: '+f+ ' is an empty file; removing it. ')
-          os.unlink(f)
+          if ACT : os.unlink(f)
         else:  
           print ('Error: '+f+ ' does not seem to be a Debian package ')
         return
@@ -1973,45 +1974,45 @@ def do_deltas(debs):
   
   #reduce ALT, by preprocessing Packages
   ALT_NOP=[]
-  for f in ALT:
-    if os.path.basename(f) == 'Packages':
-      scan_Packages(f,'ALT')
+  for alt in ALT:
+    if os.path.basename(alt) == 'Packages':
+      scan_Packages(alt,'ALT')
     else:
-      ALT_NOP.append(f)
+      ALT_NOP.append(alt)
 
   #scan cmdline arguments and prepare list of debs and deltas
-  for f in debs:
-    if os.path.isfile(f):
-      if os.path.basename(f) == 'Packages':
-        for a in  iterate_Packages(f):
+  for arg in debs:
+    if os.path.isfile(arg):
+      if os.path.basename(arg) == 'Packages':
+        for a in  iterate_Packages(arg):
           info_by_file[a]['Label'] = 'CMDLINE'
-          of=info_by_file[a]['Filename']
+          of = info_by_file[a]['Filename']
           info_by_pack_arch_add(a)
           pa = package_name(a)
           for alt in ALT_NOP:
             scan_deb_dir(delta_dirname(of,alt), pa , 'ALT' )
           if CLEAN_DELTAS:
             scan_delta_dir(delta_dirname(of,DIR), pa )
-      elif f[-4: ] != '.deb' :
-        print 'Warning: skipping cmd line argument: ',f
+      elif arg[-4: ] != '.deb' :
+        print 'Warning: skipping cmd line argument: ',arg
       else:
-        scan_deb(f, 'CMDLINE')
-        di=os.path.dirname(f) or '.'
-        pa = package_name(f)
+        scan_deb(arg, 'CMDLINE')
+        di = os.path.dirname(arg) or '.'
+        pa = package_name(arg)
         scan_deb_dir(di, pa, 'SAMEDIR' )
         for alt in ALT_NOP:
-          scan_deb_dir(delta_dirname(f,alt), pa, 'ALT')
+          scan_deb_dir(delta_dirname(arg,alt), pa, 'ALT')
         if CLEAN_DELTAS:
-          scan_delta_dir(delta_dirname(f,DIR), pa)
-    elif  os.path.isdir(f) :
-      scan_deb_dir(f, None, 'CMDLINE')
+          scan_delta_dir(delta_dirname(arg,DIR), pa)
+    elif  os.path.isdir(arg):
+      scan_deb_dir(arg, None, 'CMDLINE')
       for alt in ALT_NOP:
         if alt[-2:] == '//':
-          scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
+          scan_deb_dir(delta_dirname(arg,alt), None, 'ALT')
       if CLEAN_DELTAS:
-        scan_delta_dir(delta_dirname(f,DIR))
+        scan_delta_dir(delta_dirname(arg,DIR))
     else:
-      print 'Warning: '+f+' is not a regular file or a directory.'
+      print 'Warning: '+arg+' is not a regular file or a directory.'
 
   if VERBOSE > 1 : print ' total parsing time: %.1f ' % ( -start_time + time.time())
   
@@ -2034,7 +2035,7 @@ def do_deltas(debs):
             if VERBOSE: print 'Removing: ',f_d          
             if ACT: os.unlink(f_d)
     
-    how_many= len( info_pack  )
+    how_many= len(info_pack)
     if VERBOSE>2:
       print 'Package: ',pa,' Versions:',versions
     if how_many <= 1 :
