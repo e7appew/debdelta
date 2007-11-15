@@ -131,7 +131,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.123 2007/11/15 10:06:01 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.124 2007/11/15 10:12:53 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -457,12 +457,20 @@ def system(a,TD,saveargs=None):
     raise KeyboardInterrupt
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
     s='Error , non zero return status '+str(ret)+' for command "'+a+'"'
-    if DEBUG and saveargs:
-      T=abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
-      open(T+'/command','w').write(a)
-      for l in saveargs:
-        shutil.copy2(l,T)
-        s=s+'\n saved argument '+l+' in '+T
+    try:
+      if DEBUG and saveargs:
+        T=abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
+        open(T+'/command','w').write(a)
+        for l in saveargs:
+          if l[0] != '/':
+            l = TD+'/'+l
+          if os.path.exists(l):
+            shutil.copy2(l,T)            
+            s=s+'\n saved argument '+l+' in '+T
+          else:
+            s=s+'\n did not find argument '+l
+    except OSError,o:
+      s=s+'\n    (there was an additional OSError "'+str(o)+'" when trying to save arguments)'
     die(s)
 
 def check_deb(f):
