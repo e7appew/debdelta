@@ -131,7 +131,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.124 2007/11/15 10:12:53 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.125 2007/11/15 10:18:24 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1794,9 +1794,13 @@ def do_deltas(debs):
   try:
     from apt import VersionCompare
   except ImportError:
-    import apt_pkg
-    apt_pkg.InitSystem()
-    from apt_pkg import VersionCompare
+    try:
+      import apt_pkg
+      apt_pkg.InitSystem()
+      from apt_pkg import VersionCompare
+    except ImportError:
+      print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
+      raise SystemExit
   
   if AVOID and type(AVOID) == StringType:
     import shelve
