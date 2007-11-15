@@ -131,7 +131,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.122 2007/11/15 09:14:03 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.123 2007/11/15 10:06:01 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -754,10 +754,11 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     else:
       s=dpkg_L(pa)
     for orig,divert in s:          
-      if os.path.isfile(divert) and not os.path.islink(divert) :            
-        a=os.path.dirname(TD+'/OLD/DATA'+orig)
-        if not os.path.exists(a):
-          os.makedirs(a)
+      if os.path.isfile(divert) and not os.path.islink(divert) :
+        a=TD+'OLD/DATA'+orig
+        d=os.path.dirname(a)
+        if not os.path.exists(d):
+          os.makedirs(d)
         if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
         os.symlink(divert, a)
       else:
@@ -2259,17 +2260,14 @@ class Predictor:
     else:
       basedir=os.path.expanduser('~/.debdelta')
     s=os.path.join(basedir,'upgrade.db')
-    if not os.path.exists(s):
-      print 'Creating: ',s
+    if not os.path.exists(os.path.dirname(s)):
+      print 'Creating: ',os.path.dirname(s)
       os.makedirs(os.path.dirname(s))
     self.upgrade_stats=shelve.open(s,flag='c')
 
     s=os.path.join(basedir,'packages_stats.db')
     
     if  os.path.exists(s) or DEBUG :
-      if not os.path.exists(s):
-        print 'Creating: ',s
-        os.makedirs(os.path.dirname(s))
       self.package_stats=shelve.open(s,flag='c')
 
     self.patch_time_predictor=self.patch_time_predictor_math
