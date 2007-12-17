@@ -1,3 +1,17 @@
+debdelta (0.23) unstable; urgency=low
+
+  * If "python-apt" is missing, print a error message and exit;
+    "python-apt" is recommended; thanks to David (Closes: #448688).
+  * debpatch understands the keywords 'needs-xdelta' and 'needs-bsdiff'
+  * debdeltas: 'Package' files may be used as arguments
+  * debdeltas : can have multiple --alt  options
+  * option --delta-algo to try different binary encoders;
+    thanks to "Jiří Paleček" (Closes: #435159).
+  * There is now a repository of deltas for stable security
+    (again hosted at bononia, thanks a lot zack).
+
+ -- A Mennucc1 <debdev@tonelli.sns.it>  Mon, 17 Dec 2007 15:26:04 +0100
+
 debdelta (0.22) unstable; urgency=medium
 
   * depends on xdelta3 , and correct path in python

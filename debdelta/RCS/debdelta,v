@@ -1,9 +1,74 @@
-head	1.113;
+head	1.126;
 access;
 symbols;
-locks; strict;
+locks;
 comment	@# @;
 
+
+1.126
+date	2007.12.17.14.26.35;	author debdev;	state Exp;
+branches;
+next	1.125;
+
+1.125
+date	2007.11.15.10.18.24;	author debdev;	state Exp;
+branches;
+next	1.124;
+
+1.124
+date	2007.11.15.10.12.53;	author debdev;	state Exp;
+branches;
+next	1.123;
+
+1.123
+date	2007.11.15.10.06.01;	author debdev;	state Exp;
+branches;
+next	1.122;
+
+1.122
+date	2007.11.15.09.14.03;	author debdev;	state Exp;
+branches;
+next	1.121;
+
+1.121
+date	2007.11.13.13.47.44;	author debdev;	state Exp;
+branches;
+next	1.120;
+
+1.120
+date	2007.11.13.13.34.39;	author debdev;	state Exp;
+branches;
+next	1.119;
+
+1.119
+date	2007.11.13.13.33.25;	author debdev;	state Exp;
+branches;
+next	1.118;
+
+1.118
+date	2007.11.08.20.24.53;	author debdev;	state Exp;
+branches;
+next	1.117;
+
+1.117
+date	2007.11.07.10.43.37;	author debdev;	state Exp;
+branches;
+next	1.116;
+
+1.116
+date	2007.10.20.17.14.39;	author debdev;	state Exp;
+branches;
+next	1.115;
+
+1.115
+date	2007.10.17.13.11.46;	author debdev;	state Exp;
+branches;
+next	1.114;
+
+1.114
+date	2007.10.17.13.00.24;	author debdev;	state Exp;
+branches;
+next	1.113;
 
 1.113
 date	2007.08.26.18.20.05;	author debdev;	state Exp;
@@ -575,12 +640,15 @@ desc
 @@
 
 
-1.113
+1.126
 log
-@document --delta-algo ; and reformat help
+@add copyright and licence statement
 @
 text
 @#!/usr/bin/python
+
+# Copyright (C) 2006-07 Andrea Mennucci.
+# License: GNU Library General Public License, version 2 or later
 
 doc={}
 doc['delta']="""\
@@ -598,7 +666,7 @@ Options:
 
 
 doc['deltas']="""\
-Usage: debdeltas [ option...  ]  [deb_files and dirs]
+Usage: debdeltas [ option...  ]  [deb_files and dirs, or Package files]
   Computes all missing deltas for Debian files.
   It orders by version number and produce deltas to the newest version
 
@@ -608,8 +676,9 @@ Options:
 
 --alt DIR   for any cmdline argument, search for debs also in this dir 
 
-            if DIR ends in // , then the dirname of the cmdline argument
-            will be appended to DIR, as well (useful when creating archives)
+            If DIR ends in // , then the dirname of the cmdline argument
+            will be appended to DIR, as well (useful when creating archives).
+            DIR may also be a Package file, as found in a Debian repository.
             
  -n N       how many deltas to produce for each package (default 1)
 --no-md5    do not include MD5 info in debdelta
@@ -703,7 +772,7 @@ KEEP    = False
 INFO    = False
 NEEDSOLD= False
 DIR     = None
-ALT     = None
+ALT     = []
 AVOID   = None
 ACT     = True
 DO_MD5  = True
@@ -712,7 +781,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.112 2007/08/26 18:10:48 debdev Exp debdev $"
+RCS_VERSION="$Id: debdelta,v 1.125 2007/11/15 10:18:24 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -770,9 +839,9 @@ else:
         print 'Error: --dir ',DIR,' does not exist.'
         raise SystemExit(3)
     elif o == '--alt'  :
-      ALT = v
-      if not os.path.isdir(ALT):
-        print 'Error: --alt ',ALT,' does not exist.'
+      ALT.append(v)
+      if not os.path.exists(v) :
+        print 'Error: --alt ',v,' does not exist.'
         raise SystemExit(3)
     elif o ==  '--help' or o ==  '-h':
       print __doc__
@@ -868,19 +937,7 @@ def append_info(delta,info):
   infofile.close()
   system(['ar','rSi','0',delta, 'info'],  TD)
   rmtree(TD)
-
-def make_parents(f):
-  assert(f[0] == '/')
-  s=f.split('/')
-  d=''
-  for a in s[:-1] :
-    if a:
-      d=d+'/'+a
-      if not os.path.exists(d):
-        os.mkdir(d)
-  d=d+'/'+s[-1]
-  return d
-
+  
 def de_n(a):
   if a and a[-1] ==  '\n' :
     a = a[:-1]
@@ -1040,7 +1097,7 @@ def die(s):
   #if s : sys.stderr.write(s+'\n')
   raise DebDeltaError,s
   
-def system(a,TD):
+def system(a,TD,saveargs=None):
   if type(a) != StringType :
     a=string.join(a,' ')
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
@@ -1049,7 +1106,22 @@ def system(a,TD):
   if ret == 2:
     raise KeyboardInterrupt
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
-    die('Error , non zero return status '+str(ret)+' for command "'+a+'"')
+    s='Error , non zero return status '+str(ret)+' for command "'+a+'"'
+    try:
+      if DEBUG and saveargs:
+        T=abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
+        open(T+'/command','w').write(a)
+        for l in saveargs:
+          if l[0] != '/':
+            l = TD+'/'+l
+          if os.path.exists(l):
+            shutil.copy2(l,T)            
+            s=s+'\n saved argument '+l+' in '+T
+          else:
+            s=s+'\n did not find argument '+l
+    except OSError,o:
+      s=s+'\n    (there was an additional OSError "'+str(o)+'" when trying to save arguments)'
+    die(s)
 
 def check_deb(f):
   if not  os.path.isfile(f) :
@@ -1340,8 +1412,11 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     else:
       s=dpkg_L(pa)
     for orig,divert in s:          
-      if os.path.isfile(divert) and not os.path.islink(divert) :            
-        a=make_parents(TD+'/OLD/DATA'+orig)
+      if os.path.isfile(divert) and not os.path.islink(divert) :
+        a=TD+'OLD/DATA'+orig
+        d=os.path.dirname(a)
+        if not os.path.exists(d):
+          os.makedirs(d)
         if VERBOSE > 3 : print '   symlinking ',divert,' to ',a
         os.symlink(divert, a)
       else:
@@ -1394,6 +1469,15 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
             if os.path.exists(a ):
               os.symlink(a,TD+'OLD/CONTROL/'+b)
         #else... we always unpack the control of a .deb
+    elif 'needs-xdelta3' == a:
+      if not os.path.exists('/usr/bin/xdelta3'):
+        die('This patch needs xdelta3. Please install the Debian package "xdelta3".')
+    elif 'needs-xdelta' == a:
+      if not os.path.exists('/usr/bin/xdelta'):
+        die('This patch needs xdelta. Please install the Debian package "xdelta".')
+    elif 'needs-xdelta3' == a:
+      if not os.path.exists('/usr/bin/bsdiff'):
+        die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
   ##then , really execute the patch
@@ -1648,24 +1732,24 @@ def do_delta_(olddeb,newdeb,delta,TD):
       script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
     #xdelta3
     elif algo == 'xdelta3' :
-      system('/usr/bin/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
+      system('/usr/bin/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD,(o,n))
       script.write('/usr/bin/xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
     ##But bsdiff is sooooo slow!
     elif algo == 'bsdiff' : # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
-      system('bsdiff  '+o+' '+n+' '+p,TD)
+      system('bsdiff  '+o+' '+n+' '+p,TD,(o,n))
       script.write('bspatch '+o+' '+n+' '+p+'; rm '+p+'\n')
     #seems that 'xdelta' is buggy on 64bit and different-endian machines
     #xdelta does not deal with different endianness!
     elif algo == 'xdelta-bzip' :
-      system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
-      system('bzip2 -9 '+p,TD)
+      system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
+      system('bzip2 -9 '+p,TD,(p,))
       script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
       p  += '.bz2'
     elif algo == 'xdelta' :
-      system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+      system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
       script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
     elif algo == 'jojodiff' :
       system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
@@ -2360,10 +2444,14 @@ def do_deltas(debs):
   try:
     from apt import VersionCompare
   except ImportError:
-    import apt_pkg
-    apt_pkg.InitSystem()
-    from apt_pkg import VersionCompare
-
+    try:
+      import apt_pkg
+      apt_pkg.InitSystem()
+      from apt_pkg import VersionCompare
+    except ImportError:
+      print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
+      raise SystemExit
+  
   if AVOID and type(AVOID) == StringType:
     import shelve
     if VERBOSE: print ' Using avoid dict ',AVOID
@@ -2373,68 +2461,146 @@ def do_deltas(debs):
   
   info_by_pack_arch={}
   info_by_file={}
-  deb_dir_visited=[]
+  
+  def info_by_pack_arch_add(f):
+    pack = info_by_file[f]['Package']
+    arch = info_by_file[f]['Architecture']
+    vers = info_by_file[f]['Version']
+    if pack in avoid_pack and ( avoid_pack[pack]['Version'] == vers ):
+      #note that 'f' is in  info_by_file and not in info_by_pack_arch
+      if VERBOSE > 1 :     print 'Avoid: ', f
+      return
+    if  (pack,arch) not in  info_by_pack_arch :
+      info_by_pack_arch[ (pack,arch) ]=[]
+    info_by_pack_arch[ (pack,arch) ].append( info_by_file[f] )
+    
+  def iterate_Packages(packages):
+    packages=abspath(packages)
+    assert os.path.isfile(packages)
+    assert os.path.basename(packages) == 'Packages'
+    dir=os.path.dirname(packages)
+    dir=dir.split('/')
+    try:
+      a=dir.index('dists')
+    except ValueError:
+      sys.stderr.write('Error: pathname "%s" does not contain "dists"\n' % packages)
+      return
+    base = string.join(dir[:a],'/')
+    for l in open(packages):
+      l=l.rstrip('\n')
+      if l[:9] == 'Package: ':
+          pack=l[9:]
+      elif l[:14] == 'Architecture: ':
+          arch = l[14:]
+      elif l[:9] ==  'Version: ':
+          vers = l[9:]
+      elif l[:10] == 'Filename: ':
+            of=l[10:]
+      elif l == '':
+        f=base+'/'+of
+        if f[-4:] == '.udeb':
+          if VERBOSE > 2 : print '  skip udeb: ',f
+          continue
+        elif not os.path.isfile(f):
+          sys.stderr.write('Package missing! '+f+'\n')
+          continue
+        if f not in info_by_file:
+          info_by_file[f]={}
+          info_by_file[f]['File'] = f
+          info_by_file[f]['Filename'] = of
+          info_by_file[f]['Package']  = pack
+          info_by_file[f]['Architecture'] = arch
+          info_by_file[f]['Version'] = vers
+        else:  #this happens e.g. if the package is both in testing and in unstable..
+          if DEBUG > 1: print 'Seen twice, do not re-add info: ',f
+          assert info_by_file[f]['Version'] == vers and \
+                 info_by_file[f]['Package'] == pack and \
+                 info_by_file[f]['Architecture'] == arch
+        yield f
+        del of,pack,vers,arch
+        
+  def scan_Packages(packages, label):
+    for f in iterate_Packages(packages):
+      info_by_file[f]['Label'] = label
+      info_by_pack_arch_add(f)
+  
+  deb_dir_cache={}
+  delta_dir_cache={}
+  def cache_dir(f,extension='.deb',dacache=deb_dir_cache):
+    assert( os.path.isdir(f))
+    if f in dacache:
+      return dacache[f]
+    cache={}
+    for d in os.listdir(f):
+      a,b = os.path.splitext(d)
+      if b == extension:
+        a=os.path.join(f,d)
+        n=d.split('_')[0]
+        if n not in cache:
+          cache[n]=[a]
+        else:
+          cache[n].append(a)
+    dacache[f] = cache
+    return cache
+  
+  def scan_deb_dir(f, debname, label):
+    assert os.path.isdir(f) and (debname == None or type(debname) == StringType) and type(label) == StringType
+    cache = cache_dir(f)
+    if debname == None:
+      for n in cache:
+        for dt in cache[n]:
+          scan_deb( dt , label )
+    else:
+      if debname in cache:
+        for dt in cache[debname]:
+          scan_deb( dt , label )
 
-  def scan_deb_dir(f, pack_filter, label):
-      "pack filter may be a function that matches by basename"
-      assert( os.path.isdir(f))
-      if f not in deb_dir_visited:
-        if pack_filter == None :
-          deb_dir_visited.append(f)
-        for d in os.listdir(f):
-          dt=os.path.join(f,d)
-          if os.path.isfile(dt) and d[-4:] == '.deb' and \
-                 ( pack_filter == None or  pack_filter(d) ) :
-            scan_deb( dt , label )
-            
   def scan_deb(of, label):
       assert( os.path.isfile(of) )
       f=abspath(of)
       if f in info_by_file:
         #just (in case) promote to status of CMDLINE package
-        if label == 'CMDLINE' :
+        if label == 'CMDLINE' and info_by_file[f]['Label'] !=  'CMDLINE':
+          if VERBOSE > 2 : print 'Promoting to CMDLINE ',f
           #this changes also the entry in info_by_pack_arch (magic python)
           info_by_file[f]['Label']=label
         return
       p=open(f)
       if p.read(21) != "!<arch>\ndebian-binary" :
-	  p.close()
-	  if os.path.getsize(f) == 0 :
-	      print ('Warning: '+f+ ' is an empty file; removing it. ')
-	      os.unlink(f)
-	  else:  
-	      print ('Error: '+f+ ' does not seem to be a Debian package ')
-	  return
+        p.close()
+        if os.path.getsize(f) == 0 :
+          print ('Warning: '+f+ ' is an empty file; removing it. ')
+          if ACT : os.unlink(f)
+        else:  
+          print ('Error: '+f+ ' does not seem to be a Debian package ')
+        return
       p.close()
       info_by_file[f]={}
       p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,params=info_by_file[f])
       p.close()
-      info_by_file[f]['File'] = of
-      pa=info_by_file[f]['Package']
-      ar=info_by_file[f]['Architecture']
-      ve=info_by_file[f]['Version']
+      info_by_file[f]['Filename'] = of
+      info_by_file[f]['File'] = f
       info_by_file[f]['Label'] = label
-      if pa in avoid_pack and ( avoid_pack[pa]['Version'] == ve ):
-        #note that 'f' is in  info_by_file and not in info_by_pack_arch
-        if VERBOSE > 1 :     print 'Avoid: ', new['File']
-        return
-      if  (pa,ar) not in  info_by_pack_arch :
-         info_by_pack_arch[ (pa,ar) ]=[]
-      info_by_pack_arch[ (pa,ar) ].append( info_by_file[f] )
+      info_by_pack_arch_add(f)
 
+  def scan_delta_dir(f,debname=None):
+    if not os.path.isdir(f) :
+      if DEBUG > 1 : print ' no such delta dir ',f
+      return
+    assert debname == None or type(debname) == StringType 
+    cache = cache_dir(f,extension='.delta',dacache=delta_dir_cache)
+    if debname == None :
+      for n in cache:
+        for dt in cache[n]:
+          scan_delta( dt )
+    else:
+      if debname in cache:
+        for dt in cache[debname]:
+          scan_delta( dt )
+    
   # contains list of triples (filename,oldversion,newversion)
   old_deltas_by_pack_arch={}
-  old_deltas_dir_visited=[]
-  def scan_delta_dir(f,pack_filter=None):
-    assert( os.path.isdir(f) )
-    if f not in old_deltas_dir_visited:
-      if pack_filter == None :
-        old_deltas_dir_visited.append(f)
-      for d in os.listdir(f):
-        dt=os.path.join(f,d)
-        if os.path.isfile(dt) and ( pack_filter == None or  pack_filter(d) ):
-          scan_delta( dt )
   
   def scan_delta(f):
     assert( os.path.isfile(f) )
@@ -2464,40 +2630,61 @@ def do_deltas(debs):
     if altdir:
       if altdir[-2:] == '//' :
         a=altdir+f
-        return make_parents(abspath(a)+'/')
+        return abspath(a)+'/'
       else:
         return altdir
     else:
       return abspath(f)
 
-  def __name_filter__(n):
-    "returns a function that filters by package name"
+  def package_name(n):
+    "returns the package name from the file name"
     n=os.path.basename(n)
-    n=n.split('_')[0] + '_'
-    l=len(n)
-    return lambda x : x[:l] == n
+    n=n.split('_')[0] 
+    return n
+  
+  #reduce ALT, by preprocessing Packages
+  ALT_NOP=[]
+  for alt in ALT:
+    if os.path.basename(alt) == 'Packages':
+      scan_Packages(alt,'ALT')
+    else:
+      ALT_NOP.append(alt)
 
   #scan cmdline arguments and prepare list of debs and deltas
-  for f in debs:
-    if os.path.isfile(f):
-      if f[-4: ] != '.deb' :
-        print 'Warning: skipping cmd line argument: ',f
-        continue
-      scan_deb(f, 'CMDLINE')
-      di=os.path.dirname(f) or '.'
-      scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
-      if ALT:        
-        scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f), 'ALT' )
+  for arg in debs:
+    if os.path.isfile(arg):
+      if os.path.basename(arg) == 'Packages':
+        for a in  iterate_Packages(arg):
+          info_by_file[a]['Label'] = 'CMDLINE'
+          of = info_by_file[a]['Filename']
+          info_by_pack_arch_add(a)
+          pa = package_name(a)
+          for alt in ALT_NOP:
+            scan_deb_dir(delta_dirname(of,alt), pa , 'ALT' )
+          if CLEAN_DELTAS:
+            scan_delta_dir(delta_dirname(of,DIR), pa )
+      elif arg[-4: ] != '.deb' :
+        print 'Warning: skipping cmd line argument: ',arg
+      else:
+        scan_deb(arg, 'CMDLINE')
+        di = os.path.dirname(arg) or '.'
+        pa = package_name(arg)
+        scan_deb_dir(di, pa, 'SAMEDIR' )
+        for alt in ALT_NOP:
+          scan_deb_dir(delta_dirname(arg,alt), pa, 'ALT')
+        if CLEAN_DELTAS:
+          scan_delta_dir(delta_dirname(arg,DIR), pa)
+    elif  os.path.isdir(arg):
+      scan_deb_dir(arg, None, 'CMDLINE')
+      for alt in ALT_NOP:
+        if alt[-2:] == '//':
+          scan_deb_dir(delta_dirname(arg,alt), None, 'ALT')
       if CLEAN_DELTAS:
-        scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
-    elif  os.path.isdir(f) :
-      scan_deb_dir(f, None, 'CMDLINE')
-      if ALT:
-        scan_deb_dir(delta_dirname(f,ALT), None, 'ALT')
-      if CLEAN_DELTAS:
-        scan_delta_dir(delta_dirname(f,DIR))
+        scan_delta_dir(delta_dirname(arg,DIR))
     else:
-      print 'Warning: '+f+' is not a regular file or a directory.'
+      print 'Warning: '+arg+' is not a regular file or a directory.'
+
+  if VERBOSE > 1 : print ' total parsing time: %.1f ' % ( -start_time + time.time())
   
   def order_by_version(a,b):
     return VersionCompare( a['Version'] , b['Version']  )
@@ -2518,7 +2705,7 @@ def do_deltas(debs):
             if VERBOSE: print 'Removing: ',f_d          
             if ACT: os.unlink(f_d)
     
-    how_many= len( info_pack  )
+    how_many= len(info_pack)
     if VERBOSE>2:
       print 'Package: ',pa,' Versions:',versions
     if how_many <= 1 :
@@ -2543,12 +2730,6 @@ def do_deltas(debs):
       if VERBOSE > 1:     print '  Skip , too small: ', new['File']
       continue
 
-    deltadirname=delta_dirname(new['File'],DIR)
-    free=freespace(deltadirname)
-    if free and (free < (newdebsize /2 + 2**15)) :
-      if VERBOSE : print 'Not enough disk space for storing ',delta
-      continue
-
     l = newest
     while (l>0) and (l > newest - N_DELTAS):
         l -= 1
@@ -2561,7 +2742,15 @@ def do_deltas(debs):
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
-        make_parents(abspath(deltadirname)+'/')
+        deltadirname=delta_dirname(new['Filename'],DIR)
+        if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
+          os.makedirs(deltadirname)
+        
+        free=freespace(deltadirname)
+        if free and (free < (newdebsize /2 + 2**15)) :
+          if VERBOSE : print 'Not enough disk space for storing ',delta
+          continue
+        
         delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
@@ -2733,17 +2922,14 @@ class Predictor:
     else:
       basedir=os.path.expanduser('~/.debdelta')
     s=os.path.join(basedir,'upgrade.db')
-    if not os.path.exists(s):
-      print 'Creating: ',s
-    make_parents(s)
+    if not os.path.exists(os.path.dirname(s)):
+      print 'Creating: ',os.path.dirname(s)
+      os.makedirs(os.path.dirname(s))
     self.upgrade_stats=shelve.open(s,flag='c')
 
     s=os.path.join(basedir,'packages_stats.db')
     
     if  os.path.exists(s) or DEBUG :
-      if not os.path.exists(s):
-        print 'Creating: ',s
-      make_parents(s)
       self.package_stats=shelve.open(s,flag='c')
 
     self.patch_time_predictor=self.patch_time_predictor_math
@@ -2858,7 +3044,7 @@ def delta_upgrade_():
     ##so
     a=os.open(DEB_DIR+'/lock', os.O_RDWR | os.O_TRUNC | os.O_CREAT, 0640)
     fcntl.fcntl(a, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
-    # synopsis lockf(  	fd, operation, [length, [start, [whence]]])
+    # synopsis lockf(   fd, operation, [length, [start, [whence]]])
     fcntl.lockf(a, fcntl.LOCK_EX | fcntl.LOCK_NB, 0,0,0)
   except IOError, s:
     if s.errno == 11 :
@@ -3469,6 +3655,444 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.125
+log
+@debdeltas : if "python-apt" is missing, print a error message and exit
+@
+text
+@d3 3
+d137 1
+a137 1
+RCS_VERSION="$Id: debdelta,v 1.124 2007/11/15 10:12:53 debdev Exp $"
+@
+
+
+1.124
+log
+@system() : in DEBUG code, correct bug, and make it more robust
+@
+text
+@d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.123 2007/11/15 10:06:01 debdev Exp $"
+d1797 7
+a1803 3
+    import apt_pkg
+    apt_pkg.InitSystem()
+    from apt_pkg import VersionCompare
+@
+
+
+1.123
+log
+@correct bugs in usage of os.makedirs
+@
+text
+@d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.122 2007/11/15 09:14:03 debdev Exp $"
+d460 14
+a473 6
+    if DEBUG and saveargs:
+      T=abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
+      open(T+'/command','w').write(a)
+      for l in saveargs:
+        shutil.copy2(l,T)
+        s=s+'\n saved argument '+l+' in '+T
+@
+
+
+1.122
+log
+@if a helper binary differ crashes, save command and arguments in a
+temporary dir
+@
+text
+@d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.121 2007/11/13 13:47:44 debdev Exp $"
+d757 5
+a761 4
+      if os.path.isfile(divert) and not os.path.islink(divert) :            
+        a=os.path.dirname(TD+'/OLD/DATA'+orig)
+        if not os.path.exists(a):
+          os.makedirs(a)
+d2263 2
+a2264 2
+    if not os.path.exists(s):
+      print 'Creating: ',s
+a2270 3
+      if not os.path.exists(s):
+        print 'Creating: ',s
+        os.makedirs(os.path.dirname(s))
+@
+
+
+1.121
+log
+@some code clean up
+@
+text
+@d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.120 2007/11/13 13:34:39 debdev Exp $"
+d450 1
+a450 1
+def system(a,TD):
+d459 8
+a466 1
+    die('Error , non zero return status '+str(ret)+' for command "'+a+'"')
+d1076 1
+a1076 1
+      system('/usr/bin/xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD)
+d1083 1
+a1083 1
+      system('bsdiff  '+o+' '+n+' '+p,TD)
+d1088 2
+a1089 2
+      system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+      system('bzip2 -9 '+p,TD)
+d1093 1
+a1093 1
+      system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD)
+@
+
+
+1.120
+log
+@debpatch: understands the keywords 'needs-xdelta' and 'needs-bsdiff'
+@
+text
+@d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.119 2007/11/13 13:33:25 debdev Exp $"
+d1893 2
+a1894 1
+        if label == 'CMDLINE' :
+d1903 1
+a1903 1
+          os.unlink(f)
+d1977 3
+a1979 3
+  for f in ALT:
+    if os.path.basename(f) == 'Packages':
+      scan_Packages(f,'ALT')
+d1981 1
+a1981 1
+      ALT_NOP.append(f)
+d1984 4
+a1987 4
+  for f in debs:
+    if os.path.isfile(f):
+      if os.path.basename(f) == 'Packages':
+        for a in  iterate_Packages(f):
+d1989 1
+a1989 1
+          of=info_by_file[a]['Filename']
+d1996 2
+a1997 2
+      elif f[-4: ] != '.deb' :
+        print 'Warning: skipping cmd line argument: ',f
+d1999 3
+a2001 3
+        scan_deb(f, 'CMDLINE')
+        di=os.path.dirname(f) or '.'
+        pa = package_name(f)
+d2004 1
+a2004 1
+          scan_deb_dir(delta_dirname(f,alt), pa, 'ALT')
+d2006 3
+a2008 3
+          scan_delta_dir(delta_dirname(f,DIR), pa)
+    elif  os.path.isdir(f) :
+      scan_deb_dir(f, None, 'CMDLINE')
+d2011 1
+a2011 1
+          scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
+d2013 1
+a2013 1
+        scan_delta_dir(delta_dirname(f,DIR))
+d2015 1
+a2015 1
+      print 'Warning: '+f+' is not a regular file or a directory.'
+d2038 1
+a2038 1
+    how_many= len( info_pack  )
+@
+
+
+1.119
+log
+@debdeltas: document the fact that 'Package' files may be used as arguments
+@
+text
+@d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.118 2007/11/08 20:24:53 debdev Exp $"
+d809 6
+@
+
+
+1.118
+log
+@get rid of make_parents , use os.makedirs
+debdeltas: cache_dir caches both .debs and .deltas
+correct some bugs in the previous version:
+ extensions are '.deb' and '.delta'
+ does not create directories when not needed, but do when needeed
+@
+text
+@d19 1
+a19 1
+Usage: debdeltas [ option...  ]  [deb_files and dirs]
+d29 3
+a31 2
+            if DIR ends in // , then the dirname of the cmdline argument
+            will be appended to DIR, as well (useful when creating archives)
+d134 1
+a134 1
+RCS_VERSION="$Id: debdelta,v 1.117 2007/11/07 10:43:37 debdev Exp $"
+@
+
+
+1.117
+log
+@debdeltas : can have multiple --alt  options
+debdeltas : can parse 'Package' files
+@
+text
+@d133 1
+a133 1
+RCS_VERSION="$Id: debdelta,v 1.116 2007/10/20 17:14:39 debdev Exp debdev $"
+d289 1
+a289 13
+
+def make_parents(f):
+  assert(f[0] == '/')
+  s=f.split('/')
+  d=''
+  for a in s[:-1] :
+    if a:
+      d=d+'/'+a
+      if not os.path.exists(d):
+        os.mkdir(d)
+  d=d+'/'+s[-1]
+  return d
+
+d750 3
+a752 1
+        a=make_parents(TD+'/OLD/DATA'+orig)
+d1851 2
+a1852 1
+  def cache_deb_dir(f):
+d1854 2
+a1855 2
+    if f in deb_dir_cache:
+      return deb_dir_cache[f]
+d1858 2
+a1859 1
+      if d[-4:] == '.deb':
+d1866 1
+a1866 1
+    deb_dir_cache[f] = cache
+d1870 2
+a1871 2
+    assert( os.path.isdir(f))
+    cache = cache_deb_dir(f)
+d1909 15
+a1925 10
+  old_deltas_dir_visited=[]
+  def scan_delta_dir(f,pack_filter=None):
+    assert( os.path.isdir(f) )
+    if f not in old_deltas_dir_visited:
+      if pack_filter == None :
+        old_deltas_dir_visited.append(f)
+      for d in os.listdir(f):
+        dt=os.path.join(f,d)
+        if os.path.isfile(dt) and ( pack_filter == None or  pack_filter(d) ):
+          scan_delta( dt )
+d1955 1
+a1955 1
+        return make_parents(abspath(a)+'/')
+d1961 2
+a1962 2
+  def __name_filter__(n):
+    "returns a function that filters by package name"
+d1964 3
+a1966 4
+    n=n.split('_')[0] + '_'
+    l=len(n)
+    return lambda x : x[:l] == n
+
+d1983 1
+d1985 1
+a1985 1
+            scan_deb_dir(delta_dirname(of,alt), __name_filter__(a), 'ALT' )
+d1987 1
+a1987 1
+            scan_delta_dir(delta_dirname(of,DIR), __name_filter__(a) )
+d1993 2
+a1994 1
+        scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
+d1996 1
+a1996 1
+          scan_deb_dir(delta_dirname(f,alt), __name_filter__(f), 'ALT' )
+d1998 1
+a1998 1
+          scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
+d2002 2
+a2003 1
+        scan_deb_dir(delta_dirname(f,alt), None, 'ALT')
+a2054 6
+    deltadirname=delta_dirname(new['Filename'],DIR)
+    free=freespace(deltadirname)
+    if free and (free < (newdebsize /2 + 2**15)) :
+      if VERBOSE : print 'Not enough disk space for storing ',delta
+      continue
+
+d2067 9
+a2075 1
+        make_parents(abspath(deltadirname)+'/')
+d2249 1
+a2249 1
+    make_parents(s)
+d2257 1
+a2257 1
+      make_parents(s)
+@
+
+
+1.116
+log
+@convert tabs to spaces
+@
+text
+@d133 1
+a133 1
+RCS_VERSION="$Id: debdelta,v 1.115 2007/10/17 13:11:46 debdev Exp $"
+d192 1
+a192 1
+      if not os.path.isdir(v):
+d1787 1
+a1787 1
+
+d1797 91
+a1887 1
+  deb_dir_visited=[]
+a1888 12
+  def scan_deb_dir(f, pack_filter, label):
+      "pack filter may be a function that matches by basename"
+      assert( os.path.isdir(f))
+      if f not in deb_dir_visited:
+        if pack_filter == None :
+          deb_dir_visited.append(f)
+        for d in os.listdir(f):
+          dt=os.path.join(f,d)
+          if os.path.isfile(dt) and d[-4:] == '.deb' and \
+                 ( pack_filter == None or  pack_filter(d) ) :
+            scan_deb( dt , label )
+            
+d1912 2
+a1913 4
+      info_by_file[f]['File'] = of
+      pa=info_by_file[f]['Package']
+      ar=info_by_file[f]['Architecture']
+      ve=info_by_file[f]['Version']
+d1915 1
+a1915 7
+      if pa in avoid_pack and ( avoid_pack[pa]['Version'] == ve ):
+        #note that 'f' is in  info_by_file and not in info_by_pack_arch
+        if VERBOSE > 1 :     print 'Avoid: ', new['File']
+        return
+      if  (pa,ar) not in  info_by_pack_arch :
+         info_by_pack_arch[ (pa,ar) ]=[]
+      info_by_pack_arch[ (pa,ar) ].append( info_by_file[f] )
+d1971 8
+d1982 10
+a1991 1
+      if f[-4: ] != '.deb' :
+d1993 8
+a2000 8
+        continue
+      scan_deb(f, 'CMDLINE')
+      di=os.path.dirname(f) or '.'
+      scan_deb_dir(di, __name_filter__(f), 'SAMEDIR' )
+      for alt in ALT:
+        scan_deb_dir(delta_dirname(f,alt), __name_filter__(f), 'ALT' )
+      if CLEAN_DELTAS:
+        scan_delta_dir(delta_dirname(f,DIR), __name_filter__(f) )
+d2003 1
+a2003 1
+      for alt in ALT:
+d2009 2
+d2056 1
+a2056 1
+    deltadirname=delta_dirname(new['File'],DIR)
+@
+
+
+1.115
+log
+@debdelta supports multiple --alt options.
+@
+text
+@d133 1
+a133 1
+RCS_VERSION="$Id: debdelta,v 1.114 2007/10/17 13:00:24 debdev Exp debdev $"
+d1822 7
+a1828 7
+	  p.close()
+	  if os.path.getsize(f) == 0 :
+	      print ('Warning: '+f+ ' is an empty file; removing it. ')
+	      os.unlink(f)
+	  else:  
+	      print ('Error: '+f+ ' does not seem to be a Debian package ')
+	  return
+d2282 1
+a2282 1
+    # synopsis lockf(  	fd, operation, [length, [start, [whence]]])
+@
+
+
+1.114
+log
+@Recognize 'needs-xdelta3' keyword when patching.
+@
+text
+@d124 1
+a124 1
+ALT     = None
+d133 1
+a133 1
+RCS_VERSION="$Id: debdelta,v 1.113 2007/08/26 18:20:05 debdev Exp debdev $"
+d191 3
+a193 3
+      ALT = v
+      if not os.path.isdir(ALT):
+        print 'Error: --alt ',ALT,' does not exist.'
+d1910 2
+a1911 2
+      if ALT:        
+        scan_deb_dir(delta_dirname(f,ALT), __name_filter__(f), 'ALT' )
+d1916 2
+a1917 2
+      if ALT:
+        scan_deb_dir(delta_dirname(f,ALT), None, 'ALT')
+@
+
+
+1.113
+log
+@document --delta-algo ; and reformat help
+@
+text
+@d133 1
+a133 1
+RCS_VERSION="$Id: debdelta,v 1.112 2007/08/26 18:10:48 debdev Exp debdev $"
+d815 3
 @
 
 
