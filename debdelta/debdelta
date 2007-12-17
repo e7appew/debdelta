@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+# Copyright (C) 2006-07 Andrea Mennucci.
+# License: GNU Library General Public License, version 2 or later
+
 doc={}
 doc['delta']="""\
 Usage: debdelta [ option...  ] fromfile tofile patchout
@@ -131,7 +134,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.125 2007/11/15 10:18:24 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.126 2007/12/17 14:26:35 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
