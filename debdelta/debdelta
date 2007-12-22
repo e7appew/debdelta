@@ -134,7 +134,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.127 2007/12/21 21:37:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.128 2007/12/22 08:01:41 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -828,7 +828,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     elif 'needs-xdelta' == a:
       if not os.path.exists('/usr/bin/xdelta'):
         die('This patch needs xdelta. Please install the Debian package "xdelta".')
-    elif 'needs-xdelta3' == a:
+    elif 'needs-bsdiff' == a:
       if not os.path.exists('/usr/bin/bsdiff'):
         die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
     elif params[a] == True:
