@@ -134,7 +134,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.128 2007/12/22 08:01:41 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.129 2007/12/27 16:48:59 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2134,12 +2134,12 @@ def do_deltas(debs):
         if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
           os.makedirs(deltadirname)
         
+        delta=os.path.join(deltadirname,deltabasename)
+
         free=freespace(deltadirname)
         if free and (free < (newdebsize /2 + 2**15)) :
           if VERBOSE : print 'Not enough disk space for storing ',delta
           continue
-        
-        delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
           if VERBOSE > 1:     print '  Skip , already exists: ',delta
