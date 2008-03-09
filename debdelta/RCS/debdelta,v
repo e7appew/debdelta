@@ -1,9 +1,24 @@
-head	1.126;
+head	1.129;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.129
+date	2007.12.27.16.48.59;	author debdev;	state Exp;
+branches;
+next	1.128;
+
+1.128
+date	2007.12.22.08.01.41;	author debdev;	state Exp;
+branches;
+next	1.127;
+
+1.127
+date	2007.12.21.21.37.00;	author debdev;	state Exp;
+branches;
+next	1.126;
 
 1.126
 date	2007.12.17.14.26.35;	author debdev;	state Exp;
@@ -640,9 +655,9 @@ desc
 @@
 
 
-1.126
+1.129
 log
-@add copyright and licence statement
+@do not use variable 'delta' before referencing it
 @
 text
 @#!/usr/bin/python
@@ -730,7 +745,7 @@ minigzip='/usr/lib/debdelta/minigzip'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback, ConfigParser
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -781,7 +796,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.125 2007/11/15 10:18:24 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.128 2007/12/22 08:01:41 debdev Exp debdev $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1475,7 +1490,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     elif 'needs-xdelta' == a:
       if not os.path.exists('/usr/bin/xdelta'):
         die('This patch needs xdelta. Please install the Debian package "xdelta".')
-    elif 'needs-xdelta3' == a:
+    elif 'needs-bsdiff' == a:
       if not os.path.exists('/usr/bin/bsdiff'):
         die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
     elif params[a] == True:
@@ -1533,8 +1548,23 @@ def do_delta(olddeb,newdeb,delta):
 def do_delta_(olddeb,newdeb,delta,TD):
   if TD[-1] != '/':
     TD = TD + '/'
+
+  import fnmatch  
   
   start_sec = time.time()
+
+  debdelta_conf=ConfigParser.SafeConfigParser()
+  debdelta_conf.read(['/etc/debdelta/debdelta.conf', os.path.expanduser('~/.debdelta/debdelta.conf')  ])
+
+  debdelta_conf_skip=[]
+  for s in debdelta_conf.sections():
+    if fnmatch.fnmatch(os.path.basename(olddeb),s):
+      opt=debdelta_conf.options(s)
+      if 'skip' in opt:
+        debdelta_conf_skip += debdelta_conf.get(s,'skip').split(';') 
+      break
+  if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)
+  
   #I do not like global variables but I do not know of another solution
   global bsdiff_time, bsdiff_datasize
   bsdiff_time = 0
@@ -1629,7 +1659,19 @@ def do_delta_(olddeb,newdeb,delta,TD):
     old_conffiles=[ de_bar(a) for a in p.read().split('\n') ]
     p.close()
   else:
-    old_conffiles=()
+    old_conffiles=[]
+
+##   a=TD+'/OLD/CONTROL/list'
+##   if os.path.exists(a):
+##     p=open(a)
+##     for a in p:
+##       a=de_bar(de_n(a))
+##       for j in debdelta_conf_skip:
+##         if fnmatch(a,j):
+##           old_conffiles.append(a) #OK, this abuses the name of the var a bit
+##           print ' REPR skip ',repr(a)
+##   else:
+##     print '  The old debian package ',olddeb,' does not contain a file list?!?' 
 
   def shell_not_allowed(name):
     "Strings that I do not trust to inject into the shell script; maybe I am a tad too paranoid..."
@@ -2017,7 +2059,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   time_corr=0
 
   ####################  vvv     delta_tar    vvv ###########################
-  def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}, chunked_p=True):
+  def delta_tar(old_filename,new_filename,CWD,skip=[],old_md5={},new_md5={}, chunked_p=True,debdelta_conf_skip=()):
     " compute delta of two tar files, and prepare the script consequently"
     assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
     if os.path.exists(TD+'OLD/mega_cat'):
@@ -2056,6 +2098,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
     oldtarinfos = {}
     for oldtarinfo in oldtar:
       oldname = oldtarinfo.name
+
+      for j in debdelta_conf_skip:
+        if fnmatch.fnmatch(oldname,j):
+          if DEBUG + VERBOSE > 1 : '  skipping ',repr(oldname),' as per rule ',repr(j)
+          skip.append(oldname)
+          break
+        
       if  (oldname in skip) or shell_not_allowed(oldname) or \
              not oldtarinfo.isreg() or oldtarinfo.size == 0:
         continue
@@ -2371,7 +2420,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
       assert(name[-3:] == '.gz')#should add support for bz2 data.tar
       def x():
         return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
-      delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5)
+      delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
+                debdelta_conf_skip=debdelta_conf_skip)
       if DEBUG > 3 : md5_ar(TD,n,name)
       script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
@@ -2746,12 +2796,12 @@ def do_deltas(debs):
         if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
           os.makedirs(deltadirname)
         
+        delta=os.path.join(deltadirname,deltabasename)
+
         free=freespace(deltadirname)
         if free and (free < (newdebsize /2 + 2**15)) :
           if VERBOSE : print 'Not enough disk space for storing ',delta
           continue
-        
-        delta=os.path.join(deltadirname,deltabasename)
         
         if os.path.exists(delta):
           if VERBOSE > 1:     print '  Skip , already exists: ',delta
@@ -2993,7 +3043,7 @@ class Predictor:
 def delta_upgrade_():
   original_cwd = os.getcwd()
 
-  import  thread , pickle, urllib, fcntl, atexit, signal, ConfigParser
+  import  thread , pickle, urllib, fcntl, atexit, signal
 
   config=ConfigParser.SafeConfigParser()
   a=config.read(['/etc/debdelta/sources.conf', os.path.expanduser('~/.debdelta/sources.conf')  ])
@@ -3655,6 +3705,65 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.128
+log
+@correctly parse patch option 'needs-bsdiff'
+@
+text
+@d137 1
+a137 1
+RCS_VERSION="$Id: debdelta,v 1.127 2007/12/21 21:37:00 debdev Exp debdev $"
+d2137 2
+a2143 2
+        delta=os.path.join(deltadirname,deltabasename)
+        
+@
+
+
+1.127
+log
+@do_delta_ reads /etc/debdelta/debdelta.conf
+and understands  the option skip
+@
+text
+@d137 1
+a137 1
+RCS_VERSION="$Id: debdelta,v 1.126 2007/12/17 14:26:35 debdev Exp $"
+d831 1
+a831 1
+    elif 'needs-xdelta3' == a:
+@
+
+
+1.126
+log
+@add copyright and licence statement
+@
+text
+@d86 1
+a86 1
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback
+d137 1
+a137 1
+RCS_VERSION="$Id: debdelta,v 1.125 2007/11/15 10:18:24 debdev Exp $"
+d889 2
+d893 13
+d1000 13
+a1012 1
+    old_conffiles=()
+d1400 1
+a1400 1
+  def delta_tar(old_filename,new_filename,CWD,skip=(),old_md5={},new_md5={}, chunked_p=True):
+d1439 7
+d1761 2
+a1762 1
+      delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5)
+d2384 1
+a2384 1
+  import  thread , pickle, urllib, fcntl, atexit, signal, ConfigParser
 @
 
 

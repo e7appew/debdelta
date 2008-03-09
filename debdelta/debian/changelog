@@ -1,3 +1,13 @@
+debdelta (0.24) unstable; urgency=low
+
+  * some packages (notably, linux kernels) modify files that they install
+    , and then patching from installed debs always fails; to avoid, I added
+    /etc/debdelta/debdelta.conf , ~/.debdelta/debdelta.conf to configure
+    which original files to skip/ship in debian packages
+  * add support for bzip2 compression on data.tar
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 09 Mar 2008 14:10:53 +0100
+
 debdelta (0.23) unstable; urgency=low
 
   * If "python-apt" is missing, print a error message and exit;

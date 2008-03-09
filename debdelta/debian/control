@@ -1,9 +1,9 @@
 Source: debdelta
 Section: devel
 Priority: optional
-Build-Depends: zlib1g-dev
+Build-Depends: zlib1g-dev, libbz2-dev
 Maintainer: A Mennucc1 <mennucc1@debian.org>
-Standards-Version: 3.7.2
+Standards-Version: 3.7.3
 
 Package: debdelta
 Architecture: any

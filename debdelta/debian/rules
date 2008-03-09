@@ -19,7 +19,11 @@ ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
   INSTALL_PROGRAM += -s
 endif
 
-build:
+
+minibzip2: minigzip.c
+	$(CC) -DBZIP $(CFLAGS) -lbz2  minigzip.c -o minibzip2 
+
+build: minibzip2
 	$(checkdir)
 	$(MAKE) CC="$(CC)" CFLAGS="$(CFLAGS)" LDFLAGS="-lz" minigzip
 	touch build
@@ -27,7 +31,7 @@ build:
 clean:
 	$(checkdir)
 	rm -f build *~ */*~ debian/files* debian/substvars
-	rm -f minigzip
+	rm -f minigzip minibzip2
 	rm -rf $(D)
 
 binary-indep:	checkroot build
@@ -43,6 +47,7 @@ binary-arch:	checkroot build
 	#install -m 755 debian/postinst debian/prerm $(D)/DEBIAN
 	install -m 755 debian/postrm $(D)/DEBIAN/
 	$(INSTALL_PROGRAM)  minigzip $(D)/usr/lib/debdelta/minigzip
+	$(INSTALL_PROGRAM)  minibzip2 $(D)/usr/lib/debdelta/minibzip2
 	cp  debdelta $(D)/usr/bin/debdelta
 	install -d $(D)/etc/debdelta
 	cp etc/sources.conf $(D)/etc/debdelta/sources.conf
@@ -55,7 +60,7 @@ binary-arch:	checkroot build
 	cd $(docdir) && gzip -9 changelog README FAQ
 	cp *.1 $(mandir)
 	gzip -9 $(mandir)/*.1 
-	dpkg-shlibdeps $(D)/usr/lib/debdelta/minigzip
+	dpkg-shlibdeps $(D)/usr/lib/debdelta/minigzip  $(D)/usr/lib/debdelta/minibzip2
 	dpkg-gencontrol -isp
 	chown -R root:root $(D)
 	chmod -R u+w,go=rX $(D)

@@ -20,7 +20,9 @@
  */
 
 /* Mennucci 2006: simplified 
-   TODO: if -DBZIP, it becomes a minibzip*/
+   Mennucci 2008: if -DBZIP, it becomes a minibzip2
+     TODO in minibzip2 mode, it does not check and report errors.
+*/
 
 /*
  * minigzip is a minimal implementation of the gzip utility. This is
@@ -35,22 +37,34 @@
 #include <stdio.h>
 #ifdef BZIP
 #include <bzlib.h>
-#else
-#include "zlib.h"
+#ifndef OF /* function prototypes */
+#  ifdef STDC
+#    define OF(args)  args
+#  else
+#    define OF(args)  ()
+#  endif
 #endif
+#define uInt int
+#else /* BZIP */
+#include "zlib.h"
+#endif /* BZIP */
 
 #  include <string.h>
 #  include <stdlib.h>
-
+#  include <unistd.h>
 
 
 #ifdef BZIP
-#  define GZ_SUFFIX ".bz2"
+#  define Z_SUFFIX ".bz2"
+#  define SUFFIX_LEN 4
+#  define ZFILE BZFILE *
 #else
-#  define GZ_SUFFIX ".gz"
+#  define Z_SUFFIX ".gz"
+#  define SUFFIX_LEN 3
+#  define ZFILE gzFile
 #endif
 
-#define SUFFIX_LEN (sizeof(GZ_SUFFIX)-1)
+
 
 #define BUFLEN      16384
 #define MAX_NAME_LEN 1024
@@ -65,8 +79,8 @@
 char *prog;
 
 void error            OF((const char *msg));
-void gz_compress      OF((FILE   *in, gzFile out));
-void gz_uncompress    OF((gzFile in, FILE   *out));
+void gz_compress      OF((FILE   *in, ZFILE out));
+void gz_uncompress    OF((ZFILE in, FILE   *out));
 void file_compress    OF((char  *file, char *mode));
 void file_uncompress  OF((char  *file));
 int  main             OF((int argc, char *argv[]));
@@ -85,9 +99,7 @@ void error(msg)
  * Compress input to output then close both files.
  */
 
-void gz_compress(in, out)
-    FILE   *in;
-    gzFile out;
+void gz_compress(FILE   *in,    ZFILE out)
 {
     local char buf[BUFLEN];
     int len;
@@ -100,14 +112,18 @@ void gz_compress(in, out)
             exit(1);
         }
         if (len == 0) break;
-#ifdef BZIP2
-	BZ2_bzwrite(bzfile,buf, len);
+#ifdef BZIP
+	BZ2_bzwrite(out, buf, len);
 #else
         if (gzwrite(out, buf, (unsigned)len) != len) error(gzerror(out, &err));
 #endif
     }
     fclose(in);
+#ifdef BZIP
+    BZ2_bzclose(out);
+#else
     if (gzclose(out) != Z_OK) error("failed gzclose");
+#endif
 }
 
 
@@ -115,7 +131,7 @@ void gz_compress(in, out)
  * Uncompress input to output then close both files.
  */
 void gz_uncompress(in, out)
-    gzFile in;
+    ZFILE in;
     FILE   *out;
 {
     local char buf[BUFLEN];
@@ -123,8 +139,8 @@ void gz_uncompress(in, out)
     int err;
 
     for (;;) {
-#ifdef BZIP2 
-        len = BZ2_bzdread(in,buf,sizeof(buf));
+#ifdef BZIP 
+        len = BZ2_bzread(in,buf,sizeof(buf));
 #else
         len = gzread(in, buf, sizeof(buf));
         if (len < 0) error (gzerror(in, &err));
@@ -136,7 +152,8 @@ void gz_uncompress(in, out)
         }
     }
     if (fclose(out)) error("failed fclose");
-#ifdef BZIP2
+#ifdef BZIP
+    BZ2_bzclose(in);
 #else
     if (gzclose(in) != Z_OK) error("failed gzclose");
 #endif
@@ -153,17 +170,21 @@ void file_compress(file, mode)
 {
     local char outfile[MAX_NAME_LEN];
     FILE  *in;
-    gzFile out;
+    ZFILE out;
 
     strcpy(outfile, file);
-    strcat(outfile, GZ_SUFFIX);
+    strcat(outfile, Z_SUFFIX);
 
     in = fopen(file, "rb");
     if (in == NULL) {
         perror(file);
         exit(1);
     }
+#ifdef BZIP
+    out = BZ2_bzopen(outfile, mode);
+#else
     out = gzopen(outfile, mode);
+#endif
     if (out == NULL) {
         fprintf(stderr, "%s: can't gzopen %s\n", prog, outfile);
         exit(1);
@@ -183,21 +204,25 @@ void file_uncompress(file)
     local char buf[MAX_NAME_LEN];
     char *infile, *outfile;
     FILE  *out;
-    gzFile in;
+    ZFILE in;
     uInt len = (uInt)strlen(file);
 
     strcpy(buf, file);
 
-    if (len > SUFFIX_LEN && strcmp(file+len-SUFFIX_LEN, GZ_SUFFIX) == 0) {
+    if (len > SUFFIX_LEN && strcmp(file+len-SUFFIX_LEN, Z_SUFFIX) == 0) {
         infile = file;
         outfile = buf;
         outfile[len-3] = '\0';
     } else {
         outfile = file;
         infile = buf;
-        strcat(infile, GZ_SUFFIX);
+        strcat(infile, Z_SUFFIX);
     }
+#ifdef BZIP
+    in = BZ2_bzopen(infile, "rb");
+#else
     in = gzopen(infile, "rb");
+#endif
     if (in == NULL) {
         fprintf(stderr, "%s: can't gzopen %s\n", prog, infile);
         exit(1);
@@ -228,7 +253,7 @@ int main(argc, argv)
     char *argv[];
 {
     int uncompr = 0;
-    gzFile file;
+    ZFILE file;
     char outmode[20];
 
     strcpy(outmode, "wb6 ");
@@ -239,7 +264,7 @@ int main(argc, argv)
     while (argc > 0) {
       if (strcmp(*argv, "-d") == 0)
         uncompr = 1;
-#ifndef BZIP2
+#ifndef BZIP
       else if (strcmp(*argv, "-f") == 0)
         outmode[3] = 'f';
       else if (strcmp(*argv, "-h") == 0)
@@ -256,7 +281,7 @@ int main(argc, argv)
     }
     if (argc == 0) {
         if (uncompr) {
-#ifdef BZIP2
+#ifdef BZIP
             file = BZ2_bzdopen(fileno(stdin), "r");
 #else
             file = gzdopen(fileno(stdin), "rb");
@@ -265,7 +290,11 @@ int main(argc, argv)
             if (file == NULL) error("can't gzdopen stdin");
             gz_uncompress(file, stdout);
         } else {
+#ifdef BZIP
+            file = BZ2_bzdopen(fileno(stdout), outmode);
+#else
             file = gzdopen(fileno(stdout), outmode);
+#endif
             if (file == NULL) error("can't gzdopen stdout");
             gz_compress(stdin, file);
         }
