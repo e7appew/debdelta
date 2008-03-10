@@ -135,7 +135,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.131 2008/03/10 13:45:14 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.132 2008/03/10 13:53:02 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -918,7 +918,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
       if 'skip' in opt:
         debdelta_conf_skip += debdelta_conf.get(s,'skip').split(';') 
       break
-  if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)
   
   #I do not like global variables but I do not know of another solution
   global bsdiff_time, bsdiff_datasize
@@ -974,6 +973,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   info.append('NEW/Size: '+str(newdebsize))
   params=info_2_db(info)
   
+  if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)  
+
   if DO_MD5 :
     # compute a MD5 of NEW deb
     p=os.popen('md5sum '+TD+'NEW.file')
