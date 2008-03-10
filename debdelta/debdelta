@@ -79,6 +79,7 @@ doc_common="""\
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
+minibzip2='/usr/lib/debdelta/minibzip2'
 
 
 ####################################################################
@@ -134,7 +135,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.129 2007/12/27 16:48:59 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.130 2008/03/10 12:42:50 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -456,6 +457,7 @@ def system(a,TD,saveargs=None):
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
     print 'Warning "system()" in ',TD,' for ',a
   ret = os.system("cd '" +TD +"' ; "+a)  
+  if DEBUG > 2 : print '    system(',a,')=',ret
   if ret == 2:
     raise KeyboardInterrupt
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
@@ -674,6 +676,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     die('Error. File '+delta+' is not a debdelta file.')
 
   os.symlink(minigzip,TD+'minigzip')
+  os.symlink(minibzip2,TD+'minibzip2')
   
   #lets scan parameters, to see what it does and what it requires
   if info == None :
@@ -795,7 +798,6 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         i=os.path.join(dirpath,i)
         chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
 
-
   ###see into parameters: the patch may need extra info and data
   for a in params:
     if 'unpack-old' == a:
@@ -810,7 +812,11 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         pa=params['OLD/Package']
         _symlink_data_tree(pa,TD,diversions)
       else:
-        system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
+        ar_list_old= list_ar(TD+'OLD.file')
+        if 'data.tar.bz2' in ar_list_old:
+          system('ar p '+TD+'OLD.file data.tar.bz2 | tar -x --bzip2 -p -f - -C '+TD+'OLD/DATA', TD)
+        else:
+          system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
         if olddeb == '/':
@@ -831,6 +837,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     elif 'needs-bsdiff' == a:
       if not os.path.exists('/usr/bin/bsdiff'):
         die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
+    elif 'needs-minibzip2' == a:
+      pass #its your lucky day
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
   ##then , really execute the patch
@@ -1073,8 +1081,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write('gunzip '+f+'\n')
       f=f[:-3]
       c='.gz'
-    elif  f[-3:] == '.bz2' :
-      print 'WARNING ! ',f,' is in BZIP2 format ! please fixme !'
+    elif  f[-4:] == '.bz2' :
+      system('bunzip2 '+f,TD)
+      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
+        script.write('bzip2 '+f+'\n')
+      f=f[:-4]
+      c='.bz2'
+    else: assert(0)
     return (f,c)
 
   def script_zip(n,cn,newhead):
@@ -1082,7 +1095,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
       s=prepare_for_echo(newhead)
       script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
     elif  cn == '.bz2' :
-      print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
+      script.write(' ./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+' \n')
+    else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
     #bdiff
@@ -1755,9 +1769,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       o = 'OLD/'+name
       #system('ar p OLD.file '+name+' >> '+o, TD)
-      assert(name[-3:] == '.gz')#should add support for bz2 data.tar
-      def x():
-        return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+      if name[-3:] == '.gz' :
+        def x():
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+      elif name[-4:] == '.bz2' :
+        info.append('needs-minibzip2')
+        def x():
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
+      else: assert(0)
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
       if DEBUG > 3 : md5_ar(TD,n,name)
