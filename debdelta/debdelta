@@ -135,7 +135,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.130 2008/03/10 12:42:50 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.131 2008/03/10 13:45:14 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -451,13 +451,21 @@ def die(s):
   #if s : sys.stderr.write(s+'\n')
   raise DebDeltaError,s
   
-def system(a,TD,saveargs=None):
+def system(a,TD,saveargs=None,ignore_output=False):
   if type(a) != StringType :
     a=string.join(a,' ')
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
     print 'Warning "system()" in ',TD,' for ',a
-  ret = os.system("cd '" +TD +"' ; "+a)  
-  if DEBUG > 2 : print '    system(',a,')=',ret
+  (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_system")
+  if DEBUG > 2 : print '    system(',a,')=',
+  ret = os.system("cd '" +TD +"' ; ( "+a+" ) > "+temp_name+" 2>&1 ")
+  if DEBUG > 2 : print ret
+  if DEBUG and (ignore_output==False and os.stat(temp_name)[ST_SIZE] > 0 ):
+    print ' command "%s" returned %d and  produced output as follows' % (a,ret)
+    for i in open(temp_name):
+      print '  ',repr(i)
+  os.unlink(temp_name)
+  os.close(temp_fd)
   if ret == 2:
     raise KeyboardInterrupt
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
@@ -520,8 +528,8 @@ def get_info_slow(delta,T=None):
   if TD[-1] != '/':
     TD = TD + '/'
   delta=abspath(delta)
-  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
-         TD+'/PATCH')
+  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2',
+         TD+'/PATCH', ignore_output=True)
   _delta_info_unzip_(TD)
   info = _scan_delta_info_(TD)
   if T == None:
@@ -857,7 +865,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
   if DO_MD5:
     if 'NEW/MD5sum' in params:
       if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
-      system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
+      system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c', TD,
+             ignore_output=True)
     else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
 
   if newdeb:
@@ -1816,8 +1825,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   v=''
   #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
-  system('bzip2 --keep -9  '+v+'  PATCH/patch.sh 2>&1', TD)
-  system('gzip -9 -n '+v+' PATCH/patch.sh 2>&1', TD)  
+  system('bzip2 -q --keep -9  '+v+'  PATCH/patch.sh', TD)
+  system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)  
   if  os.path.getsize(TD+'PATCH/patch.sh.gz') > os.path.getsize(TD+'PATCH/patch.sh.bz2') :
     if VERBOSE > 1 : print '  bzip2 wins on patch.sh  '
     patch_append('patch.sh.bz2')
