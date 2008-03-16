@@ -13,8 +13,17 @@ for more details on the delta files.
 .SH OPTIONS
 .TP
 \fB\-\-dir \fIDIR\fR     directory where to save results.
-       (default: /var/cache/apt/archives for root, 
-	/tmp/archive for non-root users)
+     (default: /var/cache/apt/archives for root, 
+     /tmp/archive for non-root users)
+.TP
+\fB\-\-deb\-policy \fIPOLICY\fR   policy to decide which debs to download,
+  it is a comma separated list of (abbreviations of)
+    source =  there is no /etc/debdelta/sources.conf line
+    big =  the delta is too big
+    error =  the delta fails to apply
+    unavailable = all other cases
+    after = continue downloading debs after patching has ended
+  default is s,b,e
 .TP
 \fB\-v\fR            verbose (can be added multiple times).
 .TP
@@ -28,6 +37,7 @@ will download delta files, recreate the needed Debian
 packages, and then upgrade your Debian host. When only
 slow Internet connection is available, the above procedure may
 be significantly faster than "apt-get update && apt-get upgrade".
+(Use -v to see how much faster.)
 .SH SECURITY
 A Debian package that is recreated using debbdelta-upgrade is byte-by-byte
 identical to the original one; when  "apt-get upgrade"

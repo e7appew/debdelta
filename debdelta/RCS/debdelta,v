@@ -1,9 +1,29 @@
-head	1.129;
+head	1.133;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.133
+date	2008.03.16.11.06.07;	author debdev;	state Exp;
+branches;
+next	1.132;
+
+1.132
+date	2008.03.10.13.53.02;	author debdev;	state Exp;
+branches;
+next	1.131;
+
+1.131
+date	2008.03.10.13.45.14;	author debdev;	state Exp;
+branches;
+next	1.130;
+
+1.130
+date	2008.03.10.12.42.50;	author debdev;	state Exp;
+branches;
+next	1.129;
 
 1.129
 date	2007.12.27.16.48.59;	author debdev;	state Exp;
@@ -655,9 +675,9 @@ desc
 @@
 
 
-1.129
+1.133
 log
-@do not use variable 'delta' before referencing it
+@added    debdelta-upgrade --deb-policy
 @
 text
 @#!/usr/bin/python
@@ -730,6 +750,15 @@ Options:
 --dir DIR   directory where to save results
             (default: /var/cache/apt/archives for root,
               /tmp/archive for non-root users)
+--deb-policy POLICY
+            policy to decide which debs to download,
+            it is a comma separated list of (abbreviations of)
+             source = debs where there is no /etc/debdelta/sources.conf line
+             big = debs where the delta is too big
+             error = debs where the delta fails to apply
+             unavailable = all other cases
+             after = continue downloading debs after patching thread has ended
+            default is s,b,e
 """
 
 
@@ -741,6 +770,7 @@ doc_common="""\
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
+minibzip2='/usr/lib/debdelta/minibzip2'
 
 
 ####################################################################
@@ -791,12 +821,13 @@ ALT     = []
 AVOID   = None
 ACT     = True
 DO_MD5  = True
+DEB_POLICY = ['b','s','e']
 
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.128 2007/12/22 08:01:41 debdev Exp debdev $"
+RCS_VERSION="$Id: debdelta,v 1.132 2008/03/10 13:53:02 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -814,7 +845,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5','debug') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
@@ -830,6 +861,7 @@ else:
     elif o == '--needsold' :  NEEDSOLD = True
     elif o == '--delta-algo': USE_DELTA_ALGO=v
     elif o == '--max-percent': MAX_DELTA_PERCENT=int(v)
+    elif o == '--deb-policy' : DEB_POLICY = [j[0] for j in v.split(',') if j]
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
@@ -1112,12 +1144,21 @@ def die(s):
   #if s : sys.stderr.write(s+'\n')
   raise DebDeltaError,s
   
-def system(a,TD,saveargs=None):
+def system(a,TD,saveargs=None,ignore_output=False):
   if type(a) != StringType :
     a=string.join(a,' ')
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
     print 'Warning "system()" in ',TD,' for ',a
-  ret = os.system("cd '" +TD +"' ; "+a)  
+  (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_system")
+  if DEBUG > 2 : print '    system(',a,')=',
+  ret = os.system("cd '" +TD +"' ; ( "+a+" ) > "+temp_name+" 2>&1 ")
+  if DEBUG > 2 : print ret
+  if DEBUG and (ignore_output==False and os.stat(temp_name)[ST_SIZE] > 0 ):
+    print ' command "%s" returned %d and  produced output as follows' % (a,ret)
+    for i in open(temp_name):
+      print '  ',repr(i)
+  os.unlink(temp_name)
+  os.close(temp_fd)
   if ret == 2:
     raise KeyboardInterrupt
   if  ret != 0 and ( ret != 256 or a[:6] != 'xdelta') :
@@ -1180,8 +1221,8 @@ def get_info_slow(delta,T=None):
   if TD[-1] != '/':
     TD = TD + '/'
   delta=abspath(delta)
-  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
-         TD+'/PATCH')
+  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2',
+         TD+'/PATCH', ignore_output=True)
   _delta_info_unzip_(TD)
   info = _scan_delta_info_(TD)
   if T == None:
@@ -1336,6 +1377,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     die('Error. File '+delta+' is not a debdelta file.')
 
   os.symlink(minigzip,TD+'minigzip')
+  os.symlink(minibzip2,TD+'minibzip2')
   
   #lets scan parameters, to see what it does and what it requires
   if info == None :
@@ -1457,7 +1499,6 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         i=os.path.join(dirpath,i)
         chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
 
-
   ###see into parameters: the patch may need extra info and data
   for a in params:
     if 'unpack-old' == a:
@@ -1472,7 +1513,11 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         pa=params['OLD/Package']
         _symlink_data_tree(pa,TD,diversions)
       else:
-        system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
+        ar_list_old= list_ar(TD+'OLD.file')
+        if 'data.tar.bz2' in ar_list_old:
+          system('ar p '+TD+'OLD.file data.tar.bz2 | tar -x --bzip2 -p -f - -C '+TD+'OLD/DATA', TD)
+        else:
+          system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
         if olddeb == '/':
@@ -1493,6 +1538,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     elif 'needs-bsdiff' == a:
       if not os.path.exists('/usr/bin/bsdiff'):
         die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
+    elif 'needs-minibzip2' == a:
+      pass #its your lucky day
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
   ##then , really execute the patch
@@ -1511,7 +1558,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
   if DO_MD5:
     if 'NEW/MD5sum' in params:
       if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
-      system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
+      system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c', TD,
+             ignore_output=True)
     else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
 
   if newdeb:
@@ -1563,7 +1611,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
       if 'skip' in opt:
         debdelta_conf_skip += debdelta_conf.get(s,'skip').split(';') 
       break
-  if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)
   
   #I do not like global variables but I do not know of another solution
   global bsdiff_time, bsdiff_datasize
@@ -1619,6 +1666,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   info.append('NEW/Size: '+str(newdebsize))
   params=info_2_db(info)
   
+  if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)  
+
   if DO_MD5 :
     # compute a MD5 of NEW deb
     p=os.popen('md5sum '+TD+'NEW.file')
@@ -1735,8 +1784,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write('gunzip '+f+'\n')
       f=f[:-3]
       c='.gz'
-    elif  f[-3:] == '.bz2' :
-      print 'WARNING ! ',f,' is in BZIP2 format ! please fixme !'
+    elif  f[-4:] == '.bz2' :
+      system('bunzip2 '+f,TD)
+      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
+        script.write('bzip2 '+f+'\n')
+      f=f[:-4]
+      c='.bz2'
+    else: assert(0)
     return (f,c)
 
   def script_zip(n,cn,newhead):
@@ -1744,7 +1798,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
       s=prepare_for_echo(newhead)
       script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
     elif  cn == '.bz2' :
-      print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
+      script.write(' ./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+' \n')
+    else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
     #bdiff
@@ -2417,9 +2472,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       o = 'OLD/'+name
       #system('ar p OLD.file '+name+' >> '+o, TD)
-      assert(name[-3:] == '.gz')#should add support for bz2 data.tar
-      def x():
-        return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+      if name[-3:] == '.gz' :
+        def x():
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+      elif name[-4:] == '.bz2' :
+        info.append('needs-minibzip2')
+        def x():
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
+      else: assert(0)
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
       if DEBUG > 3 : md5_ar(TD,n,name)
@@ -2459,8 +2519,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   v=''
   #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
-  system('bzip2 --keep -9  '+v+'  PATCH/patch.sh 2>&1', TD)
-  system('gzip -9 -n '+v+' PATCH/patch.sh 2>&1', TD)  
+  system('bzip2 -q --keep -9  '+v+'  PATCH/patch.sh', TD)
+  system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)  
   if  os.path.getsize(TD+'PATCH/patch.sh.gz') > os.path.getsize(TD+'PATCH/patch.sh.bz2') :
     if VERBOSE > 1 : print '  bzip2 wins on patch.sh  '
     patch_append('patch.sh.bz2')
@@ -3150,10 +3210,14 @@ def delta_upgrade_():
             return
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
-            no_delta.append( (deb_uri, newdeb) )
+            if 'e' in DEB_POLICY:
+              no_delta.append( (deb_uri, newdeb) )
+            elif VERBOSE: print ' No deb-policy "e", no download of ',deb_uri
           except:
             puke( " *** Error while applying delta for "+name+": ")
-            no_delta.append( (deb_uri, newdeb) )
+            if 'e' in DEB_POLICY:
+              no_delta.append( (deb_uri, newdeb) )
+            elif VERBOSE: print ' No deb-policy "e", no download of ',deb_uri
           else:
             if name in params_of_delta :
               p= params_of_delta[name]
@@ -3166,10 +3230,11 @@ def delta_upgrade_():
             if os.path.exists(delta):
               os.unlink(delta)
         debs_time += time.time()
-      threads.pop()
-      if VERBOSE > 1 : print ' Patching thread ended , bye bye. '
       returns['debs_size']=debs_size
       returns['debs_time']=debs_time
+      if VERBOSE > 1 :
+        print ' Patching thread ended , bye bye. '
+      threads.pop()
 
   import socket, httplib
   from urlparse import urlparse
@@ -3228,6 +3293,8 @@ def delta_upgrade_():
     a='Url'
     if uri[-9:] == '.debdelta':
       a='Debdelta'
+    elif not VERBOSE: #do not report non-existence of other URIs
+      return
     if  r.status == 200 or  r.status == 206:
       pass
     if r.status == 404:
@@ -3264,16 +3331,6 @@ def delta_upgrade_():
       r.close()
       if r.status == 200:
         return r
-      if not VERBOSE: return False
-      if uri[-9:] == '.debdelta':
-        conn.request("HEAD", urllib.quote(uri_p[2]+'-too-big'))
-        r2 = conn.getresponse()
-        r2.read()
-        r2.close()
-        if r2.status == 200:
-          print 'Too big: ',uri
-          return False
-      _http_whine_(uri,r)
       return False
 
   ###################################### download_1k_uri
@@ -3443,7 +3500,8 @@ def delta_upgrade_():
                                            Archive=p.candidateOrigin[0].archive,
                                            PackageName=p.name)
       if delta_uri_base == None:
-        no_delta.append( (deb_uri, newdeb) )
+        if 's' in DEB_POLICY:
+          no_delta.append( (deb_uri, newdeb) )
         continue
 
       a=urlparse(delta_uri_base)
@@ -3473,7 +3531,14 @@ def delta_upgrade_():
         continue
       
       if not r:
-        no_delta.append( (deb_uri, newdeb) )
+        r = test_uri(uri+'-too-big')
+        if r :
+          if 'b' in DEB_POLICY:
+            no_delta.append( (deb_uri, newdeb) )
+          elif VERBOSE: print ' No deb-policy "b", no download of ',deb_uri
+        elif 'u' in DEB_POLICY:
+          no_delta.append( (deb_uri, newdeb) )
+        elif VERBOSE: print ' No deb-policy "u", no download of ',deb_uri
         continue
       
       r,tempname = r
@@ -3529,7 +3594,9 @@ def delta_upgrade_():
         c=pickle.dumps(  (name, abs_delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
     else:
-      no_delta.append( (deb_uri, newdeb) )
+      if 'u' in DEB_POLICY:
+        no_delta.append( (deb_uri, newdeb) )
+      elif VERBOSE: print ' No deb-policy "u", no download of ',deb_uri
   ## end of second merry-go-round
 
   #terminate queue
@@ -3542,8 +3609,8 @@ def delta_upgrade_():
   debs_down_time=0
   if  threads and no_delta and VERBOSE > 1 :
     print ' Downloading deltas done, downloading debs while waiting for patching thread.'
-  while threads:
-    while no_delta:
+  while threads or ('a' in DEB_POLICY and no_delta):
+    if no_delta:
       uri, newdeb  = no_delta.pop()
       r=download_uri(uri , newdeb, debs_down_time, debs_down_size )
       if isinstance(r, httplib.HTTPException) :
@@ -3552,7 +3619,8 @@ def delta_upgrade_():
       if r:
         debs_down_time = r[0]
         debs_down_size = r[1]
-    time.sleep(0.2)
+    if not no_delta : 
+      time.sleep(0.1)
 
   #save predictor...
   
@@ -3705,6 +3773,136 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.132
+log
+@move debug printing after header
+@
+text
+@d71 9
+d142 1
+d148 1
+a148 1
+RCS_VERSION="$Id: debdelta,v 1.131 2008/03/10 13:45:14 debdev Exp $"
+d166 1
+a166 1
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5','debug') )
+d182 1
+d2531 3
+a2533 1
+            no_delta.append( (deb_uri, newdeb) )
+d2536 3
+a2538 1
+            no_delta.append( (deb_uri, newdeb) )
+a2550 2
+      threads.pop()
+      if VERBOSE > 1 : print ' Patching thread ended , bye bye. '
+d2553 3
+d2614 2
+a2651 10
+      if not VERBOSE: return False
+      if uri[-9:] == '.debdelta':
+        conn.request("HEAD", urllib.quote(uri_p[2]+'-too-big'))
+        r2 = conn.getresponse()
+        r2.read()
+        r2.close()
+        if r2.status == 200:
+          print 'Too big: ',uri
+          return False
+      _http_whine_(uri,r)
+d2821 2
+a2822 1
+        no_delta.append( (deb_uri, newdeb) )
+d2852 8
+a2859 1
+        no_delta.append( (deb_uri, newdeb) )
+d2915 3
+a2917 1
+      no_delta.append( (deb_uri, newdeb) )
+d2930 2
+a2931 2
+  while threads:
+    while no_delta:
+d2940 2
+a2941 1
+    time.sleep(0.2)
+@
+
+
+1.131
+log
+@capture the stdout and stderr of all system() calls and reformat it
+@
+text
+@d138 1
+a138 1
+RCS_VERSION="$Id: debdelta,v 1.130 2008/03/10 12:42:50 debdev Exp $"
+a920 1
+  if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)
+d976 2
+@
+
+
+1.130
+log
+@support data.tar.bz2
+@
+text
+@d138 1
+a138 1
+RCS_VERSION="$Id: debdelta,v 1.129 2007/12/27 16:48:59 debdev Exp $"
+d454 1
+a454 1
+def system(a,TD,saveargs=None):
+d459 10
+a468 2
+  ret = os.system("cd '" +TD +"' ; "+a)  
+  if DEBUG > 2 : print '    system(',a,')=',ret
+d531 2
+a532 2
+  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2 2> /dev/null', \
+         TD+'/PATCH')
+d868 2
+a869 1
+      system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c > /dev/null', TD)
+d1828 2
+a1829 2
+  system('bzip2 --keep -9  '+v+'  PATCH/patch.sh 2>&1', TD)
+  system('gzip -9 -n '+v+' PATCH/patch.sh 2>&1', TD)  
+@
+
+
+1.129
+log
+@do not use variable 'delta' before referencing it
+@
+text
+@d82 1
+d138 1
+a138 1
+RCS_VERSION="$Id: debdelta,v 1.128 2007/12/22 08:01:41 debdev Exp debdev $"
+d460 1
+d679 1
+a800 1
+
+d815 5
+a819 1
+        system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
+d840 2
+d1084 7
+a1090 2
+    elif  f[-3:] == '.bz2' :
+      print 'WARNING ! ',f,' is in BZIP2 format ! please fixme !'
+d1098 2
+a1099 1
+      print 'WARNING ! ',n,' is in BZIP2 format ! please fixme !'
+d1772 8
+a1779 3
+      assert(name[-3:] == '.gz')#should add support for bz2 data.tar
+      def x():
+        return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
 @
 
 
