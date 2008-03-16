@@ -68,6 +68,15 @@ Options:
 --dir DIR   directory where to save results
             (default: /var/cache/apt/archives for root,
               /tmp/archive for non-root users)
+--deb-policy POLICY
+            policy to decide which debs to download,
+            it is a comma separated list of (abbreviations of)
+             source = debs where there is no /etc/debdelta/sources.conf line
+             big = debs where the delta is too big
+             error = debs where the delta fails to apply
+             unavailable = all other cases
+             after = continue downloading debs after patching thread has ended
+            default is s,b,e
 """
 
 
@@ -130,12 +139,13 @@ ALT     = []
 AVOID   = None
 ACT     = True
 DO_MD5  = True
+DEB_POLICY = ['b','s','e']
 
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.132 2008/03/10 13:53:02 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.133 2008/03/16 11:06:07 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -153,7 +163,7 @@ else:
 
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','clean-deltas','clean-alt','no-md5','debug') )
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug') )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
@@ -169,6 +179,7 @@ else:
     elif o == '--needsold' :  NEEDSOLD = True
     elif o == '--delta-algo': USE_DELTA_ALGO=v
     elif o == '--max-percent': MAX_DELTA_PERCENT=int(v)
+    elif o == '--deb-policy' : DEB_POLICY = [j[0] for j in v.split(',') if j]
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
@@ -2517,10 +2528,14 @@ def delta_upgrade_():
             return
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
-            no_delta.append( (deb_uri, newdeb) )
+            if 'e' in DEB_POLICY:
+              no_delta.append( (deb_uri, newdeb) )
+            elif VERBOSE: print ' No deb-policy "e", no download of ',deb_uri
           except:
             puke( " *** Error while applying delta for "+name+": ")
-            no_delta.append( (deb_uri, newdeb) )
+            if 'e' in DEB_POLICY:
+              no_delta.append( (deb_uri, newdeb) )
+            elif VERBOSE: print ' No deb-policy "e", no download of ',deb_uri
           else:
             if name in params_of_delta :
               p= params_of_delta[name]
@@ -2533,10 +2548,11 @@ def delta_upgrade_():
             if os.path.exists(delta):
               os.unlink(delta)
         debs_time += time.time()
-      threads.pop()
-      if VERBOSE > 1 : print ' Patching thread ended , bye bye. '
       returns['debs_size']=debs_size
       returns['debs_time']=debs_time
+      if VERBOSE > 1 :
+        print ' Patching thread ended , bye bye. '
+      threads.pop()
 
   import socket, httplib
   from urlparse import urlparse
@@ -2595,6 +2611,8 @@ def delta_upgrade_():
     a='Url'
     if uri[-9:] == '.debdelta':
       a='Debdelta'
+    elif not VERBOSE: #do not report non-existence of other URIs
+      return
     if  r.status == 200 or  r.status == 206:
       pass
     if r.status == 404:
@@ -2631,16 +2649,6 @@ def delta_upgrade_():
       r.close()
       if r.status == 200:
         return r
-      if not VERBOSE: return False
-      if uri[-9:] == '.debdelta':
-        conn.request("HEAD", urllib.quote(uri_p[2]+'-too-big'))
-        r2 = conn.getresponse()
-        r2.read()
-        r2.close()
-        if r2.status == 200:
-          print 'Too big: ',uri
-          return False
-      _http_whine_(uri,r)
       return False
 
   ###################################### download_1k_uri
@@ -2810,7 +2818,8 @@ def delta_upgrade_():
                                            Archive=p.candidateOrigin[0].archive,
                                            PackageName=p.name)
       if delta_uri_base == None:
-        no_delta.append( (deb_uri, newdeb) )
+        if 's' in DEB_POLICY:
+          no_delta.append( (deb_uri, newdeb) )
         continue
 
       a=urlparse(delta_uri_base)
@@ -2840,7 +2849,14 @@ def delta_upgrade_():
         continue
       
       if not r:
-        no_delta.append( (deb_uri, newdeb) )
+        r = test_uri(uri+'-too-big')
+        if r :
+          if 'b' in DEB_POLICY:
+            no_delta.append( (deb_uri, newdeb) )
+          elif VERBOSE: print ' No deb-policy "b", no download of ',deb_uri
+        elif 'u' in DEB_POLICY:
+          no_delta.append( (deb_uri, newdeb) )
+        elif VERBOSE: print ' No deb-policy "u", no download of ',deb_uri
         continue
       
       r,tempname = r
@@ -2896,7 +2912,9 @@ def delta_upgrade_():
         c=pickle.dumps(  (name, abs_delta_name  ,newdeb, deb_uri ) )
         os.write(qin, c + '\t' )
     else:
-      no_delta.append( (deb_uri, newdeb) )
+      if 'u' in DEB_POLICY:
+        no_delta.append( (deb_uri, newdeb) )
+      elif VERBOSE: print ' No deb-policy "u", no download of ',deb_uri
   ## end of second merry-go-round
 
   #terminate queue
@@ -2909,8 +2927,8 @@ def delta_upgrade_():
   debs_down_time=0
   if  threads and no_delta and VERBOSE > 1 :
     print ' Downloading deltas done, downloading debs while waiting for patching thread.'
-  while threads:
-    while no_delta:
+  while threads or ('a' in DEB_POLICY and no_delta):
+    if no_delta:
       uri, newdeb  = no_delta.pop()
       r=download_uri(uri , newdeb, debs_down_time, debs_down_size )
       if isinstance(r, httplib.HTTPException) :
@@ -2919,7 +2937,8 @@ def delta_upgrade_():
       if r:
         debs_down_time = r[0]
         debs_down_size = r[1]
-    time.sleep(0.2)
+    if not no_delta : 
+      time.sleep(0.1)
 
   #save predictor...
   
