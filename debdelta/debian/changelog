@@ -1,3 +1,10 @@
+debdelta (0.26) unstable; urgency=low
+
+  * rewrite internal DebDeltaError class to avoid problems with
+    python 2.5; correct typo.
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sat, 03 May 2008 19:21:31 +0200
+
 debdelta (0.25) unstable; urgency=low
 
   * debdelta-upgrage: add an option --deb-policy to fine-tune download of
