@@ -145,7 +145,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.133 2008/03/16 11:06:07 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.134 2008/05/03 17:19:10 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -447,19 +447,16 @@ class DebDeltaError(Exception):  #should derive from (Exception):http://docs.pyt
   # Subclasses that define an __init__ must call Exception.__init__
   # or define self.args.  Otherwise, str() will fail.
   def __init__(self,s,retriable=False):
-    self.args = s
+    assert(type(s) == StringType)
     self.retriable = retriable
-  def __str__(self):
-    if DEBUG:
-      if self.retriable:
-        return self.args + ' (retriable) '
-      else:
-        return self.args + ' (non retriable) '
+    if retriable:
+      self.args=(s + ' (retriable) ',)
     else:
-      return self.args
+      self.args=(s + ' (non retriable) ',)
 
 def die(s):
   #if s : sys.stderr.write(s+'\n')
+  assert(type(s) == StringType)
   raise DebDeltaError,s
   
 def system(a,TD,saveargs=None,ignore_output=False):
@@ -551,7 +548,7 @@ def get_info_fast(delta):
   f=open(delta)
   s=f.readline()
   if  "!<arch>\n" != s :
-    raise DebdeltaError('This is not a debdelta file: '+delta)
+    raise DebDeltaError('This is not a debdelta file: '+delta)
   s = f.read(60)
   if len(s) != 60 :
     print '(Warning, cannot get info from  truncated: '+delta+' )'
