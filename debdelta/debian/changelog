@@ -1,3 +1,11 @@
+debdelta (0.27) unstable; urgency=low
+
+  * debpatch now can apply patches using data from installed version of a
+    package also in hosts where prelink is used; and consequently
+    debdelta-upgrade can upgrade such hosts. Thanks roman@khimov.ru.
+
+ -- A Mennucc1 <mennucc1@debian.org>  Mon, 15 Sep 2008 12:40:18 +0200
+
 debdelta (0.26) unstable; urgency=low
 
   * rewrite internal DebDeltaError class to avoid problems with
