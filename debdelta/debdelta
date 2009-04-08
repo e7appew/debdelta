@@ -145,7 +145,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.136 2009/03/29 18:52:47 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.137 2009/04/08 11:46:20 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2802,23 +2802,37 @@ def delta_upgrade_():
   #this is a list of tuples of .....
   available_deltas=[]
 
+  #distinguish python-apt version 0.7.7 from 0.7.10
+  newer_python_apt = hasattr(apt.package,'Version')
+
   ## first merry-go-round, use package cache to fill available_deltas
   for p in cache :
-    if p.isInstalled and  p.markedUpgrade :
-      #thanks a lot to Michael Vogt
-      p._lookupRecord(True)
-      dpkg_params = apt_pkg.ParseSection(p._records.Record)
-      cand = p._depcache.GetCandidateVer(p._pkg)
-      deb_path=dpkg_params['Filename']      
-      for (packagefile,i) in cand.FileList:
-        indexfile = cache._list.FindIndex(packagefile)
-        if indexfile:
-          deb_uri=indexfile.ArchiveURI(deb_path)
-          break
+    if p.isInstalled and p.markedUpgrade :
+      if newer_python_apt:
+        #thanks a lot to Julian Andres Klode
+        candidate=p.candidate
+        origin = p.candidate.origins[0]
+        arch=candidate.architecture
+        deb_uri=candidate.uri
+        installed_version=p.installed.version
+        candidate_version=p.candidate.version
+        deb_path=string.split(deb_uri,'/')
+        deb_path=string.join(deb_path[(deb_path.index('pool')):],'/')
+      else:
+        #thanks a lot to Michael Vogt
+        p._lookupRecord(True)
+        dpkg_params = apt_pkg.ParseSection(p._records.Record)
+        arch = dpkg_params['Architecture']
+        origin = p.candidateOrigin[0]
+        candidate_version = p.candidateVersion
+        installed_version = p.installedVersion
+        deb_path = dpkg_params['Filename']
+        for (packagefile,i) in p._depcache.GetCandidateVer(p._pkg).FileList:
+          indexfile = cache._list.FindIndex(packagefile)
+          if indexfile:
+            deb_uri=indexfile.ArchiveURI(deb_path)
+            break
       
-      arch=dpkg_params['Architecture']      
-      
-      #newdeb=p.name+'_'+version_mangle(p.candidateVersion)+'_'+arch+'.deb'
       newdeb=os.path.basename(deb_uri)
       if os.path.exists(DEB_DIR+'/'+newdeb) or \
              os.path.exists('/var/cache/apt/archives/'+newdeb):
@@ -2828,11 +2842,11 @@ def delta_upgrade_():
 
       if VERBOSE > 1:
         print 'Looking for a delta for %s from %s to %s ' % \
-              ( p.name, p.installedVersion, p.candidateVersion )
-      delta_uri_base=delta_uri_from_config(Origin=p.candidateOrigin[0].origin,
-                                           Label=p.candidateOrigin[0].label,
-                                           Site=p.candidateOrigin[0].site,
-                                           Archive=p.candidateOrigin[0].archive,
+              ( p.name, installed_version, candidate_version )
+      delta_uri_base=delta_uri_from_config(Origin=origin.origin,
+                                           Label=origin.label,
+                                           Site=origin.site,
+                                           Archive=origin.archive,
                                            PackageName=p.name)
       if delta_uri_base == None:
         if 's' in DEB_POLICY:
@@ -2843,8 +2857,8 @@ def delta_upgrade_():
       assert(a[0] == 'http')
 
       #delta name
-      delta_name=p.name+'_'+version_mangle(p.installedVersion)+\
-                  '_'+ version_mangle(p.candidateVersion)+'_'+\
+      delta_name=p.name+'_'+version_mangle(installed_version)+\
+                  '_'+ version_mangle(candidate_version)+'_'+\
                   arch+'.debdelta'
 
       uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
