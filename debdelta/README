@@ -7,7 +7,7 @@ the changes between Debian packages.  This suite contains
 'debdelta-upgrade', that downloads debdeltas and use them to create
 all Debian packages needed for an 'apt-get upgrade'.
 
-debdelta is  Copyright (C) 2006-07 Andrea Mennucci
+debdelta is  Copyright (C) 2006-09 Andrea Mennucci
 
 debdelta is free software.  See the file COPYING for copying conditions.
 
@@ -59,9 +59,12 @@ If the delta exceeds ~80% of the deb, 'debdeltas' will delete it
 and leave a stamp of the form
  package_old-version_new-version_architecture.debdelta-too-big
 
-Example :
+Example usage:
 
 $ debdeltas /var/cache/apt/archives/*deb
+
+'debdeltas' can also scan 'Packages' file on its own.
+See the script contrib/debmirror-others for an usage example.
 
 With the --dir argument, it will put the deltas in a different tree
 (this is necessary if you use 'debmirror' , since 'debmirror' will
@@ -95,7 +98,7 @@ If run by a non-root user, debs are saved in /tmp/archives : do not
 debdelta-upgrade will also download .debs for which no delta is
 available (this is done in parallel to patching, to maximize speed).
 
-Work is in progress so  that debdelta-upgrade will actually choose if
+Work is in progress so that debdelta-upgrade will actually choose if
 - download a delta and use it to create the .deb
 - download the deb
 depending on which one would be faster.
@@ -104,26 +107,16 @@ to predict the speed of patching... and this I still cannot
 achieve.
 
 
--------------- Statistics
+-------------- Statistics and tests
 
 I am currently running 'debdeltas' in a mirror that mirrors
-'etch' and 'sid' for i386. 
-The backend is currently bsdiff.
+'stable' , 'stable-security' , 'testing' and 'unstable for i386 and amd64.
 
-Statistics are at
-http://tonelli.sns.it/pub/mennucc1/debdelta/histograms
-and daily logs at
-http://tonelli.sns.it/pub/mennucc1/debdelta/daily-logs/
+Tests and comparisons on backend binary delta difference compressors
+are available in 
+http://tonelli.sns.it/pub/mennucc1/debdelta/run/tests
+see README.txt
 
-Currently, in my mirror
-  96 % of deltas are <=80% of original;
-  of those, the average percent is  15% .
-(15% is the ratio of the total size of the debdelta created / 
- /  the total size of the .debs processed).
-
-In some cases, though, the benefit of using deltas is much more than that:
-for example, 'debdelta'  can express the difference between 'tetex-doc'
- 3.0-17 and 3.0-18 into a delta of mere 260kB !
 
 ------------ exact patching and exact recompression
 
@@ -146,9 +139,6 @@ and gzip back them *exactly identical*.
 For this reason, I studied gzip formats, and I wrote in debdelta
 some python code that does the trick (90% of the times...).
 
-------------- Tests and comparisons on backend binary delta difference compressors
-see README.txt and all files in
-http://tonelli.sns.it/pub/mennucc1/debdelta/tests
 
 -------------- Speed
 

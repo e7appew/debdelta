@@ -4,10 +4,12 @@ debdelta-upgrade \- Downloads all deltas that may be used to 'apt-get
 upgrade', and apply them. 
 .SH SYNOPSIS
 .B debdelta-upgrade
+[\fIOPTION\fR]... [\fIPACKAGE\fR] ...
 .SH DESCRIPTION
 This program is designed to download changes (deltas) that may be used to 
 .B apt-get upgrade
-, and apply them. See
+all listed packages, and apply them.
+If no package is listed in the command line, then it will apply to all upgradable packages. See
 .BR debdelta (1)
 for more details on the delta files.
 .SH OPTIONS
@@ -49,7 +51,7 @@ though, the delta file itself is not cryptograhically protected.
 .SH "REPORTING BUGS"
 Report bugs to <mennucc1@debian.org>.
 .SH AUTHORS
-Debdelta was written and is copyright \(co 2006/07 Andrea Mennucci.
+Debdelta was written and is copyright \(co 2006-09 Andrea Mennucci.
 .br
 This man page was written by Jegou Pierre-yves  <pierreyves.jeg@voila.fr>.
 .SH COPYING
