@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-# Copyright (C) 2006-07 Andrea Mennucci.
+# Copyright (C) 2006-09 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
 
 doc={}
@@ -61,7 +61,7 @@ Options:
 """
 
 doc['delta-upgrade']="""\
-Usage: debdelta-upgrade
+Usage: debdelta-upgrade [packages]
   Downloads all deltas that may be used to 'apt-get upgrade', and apply them
 
 Options:
@@ -145,7 +145,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.137 2009/04/08 11:46:20 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.138 2009/04/08 12:14:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2272,79 +2272,6 @@ def do_deltas(debs):
 
   if VERBOSE: print 'Total running time: %.1f ' % ( -start_time + time.time())
 
-################################################# main program, do stuff
-
-if action == 'patch':
-  if INFO  :
-    if  len(argv) > 1 and VERBOSE :
-      print '(printing info - extra arguments are ignored)'
-    elif  len(argv) == 0  :
-      print ' need a  filename ;  try --help'
-      raise SystemExit(1)
-    try:
-        delta=abspath(argv[0])
-        check_is_delta(delta)
-        info=get_info(delta)
-        for s in info:
-          if s:
-            print ' info: ',s
-    except (KeyboardInterrupt, SystemExit):
-        if DEBUG : puke('debpatch exited')
-    except DebDeltaError,s:
-        print  str(s)
-        raise SystemExit(1)
-    except :
-        puke( "Unexpected error" )
-        raise SystemExit(1)
-    raise SystemExit(0)
-  #really patch
-  if len(argv) != 3 :
-    print ' need 3 filenames ;  try --help'
-    raise SystemExit(1)
-
-
-  newdeb=abspath(argv[2])
-  if newdeb == '/dev/null':
-      newdeb = None
-
-  try:
-    do_patch(abspath(argv[0]), abspath(argv[1]), newdeb)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debpatch exited')
-  except Exception,s:
-    puke( 'debpatch failed',s)
-    raise SystemExit(2)
-  
-elif action == 'delta' :
-  if len(argv) != 3 :  
-    print ' need 3 filenames ;  try --help'
-    raise SystemExit(1)
-  
-  delta=abspath(argv[2])
-  try:
-    r = do_delta(abspath(argv[0]), abspath(argv[1]), delta)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debdeltas exited')
-  except DebDeltaError,s:
-    puke('Failed: ',s)
-    raise SystemExit(2)
-  except:
-    puke('debdelta failed' )
-    raise SystemExit(3)
-  else:
-    (delta, percent, elaps, info) = r
-    append_info(delta,info)
-  
-elif action == 'deltas' :
-  try:
-    do_deltas(argv)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debdeltas exited')
-  except:
-    puke( 'debdeltas failed')
-    raise SystemExit(2)
-  
-  
 ##################################################### delta-upgrade
 
 class Predictor:
@@ -2435,7 +2362,7 @@ class Predictor:
     return r * ut
 
   
-def delta_upgrade_():
+def delta_upgrade_(args):
   original_cwd = os.getcwd()
 
   import  thread , pickle, urllib, fcntl, atexit, signal
@@ -2808,6 +2735,8 @@ def delta_upgrade_():
   ## first merry-go-round, use package cache to fill available_deltas
   for p in cache :
     if p.isInstalled and p.markedUpgrade :
+      if args and p.name not in args:
+        continue
       if newer_python_apt:
         #thanks a lot to Julian Andres Klode
         candidate=p.candidate
@@ -3000,14 +2929,83 @@ def delta_upgrade_():
     print ' total resulting debs size %s time %dsec virtual speed: %s/sec' %  \
           ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
 
+################################################# main program, do stuff
 
-####
+if action == 'patch':
+  if INFO  :
+    if  len(argv) > 1 and VERBOSE :
+      print '(printing info - extra arguments are ignored)'
+    elif  len(argv) == 0  :
+      print ' need a  filename ;  try --help'
+      raise SystemExit(1)
+    try:
+        delta=abspath(argv[0])
+        check_is_delta(delta)
+        info=get_info(delta)
+        for s in info:
+          if s:
+            print ' info: ',s
+    except (KeyboardInterrupt, SystemExit):
+        if DEBUG : puke('debpatch exited')
+    except DebDeltaError,s:
+        print  str(s)
+        raise SystemExit(1)
+    except :
+        puke( "Unexpected error" )
+        raise SystemExit(1)
+    raise SystemExit(0)
+  #really patch
+  if len(argv) != 3 :
+    print ' need 3 filenames ;  try --help'
+    raise SystemExit(1)
 
-if action == 'delta-upgrade':
+
+  newdeb=abspath(argv[2])
+  if newdeb == '/dev/null':
+      newdeb = None
+
+  try:
+    do_patch(abspath(argv[0]), abspath(argv[1]), newdeb)
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debpatch exited')
+  except Exception,s:
+    puke( 'debpatch failed',s)
+    raise SystemExit(2)
+  
+elif action == 'delta' :
+  if len(argv) != 3 :  
+    print ' need 3 filenames ;  try --help'
+    raise SystemExit(1)
+  
+  delta=abspath(argv[2])
+  try:
+    r = do_delta(abspath(argv[0]), abspath(argv[1]), delta)
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debdeltas exited')
+  except DebDeltaError,s:
+    puke('Failed: ',s)
+    raise SystemExit(2)
+  except:
+    puke('debdelta failed' )
+    raise SystemExit(3)
+  else:
+    (delta, percent, elaps, info) = r
+    append_info(delta,info)
+  
+elif action == 'deltas' :
+  try:
+    do_deltas(argv)
+  except (KeyboardInterrupt, SystemExit):
+    if DEBUG : puke('debdeltas exited')
+  except:
+    puke( 'debdeltas failed')
+    raise SystemExit(2)
+  
+elif action == 'delta-upgrade':
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
   try:
-    delta_upgrade_()
+    delta_upgrade_(argv)
   except (KeyboardInterrupt, SystemExit):
     if DEBUG : puke('debdelta-upgrade exited')
   except:
