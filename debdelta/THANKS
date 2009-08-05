@@ -1,7 +1,10 @@
 Thanks to:
- Otavio Salvador <otavio@debian.org> , for some help with python-apt
+ Otavio Salvador, for some help with python-apt
 
- Michael Vogt, for a lot of help with python-apt.
+ Michael Vogt, for a lot of help with python-apt
 
- Paul Wise <pabs3@bonedaddy.net> , for a LOT of beta testing
+ Paul Wise, for a LOT of testing
 
+ Lars Wirzenius, for some patches
+
+ Pär Andersson, for lzma support

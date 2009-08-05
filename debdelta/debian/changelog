@@ -1,7 +1,18 @@
+debdelta (0.29) unstable; urgency=low
+
+  * Really depend on 'binutils' (Closes: 511765)
+  * Bug fix: "crash when /proc is not mounted",
+    thanks to Paul Wise (Closes: #506383).
+  * Use hashlib, not md5 module, in newer python,
+    thanks to Lars Wirzenius (Closes: #537869).
+  * Support lzma , thanks to Pär Andersson (Closes: #540005)
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 05 Aug 2009 14:09:02 +0200
+
 debdelta (0.28) unstable; urgency=low
 
   * Depend on 'binutils' , 'bzip2' (Closes: 511765, 521670)
-  * Support python-apt 0.7.10. Thanks a lot to Julian Andres Klode  
+  * Support python-apt 0.7.10. Thanks a lot to Julian Andres Klode
   * debdelta-upgrade: select packages to upgrade,
     thanks to Nelson A. de Oliveira (Closes: #504423).
 

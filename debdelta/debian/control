@@ -7,7 +7,7 @@ Standards-Version: 3.7.3
 
 Package: debdelta
 Architecture: any
-Depends: python, xdelta, bsdiff, bzip2, ${shlibs:Depends}
+Depends: python, xdelta, bsdiff, bzip2, lzma, binutils, ${shlibs:Depends}
 Recommends: python-apt, xdelta3
 Description: diff and patch utilities which work with Debian packages
  debdelta is a program suite designed to compute changes between

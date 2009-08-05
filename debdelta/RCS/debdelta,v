@@ -1,9 +1,24 @@
-head	1.138;
+head	1.141;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.141
+date	2009.08.05.12.12.02;	author debdev;	state Exp;
+branches;
+next	1.140;
+
+1.140
+date	2009.08.05.10.35.04;	author debdev;	state Exp;
+branches;
+next	1.139;
+
+1.139
+date	2009.08.05.09.14.42;	author debdev;	state Exp;
+branches;
+next	1.138;
 
 1.138
 date	2009.04.08.12.14.46;	author debdev;	state Exp;
@@ -700,11 +715,9 @@ desc
 @@
 
 
-1.138
+1.141
 log
-@Update copyright.
-Move code around.
-Add arguments to debdelta-upgrade.
+@Support lzma
 @
 text
 @#!/usr/bin/python
@@ -802,7 +815,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback, ConfigParser
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -827,15 +840,6 @@ MIN_DEB_SIZE = 10 * 1024
 
 N_DELTAS= 1
 
-f=os.popen('grep bogomips /proc/cpuinfo')
-BOGOMIPS=float(f.read().split(':')[-1])
-f.close()
-
-f=os.popen('hostname -f')
-HOSTID=md5.new( f.read() ).hexdigest()
-f.close()
-
-
 USE_DELTA_ALGO  = 'bsdiff'
 
 DEBUG   = 0
@@ -854,7 +858,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.137 2009/04/08 11:46:20 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.140 2009/08/05 10:35:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -926,6 +930,15 @@ else:
 
 def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
+
+if os.path.exists('/proc/cpuinfo'):
+  f=os.popen('grep bogomips /proc/cpuinfo')
+  BOGOMIPS=float(f.read().split(':')[-1])
+  f.close()
+else:
+  if VERBOSE:
+    print ' Warning, /proc not mounted, using bogus BOGOMIPS'
+  BOGOMIPS=3000.0
 
 TMPDIR = ( os.getenv('TMPDIR') or '/tmp' ).rstrip('/')
 
@@ -1236,6 +1249,8 @@ def _delta_info_unzip_(TD):
     system('gunzip PATCH/patch.sh.gz',TD)
   elif os.path.exists(TD+'PATCH/patch.sh.bz2'):
     system('bunzip2 PATCH/patch.sh.bz2',TD)  
+  elif os.path.exists(TD+'PATCH/patch.sh.lzma'):
+    system('unlzma PATCH/patch.sh.lzma',TD)
 
 def get_info_slow(delta,T=None):
   if T:
@@ -1551,8 +1566,11 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
           system('ar p '+TD+'OLD.file data.tar.bz2 | tar -x --bzip2 -p -f - -C '+TD+'OLD/DATA', TD)
-        else:
+        elif 'data.tar.gz' in ar_list_old:
           system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
+        elif 'data.tar.lzma' in ar_list_old:
+          system('ar p '+TD+'OLD.file data.tar.lzma | unlzma | tar -x -p -f - -C '+TD+'OLD/DATA', TD)
+        else: assert(0)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
         if olddeb == '/':
@@ -1573,6 +1591,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     elif 'needs-bsdiff' == a:
       if not os.path.exists('/usr/bin/bsdiff'):
         die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
+    elif 'needs-lzma' == a:
+      if not os.path.exists('/usr/bin/lzma'):
+        die('This patch needs lzma. Please install the Debian package "lzma".')
     elif 'needs-minibzip2' == a:
       pass #its your lucky day
     elif params[a] == True:
@@ -1825,6 +1846,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write('bzip2 '+f+'\n')
       f=f[:-4]
       c='.bz2'
+    elif f[-5:] == '.lzma' :
+      system('unlzma '+f,TD)
+      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
+        script.write('unlzma '+f+'\n')
+      f=f[:-5]
+      c='.lzma'
     else: assert(0)
     return (f,c)
 
@@ -1834,6 +1861,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
       script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
     elif  cn == '.bz2' :
       script.write(' ./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+' \n')
+    elif cn == '.lzma' :
+      script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+' \n')
     else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
@@ -2514,6 +2543,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
         info.append('needs-minibzip2')
         def x():
           return os.popen('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
+      elif name[-5:] == '.lzma' :
+        info.append('needs-lzma')
+        def x():
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
       else: assert(0)
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
@@ -2554,14 +2587,18 @@ def do_delta_(olddeb,newdeb,delta,TD):
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   v=''
   #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
+  patch_files = []
+  system('lzma -q -9 -k '+v+' PATCH/patch.sh', TD)
+  patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.lzma'), 'lzma', 'patch.sh.lzma'))
   system('bzip2 -q --keep -9  '+v+'  PATCH/patch.sh', TD)
-  system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)  
-  if  os.path.getsize(TD+'PATCH/patch.sh.gz') > os.path.getsize(TD+'PATCH/patch.sh.bz2') :
-    if VERBOSE > 1 : print '  bzip2 wins on patch.sh  '
-    patch_append('patch.sh.bz2')
-  else:
-    if VERBOSE > 1 : print '  gzip wins on patch.sh  '
-    patch_append('patch.sh.gz')
+  patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.bz2'), 'bzip2', 'patch.sh.bz2'))
+  system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)
+  patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.gz'), 'gzip', 'patch.sh.gz'))
+
+  # Use the smallest compressed patch.sh
+  patch_files.sort()
+  if VERBOSE > 1 : print ' '+patch_files[0][1]+' wins on patch.sh'
+  patch_append(patch_files[0][2])
   
   #OK, OK... this is not yet correct, since I will add the info file later on
   elaps =  time.time() - start_sec
@@ -2596,7 +2633,16 @@ def do_deltas(debs):
     except ImportError:
       print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
       raise SystemExit
-  
+    
+    f=os.popen('hostname -f')
+    try:
+      import hashlib
+      HOSTID=hashlib.md5( f.read() ).hexdigest()
+    except ImportError:
+      import md5
+      HOSTID=md5.new( f.read() ).hexdigest()
+    f.close()
+    
   if AVOID and type(AVOID) == StringType:
     import shelve
     if VERBOSE: print ' Using avoid dict ',AVOID
@@ -3829,6 +3875,78 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.140
+log
+@Use hashlib.md5
+@
+text
+@d139 1
+a139 1
+RCS_VERSION="$Id: debdelta,v 1.139 2009/08/05 09:14:42 debdev Exp $"
+d530 2
+d847 1
+a847 1
+        else:
+d849 3
+d872 3
+d1127 6
+d1142 2
+d1824 4
+d1868 3
+d1872 8
+a1879 7
+  system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)  
+  if  os.path.getsize(TD+'PATCH/patch.sh.gz') > os.path.getsize(TD+'PATCH/patch.sh.bz2') :
+    if VERBOSE > 1 : print '  bzip2 wins on patch.sh  '
+    patch_append('patch.sh.bz2')
+  else:
+    if VERBOSE > 1 : print '  gzip wins on patch.sh  '
+    patch_append('patch.sh.gz')
+@
+
+
+1.139
+log
+@Use default for BOGOMIPS if /proc/cpuinfo is not there
+@
+text
+@d96 1
+a96 1
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback, ConfigParser
+a120 5
+f=os.popen('hostname -f')
+HOSTID=md5.new( f.read() ).hexdigest()
+f.close()
+
+
+d139 1
+a139 1
+RCS_VERSION="$Id: debdelta,v 1.138 2009/04/08 12:14:46 debdev Exp $"
+d1890 10
+a1899 1
+  
+@
+
+
+1.138
+log
+@Update copyright.
+Move code around.
+Add arguments to debdelta-upgrade.
+@
+text
+@a120 4
+f=os.popen('grep bogomips /proc/cpuinfo')
+BOGOMIPS=float(f.read().split(':')[-1])
+f.close()
+
+d144 1
+a144 1
+RCS_VERSION="$Id: debdelta,v 1.137 2009/04/08 11:46:20 debdev Exp $"
+d217 9
 @
 
 

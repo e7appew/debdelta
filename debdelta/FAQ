@@ -32,6 +32,11 @@ Q: What about .debs where the data part is compressed with bzip ?
 A: supported since version 0.24
 
 
+Q: And with lzma?
+
+A: Since version 0.29
+
+
 Q: can 'debpatch' recreate the new .deb using the installed old .deb, even when
    there are dpkg-diversions ?
 
@@ -39,7 +44,7 @@ A:  yes.
 
 
 Q: can 'debpatch' recreate the new .deb using the installed old .deb, even when
-   conf files where modified ?
+   conf files were modified ?
 
 A:  yes.
 
