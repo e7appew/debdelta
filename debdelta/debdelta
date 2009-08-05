@@ -118,10 +118,6 @@ MIN_DEB_SIZE = 10 * 1024
 
 N_DELTAS= 1
 
-f=os.popen('grep bogomips /proc/cpuinfo')
-BOGOMIPS=float(f.read().split(':')[-1])
-f.close()
-
 f=os.popen('hostname -f')
 HOSTID=md5.new( f.read() ).hexdigest()
 f.close()
@@ -145,7 +141,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.138 2009/04/08 12:14:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.139 2009/08/05 09:14:42 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -217,6 +213,15 @@ else:
 
 def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
+
+if os.path.exists('/proc/cpuinfo'):
+  f=os.popen('grep bogomips /proc/cpuinfo')
+  BOGOMIPS=float(f.read().split(':')[-1])
+  f.close()
+else:
+  if VERBOSE:
+    print ' Warning, /proc not mounted, using bogus BOGOMIPS'
+  BOGOMIPS=3000.0
 
 TMPDIR = ( os.getenv('TMPDIR') or '/tmp' ).rstrip('/')
 
