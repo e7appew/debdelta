@@ -93,7 +93,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, md5, traceback, ConfigParser
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -118,11 +118,6 @@ MIN_DEB_SIZE = 10 * 1024
 
 N_DELTAS= 1
 
-f=os.popen('hostname -f')
-HOSTID=md5.new( f.read() ).hexdigest()
-f.close()
-
-
 USE_DELTA_ALGO  = 'bsdiff'
 
 DEBUG   = 0
@@ -141,7 +136,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.139 2009/08/05 09:14:42 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.140 2009/08/05 10:35:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1892,7 +1887,16 @@ def do_deltas(debs):
     except ImportError:
       print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
       raise SystemExit
-  
+    
+    f=os.popen('hostname -f')
+    try:
+      import hashlib
+      HOSTID=hashlib.md5( f.read() ).hexdigest()
+    except ImportError:
+      import md5
+      HOSTID=md5.new( f.read() ).hexdigest()
+    f.close()
+    
   if AVOID and type(AVOID) == StringType:
     import shelve
     if VERBOSE: print ' Using avoid dict ',AVOID
