@@ -136,7 +136,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.141 2009/08/05 12:12:02 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.142 2009/08/05 15:39:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1912,14 +1912,14 @@ def do_deltas(debs):
       print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
       raise SystemExit
     
-    f=os.popen('hostname -f')
-    try:
-      import hashlib
-      HOSTID=hashlib.md5( f.read() ).hexdigest()
-    except ImportError:
-      import md5
-      HOSTID=md5.new( f.read() ).hexdigest()
-    f.close()
+  f=os.popen('hostname -f')
+  try:
+    import hashlib
+    HOSTID=hashlib.md5( f.read() ).hexdigest()
+  except ImportError:
+    import md5
+    HOSTID=md5.new( f.read() ).hexdigest()
+  f.close()
     
   if AVOID and type(AVOID) == StringType:
     import shelve
