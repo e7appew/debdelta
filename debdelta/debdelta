@@ -136,7 +136,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.142 2009/08/05 15:39:04 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.143 2009/08/06 21:02:31 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2316,11 +2316,16 @@ class Predictor:
     if os.getuid() == 0:
       basedir='/var/lib/debdelta'
     else:
+      if not os.path.exists(os.path.expanduser('~/')):
+        if DEBUG:
+          print ' Home directory does not exists, Predictor disabled.'
+        return
       basedir=os.path.expanduser('~/.debdelta')
+
     s=os.path.join(basedir,'upgrade.db')
-    if not os.path.exists(os.path.dirname(s)):
-      print 'Creating: ',os.path.dirname(s)
-      os.makedirs(os.path.dirname(s))
+    if not os.path.exists(basedir):
+      print 'Creating: ',basedir
+      os.makedirs(basedir)
     self.upgrade_stats=shelve.open(s,flag='c')
 
     s=os.path.join(basedir,'packages_stats.db')
@@ -2347,7 +2352,10 @@ class Predictor:
         self.package_stats[n]=d
       except Exception,exc:
         print 'ERROR:Cannot update package_stats:',exc
-    
+
+    if self.upgrade_stats == None :
+      return
+
     s='ServerID'
     if s not in p :
       return
