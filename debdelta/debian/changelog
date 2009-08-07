@@ -1,3 +1,13 @@
+debdelta (0.30) unstable; urgency=low
+
+  * Correct an indent in defining HOSTID
+  * Bug fix: "[debdelta] debdelta-upgrade doesn't work with nobody
+    user", thanks to Mert Dirik (Closes: #497967).
+  * Bug fix: "os.popen2 deprecated in python2.6", thanks to
+    Pär Andersson (Closes: #539911).
+
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 07 Aug 2009 10:10:04 +0200
+
 debdelta (0.29) unstable; urgency=low
 
   * Really depend on 'binutils' (Closes: 511765)

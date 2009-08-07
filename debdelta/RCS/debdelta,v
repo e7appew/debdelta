@@ -1,9 +1,19 @@
-head	1.141;
+head	1.143;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.143
+date	2009.08.06.21.02.31;	author debdev;	state Exp;
+branches;
+next	1.142;
+
+1.142
+date	2009.08.05.15.39.04;	author debdev;	state Exp;
+branches;
+next	1.141;
 
 1.141
 date	2009.08.05.12.12.02;	author debdev;	state Exp;
@@ -715,9 +725,9 @@ desc
 @@
 
 
-1.141
+1.143
 log
-@Support lzma
+@Fix problem when the home directory does not exists (e.g. user "nobody").
 @
 text
 @#!/usr/bin/python
@@ -858,7 +868,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.140 2009/08/05 10:35:04 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.142 2009/08/05 15:39:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2634,14 +2644,14 @@ def do_deltas(debs):
       print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
       raise SystemExit
     
-    f=os.popen('hostname -f')
-    try:
-      import hashlib
-      HOSTID=hashlib.md5( f.read() ).hexdigest()
-    except ImportError:
-      import md5
-      HOSTID=md5.new( f.read() ).hexdigest()
-    f.close()
+  f=os.popen('hostname -f')
+  try:
+    import hashlib
+    HOSTID=hashlib.md5( f.read() ).hexdigest()
+  except ImportError:
+    import md5
+    HOSTID=md5.new( f.read() ).hexdigest()
+  f.close()
     
   if AVOID and type(AVOID) == StringType:
     import shelve
@@ -3038,11 +3048,16 @@ class Predictor:
     if os.getuid() == 0:
       basedir='/var/lib/debdelta'
     else:
+      if not os.path.exists(os.path.expanduser('~/')):
+        if DEBUG:
+          print ' Home directory does not exists, Predictor disabled.'
+        return
       basedir=os.path.expanduser('~/.debdelta')
+
     s=os.path.join(basedir,'upgrade.db')
-    if not os.path.exists(os.path.dirname(s)):
-      print 'Creating: ',os.path.dirname(s)
-      os.makedirs(os.path.dirname(s))
+    if not os.path.exists(basedir):
+      print 'Creating: ',basedir
+      os.makedirs(basedir)
     self.upgrade_stats=shelve.open(s,flag='c')
 
     s=os.path.join(basedir,'packages_stats.db')
@@ -3069,7 +3084,10 @@ class Predictor:
         self.package_stats[n]=d
       except Exception,exc:
         print 'ERROR:Cannot update package_stats:',exc
-    
+
+    if self.upgrade_stats == None :
+      return
+
     s='ServerID'
     if s not in p :
       return
@@ -3875,6 +3893,48 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.142
+log
+@Correct indent for HOSTID
+@
+text
+@d139 1
+a139 1
+RCS_VERSION="$Id: debdelta,v 1.141 2009/08/05 12:12:02 debdev Exp $"
+d2319 4
+d2324 1
+d2326 3
+a2328 3
+    if not os.path.exists(os.path.dirname(s)):
+      print 'Creating: ',os.path.dirname(s)
+      os.makedirs(os.path.dirname(s))
+d2355 4
+a2358 1
+    
+@
+
+
+1.141
+log
+@Support lzma
+@
+text
+@d139 1
+a139 1
+RCS_VERSION="$Id: debdelta,v 1.140 2009/08/05 10:35:04 debdev Exp $"
+d1915 8
+a1922 8
+    f=os.popen('hostname -f')
+    try:
+      import hashlib
+      HOSTID=hashlib.md5( f.read() ).hexdigest()
+    except ImportError:
+      import md5
+      HOSTID=md5.new( f.read() ).hexdigest()
+    f.close()
 @
 
 
