@@ -93,7 +93,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -102,6 +102,9 @@ from copy    import copy
 from types import StringType, FunctionType, TupleType, ListType, DictType
 
 import shutil
+
+def my_popen_read(cmd):
+  return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE).stdout
 
 ################################################# main program, read options
 
@@ -136,7 +139,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.143 2009/08/06 21:02:31 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.144 2009/08/07 08:15:18 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -210,7 +213,7 @@ def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
 
 if os.path.exists('/proc/cpuinfo'):
-  f=os.popen('grep bogomips /proc/cpuinfo')
+  f=my_popen_read('grep bogomips /proc/cpuinfo')
   BOGOMIPS=float(f.read().split(':')[-1])
   f.close()
 else:
@@ -318,7 +321,7 @@ def de_bar(a):
 def list_ar(f):
   assert(os.path.exists(f))
   ar_list = []
-  p=os.popen('ar t '+f,'r')
+  p=my_popen_read('ar t '+f)
   while 1:
     a=p.readline()
     if not a : break
@@ -330,7 +333,7 @@ def list_ar(f):
 def list_tar(f):
   assert(os.path.exists(f))
   ar_list = []
-  p=os.popen('tar t '+f,'r')
+  p=my_popen_read('tar t '+f)
   while 1:
     a=p.readline()
     if not a : break
@@ -380,7 +383,8 @@ def prepare_for_echo__(s):
 
 def apply_prepare_for_echo(shell,repres):
     a=ECHO_TEST  + " $echo '" + repres +  "' \n exit "
-    o,i=os.popen2(shell)
+    p = subprocess.Popen([shell], stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+    (i, o) = (p.stdout, p.stdin)
     o.write(a)
     o.close()
     a=i.read()
@@ -725,7 +729,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
       dpkg_params={}
       b=params['OLD/Package']
       if olddeb == '/' :
-        p=os.popen('env -i dpkg -s '+b)
+        p=my_popen_read('env -i dpkg -s '+b)
       else:        
         p=open(TD+'OLD/CONTROL/control')
       scan_control(p,params=dpkg_params,prefix='OLD')
@@ -764,7 +768,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
 
   def dpkg_L(pa):
     s=[]
-    p=os.popen('env -i dpkg -L '+pa)
+    p=my_popen_read('env -i dpkg -L '+pa)
     a=p.readline()
     while a:
       a=de_n(a)
@@ -1004,7 +1008,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   if DO_MD5 :
     # compute a MD5 of NEW deb
-    p=os.popen('md5sum '+TD+'NEW.file')
+    p=my_popen_read('md5sum '+TD+'NEW.file')
     a=p.readline()
     p.read()
     p.close
@@ -1087,7 +1091,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def script_md5_check_file(n,md5=None):
     if md5==None:
       assert(os.path.isfile(TD+n))
-      pm=os.popen('md5sum '+TD+n)
+      pm=my_popen_read('md5sum '+TD+n)
       a=pm.readline()
       pm.read()
       pm.close
@@ -1768,7 +1772,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   def md5_ar(TD,n,name):
     "extra md5 check, for tracking strange bugs"
-    pm=os.popen('cd '+TD+'; ar p OLD.file '+name+' | md5sum -')
+    pm=my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | md5sum -')
     data_tar_md5=pm.readline()[:32]
     pm.read()
     pm.close()
@@ -1816,15 +1820,15 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #system('ar p OLD.file '+name+' >> '+o, TD)
       if name[-3:] == '.gz' :
         def x():
-          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
       elif name[-4:] == '.bz2' :
         info.append('needs-minibzip2')
         def x():
-          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
+          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
       elif name[-5:] == '.lzma' :
         info.append('needs-lzma')
         def x():
-          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
+          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
       else: assert(0)
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
@@ -1912,7 +1916,7 @@ def do_deltas(debs):
       print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
       raise SystemExit
     
-  f=os.popen('hostname -f')
+  f=my_popen_read('hostname -f')
   try:
     import hashlib
     HOSTID=hashlib.md5( f.read() ).hexdigest()
@@ -2045,7 +2049,7 @@ def do_deltas(debs):
         return
       p.close()
       info_by_file[f]={}
-      p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
+      p=my_popen_read('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,params=info_by_file[f])
       p.close()
       info_by_file[f]['Filename'] = of
