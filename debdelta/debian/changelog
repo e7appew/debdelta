@@ -1,3 +1,14 @@
+debdelta (0.31) unstable; urgency=low
+
+  * Add a README.upgrade document in /usr/share/doc/debdelta
+  * Copy some useful stuff in /usr/share/debdelta :
+     dpkg-sig , patched to support debdelta signatures
+     debmirror-delta-security : an example script to create deltas 
+        from stable to stable-security
+  * Rearrange debian/rules
+
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 21 Aug 2009 11:08:20 +0200
+
 debdelta (0.30) unstable; urgency=low
 
   * Correct an indent in defining HOSTID

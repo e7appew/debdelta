@@ -1,11 +1,11 @@
 ----------- Introduction, copyright, license
 
 debdelta is an application suite designed to compute changes between
-Debian packages. These changes (deltas) are similar to the output of
-the "diff" program in that they may be used to store and transmit only
-the changes between Debian packages.  This suite contains
-'debdelta-upgrade', that downloads debdeltas and use them to create
-all Debian packages needed for an 'apt-get upgrade'.
+Debian packages. These changes (that we will call 'deltas') are
+similar to the output of the "diff" program in that they may be used
+to store and transmit only the changes between Debian packages.  This
+suite contains 'debdelta-upgrade', that downloads deltas and use them
+to create all Debian packages needed for an 'apt-get upgrade'.
 
 debdelta is  Copyright (C) 2006-09 Andrea Mennucci
 
@@ -22,7 +22,7 @@ minigzip is Copyright (C) 1995-2002 Jean-loup Gailly
 
 ---------- Description
 
-The debdelta  application suite is really composed of different applications.
+The debdelta application suite is really composed of different applications.
 
 ---- debdelta
 
@@ -39,10 +39,11 @@ the result is:
 
 ---- debpatch
 
-'debpatch' can use the delta file and a copy of the old Debian package to
-recreate the new Debian package. If the old Debian package is not available,
-but is installed in the host, it can use the installed data; in this
-case, '/' is used in lieu of the old .deb.
+'debpatch' can use the delta file and a copy of the old Debian package
+to recreate the new Debian package.  (This process is called "applying
+the delta file"). If the old Debian package is not available, but is
+installed in the host, it can use the installed data; in this case,
+'/' is used in lieu of the old .deb.
 
 Example:
 
@@ -82,12 +83,9 @@ directory tree.
 
 ----------- debdelta-upgrade
 
-This command will download necessary deltas from my mirror
-and use them to create debs for an 'apt-get upgrade'
+This command will download necessary deltas
+and apply them to create debs for an 'apt-get upgrade'
 
-This is currently a hack; it should be replaced by an APT method
-(this is work in progress); but for this I need help from APT and python-apt
-authors.
 
 Example usage:
 # apt-get update && debdelta-upgrade && apt-get upgrade
@@ -96,7 +94,9 @@ If run by a non-root user, debs are saved in /tmp/archives : do not
  forget to move them in /var/cache/apt/archives
 
 debdelta-upgrade will also download .debs for which no delta is
-available (this is done in parallel to patching, to maximize speed).
+available (this is done in parallel to patching, to maximize
+speed). See the explanation of "debdelta-upgrade --deb-policy" in the
+man page for more info and customization on which debs get downloaded.
 
 Work is in progress so that debdelta-upgrade will actually choose if
 - download a delta and use it to create the .deb
@@ -106,11 +106,20 @@ Unfortunately, this decision must depend on a good model
 to predict the speed of patching... and this I still cannot
 achieve.
 
+More info are in README.upgrade
+
+------------- TODO
+
+Top of the list is: GPG signatures.
+
+Second: prepare an APT method so that 
+'apt-get upgrade' would actually use deltas.
+Some code is already written.
 
 -------------- Statistics and tests
 
 I am currently running 'debdeltas' in a mirror that mirrors
-'stable' , 'stable-security' , 'testing' and 'unstable for i386 and amd64.
+'stable' , 'stable-security' , 'testing' and 'unstable', for i386 and amd64.
 
 Tests and comparisons on backend binary delta difference compressors
 are available in 
@@ -143,9 +152,7 @@ some python code that does the trick (90% of the times...).
 -------------- Speed
 
 Warning: this section is referred to experiments where the backend for
-delta encoding was 'xdelta' ; currently the default backend is
-'bsdiff', that is much slower; work is in progress to find a
-compromise.
+delta encoding was 'xdelta'.
 
 On a desktop with CPU  Athlon64 3000 and a average hard disk,
 $ debdelta mozilla-browser_1.7.8-1sarge3_i386.deb  mozilla-browser_1.7.8-1sarge6_i386.deb /tmp/m-b.debdelta

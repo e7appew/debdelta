@@ -1,0 +1,124 @@
+Some years ago I set up a delta-upgrading framework, so that people
+may upgrade their Debian box using 'debdelta-upgrade' (that download
+package 'deltas' -- see README).
+
+This document is an introduction to the framework that is behind
+'debdelta-upgrade'.
+
+In the following, I will simplify (in places, quite a lot).
+
+--- The framework
+
+The framework is so organized: I keep up some servers where I use the
+program 'debdeltas' to create all the deltas; whereas endusers use the
+client 'debdelta-upgrade' to download the deltas and apply them to
+produce the debs needed to upgrade their boxes.
+
+In my server, I mirror some repositories, and then I invoke
+'debdeltas' to make the deltas between them: e.g. I produce deltas to
+upgrade any package from its version in "stable" to the version in
+"security updates"; or to upgrade a package from testing to unstable.
+
+--- The goals
+
+There are two ultimate goals in designing this framework:
+SMALL) reduce the size of downloads
+   (fit for people that pay-by-megabyte);
+FAST) speed up the upgrade.
+
+The two goals are unfortunately only marginally compatible. An
+example: bsdiff can produce very small deltas, but is quite slow (in
+particular with very large files); so currently (2009) I use 'xdelta3'
+as the backend diffing tool for 'debdeltas' in my server.
+
+Another example is in debs that contain archives ( .gz, , tar/
+ar/libraries, etc etc): I have set up methods to peek inside them, so
+the delta becomes smaller, but the applying gets slower.
+
+The problem is that the process of applying a delta to create a new
+deb is currently slow, even on very fast machines.
+
+--- The speed
+
+One way to overcome is to "parallelize as much as possible".
+
+The best strategy that I can imagine is to keep both the CPU,
+the hard disk, and the Internet connection, always maxed up.
+
+This is why 'debdelta-upgrade' has two threads, the "downloading
+thread" and the "patching thread". The downloading thread downloads
+deltas (ordered by increasing size), and as soon as they are
+downloaded, it queues them to be applied in the "patching thread";
+whereas as soon as all available deltas are downloaded it starts
+downloading some debs, and goes on for as long as the deltas are being
+applied in the "patching thread".
+
+Summarizing, the downloading thread keeps Internet busy while the
+patching thread keeps the CPU and HDD busy.
+
+Another speedup strategy is embedded inside the deltas themselves:
+the data are divided in chunks, so that the HDD accesses and the calls
+to bsdiff/xdelta3 can run "in parallel".
+
+--- The choice
+
+Which deltas should be downloaded, VS which debs?
+
+Currently there is a rule-of-thumb: the server immediately deletes any
+delta that exceeds 70% of the original deb , and it replaces it with
+an empty file ending in ".debdelta-too-big". In such cases,
+"debdelta-upgrade" will download the deb instead.
+
+See the explanation of "debdelta-upgrade --deb-policy" in the man page
+for more info and customization on which debs get downloaded.
+
+Some time ago I tried to do devise a better way to understand when to
+download a delta w.r.t. a deb. The code is in the "Predictor" class
+.... but I could not reliably predict the final speed of patching, so
+currently it is not used.
+
+--- State of the art
+
+All in all, I still cannot obtain high speeds: so people that have a
+ADSL Internet connection faster than 300kB/sec usually are better
+downloading all the debs, and ignoring "debdelta-upgrade" alltogether.
+Anyway, the best way to know is to try "debdelta-upgrade -v" and 
+read the final statistics.
+
+--- The archive
+
+Consider a package that is currently installed. It is characterized by
+ name installed_version architecture
+(unfortunately there is no way to tell from which archive it came
+from, but this does not seem to be a problem currently)
+
+Suppose now that a newer version is available somewhere in an archive,
+and that the user wishes to upgrade to that version.
+
+The archive Release file contain these info:
+  Origin , Label , Site, Archive
+
+Example:
+#Origin=Debian
+#Label=Debian-Security
+#Archive=unstable
+#Site=ftp.debian.org
+
+The file /etc/debdelta/sources.conf , given the above info, determines
+the host that should contain the delta for upgrading the package. This
+information is called "delta_uri" in that file.
+
+The complete URL for the delta is built adding to the delta_uri a
+directory path that mimicks the "pool" structure used in Debian
+archives, and appending to it a filename of the form
+ name_oldversion_newversion_architecture.debdelta
+
+All this is implemented in the example script contrib/findurl.py .
+
+If the delta is not available at that URL, and
+ name_oldversion_newversion_architecture.debdelta-too-big
+is available, then the delta is too big to be useful.
+
+If neither is present, then, either the delta has not yet been
+generated, or it will never be generated... but this is difficult to
+know.

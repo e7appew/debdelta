@@ -1,9 +1,19 @@
-head	1.143;
+head	1.145;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.145
+date	2009.08.21.08.16.41;	author debdev;	state Exp;
+branches;
+next	1.144;
+
+1.144
+date	2009.08.07.08.15.18;	author debdev;	state Exp;
+branches;
+next	1.143;
 
 1.143
 date	2009.08.06.21.02.31;	author debdev;	state Exp;
@@ -725,9 +735,9 @@ desc
 @@
 
 
-1.143
+1.145
 log
-@Fix problem when the home directory does not exists (e.g. user "nobody").
+@Add new command line tool 'debpatch-url'
 @
 text
 @#!/usr/bin/python
@@ -811,6 +821,10 @@ Options:
             default is s,b,e
 """
 
+doc['patch-url']="""\
+Usage: debpatch-url [packages]
+  Show URL wherefrom to downloads all deltas that may be used to 'apt-get upgrade' the given packages
+"""
 
 doc_common="""\
  -v         verbose (can be added multiple times)
@@ -825,7 +839,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -834,6 +848,9 @@ from copy    import copy
 from types import StringType, FunctionType, TupleType, ListType, DictType
 
 import shutil
+
+def my_popen_read(cmd):
+  return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE).stdout
 
 ################################################# main program, read options
 
@@ -868,7 +885,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.142 2009/08/05 15:39:04 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.144 2009/08/07 08:15:18 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -876,7 +893,7 @@ if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
 else:
   action=(os.path.basename(sys.argv[0]))[3:]
-  actions =  ('delta','patch','deltas','delta-upgrade')
+  actions =  ('delta','patch','deltas','delta-upgrade', 'patch-url')
   
   if action not in actions:
     print 'wrong filename: should be "deb" + '+repr(actions)
@@ -942,7 +959,7 @@ def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
 
 if os.path.exists('/proc/cpuinfo'):
-  f=os.popen('grep bogomips /proc/cpuinfo')
+  f=my_popen_read('grep bogomips /proc/cpuinfo')
   BOGOMIPS=float(f.read().split(':')[-1])
   f.close()
 else:
@@ -1050,7 +1067,7 @@ def de_bar(a):
 def list_ar(f):
   assert(os.path.exists(f))
   ar_list = []
-  p=os.popen('ar t '+f,'r')
+  p=my_popen_read('ar t '+f)
   while 1:
     a=p.readline()
     if not a : break
@@ -1062,7 +1079,7 @@ def list_ar(f):
 def list_tar(f):
   assert(os.path.exists(f))
   ar_list = []
-  p=os.popen('tar t '+f,'r')
+  p=my_popen_read('tar t '+f)
   while 1:
     a=p.readline()
     if not a : break
@@ -1112,7 +1129,8 @@ def prepare_for_echo__(s):
 
 def apply_prepare_for_echo(shell,repres):
     a=ECHO_TEST  + " $echo '" + repres +  "' \n exit "
-    o,i=os.popen2(shell)
+    p = subprocess.Popen([shell], stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+    (i, o) = (p.stdout, p.stdin)
     o.write(a)
     o.close()
     a=i.read()
@@ -1457,7 +1475,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
       dpkg_params={}
       b=params['OLD/Package']
       if olddeb == '/' :
-        p=os.popen('env -i dpkg -s '+b)
+        p=my_popen_read('env -i dpkg -s '+b)
       else:        
         p=open(TD+'OLD/CONTROL/control')
       scan_control(p,params=dpkg_params,prefix='OLD')
@@ -1496,7 +1514,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
 
   def dpkg_L(pa):
     s=[]
-    p=os.popen('env -i dpkg -L '+pa)
+    p=my_popen_read('env -i dpkg -L '+pa)
     a=p.readline()
     while a:
       a=de_n(a)
@@ -1736,7 +1754,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   if DO_MD5 :
     # compute a MD5 of NEW deb
-    p=os.popen('md5sum '+TD+'NEW.file')
+    p=my_popen_read('md5sum '+TD+'NEW.file')
     a=p.readline()
     p.read()
     p.close
@@ -1819,7 +1837,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def script_md5_check_file(n,md5=None):
     if md5==None:
       assert(os.path.isfile(TD+n))
-      pm=os.popen('md5sum '+TD+n)
+      pm=my_popen_read('md5sum '+TD+n)
       a=pm.readline()
       pm.read()
       pm.close
@@ -2500,7 +2518,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   def md5_ar(TD,n,name):
     "extra md5 check, for tracking strange bugs"
-    pm=os.popen('cd '+TD+'; ar p OLD.file '+name+' | md5sum -')
+    pm=my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | md5sum -')
     data_tar_md5=pm.readline()[:32]
     pm.read()
     pm.close()
@@ -2548,15 +2566,15 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #system('ar p OLD.file '+name+' >> '+o, TD)
       if name[-3:] == '.gz' :
         def x():
-          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
       elif name[-4:] == '.bz2' :
         info.append('needs-minibzip2')
         def x():
-          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
+          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
       elif name[-5:] == '.lzma' :
         info.append('needs-lzma')
         def x():
-          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
+          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
       else: assert(0)
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
@@ -2644,7 +2662,7 @@ def do_deltas(debs):
       print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
       raise SystemExit
     
-  f=os.popen('hostname -f')
+  f=my_popen_read('hostname -f')
   try:
     import hashlib
     HOSTID=hashlib.md5( f.read() ).hexdigest()
@@ -2777,7 +2795,7 @@ def do_deltas(debs):
         return
       p.close()
       info_by_file[f]={}
-      p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
+      p=my_popen_read('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
       scan_control(p,params=info_by_file[f])
       p.close()
       info_by_file[f]['Filename'] = of
@@ -3134,7 +3152,27 @@ class Predictor:
     r=self.upgrade_stats[s]['PatchSpeedRatio']
     return r * ut
 
-  
+def delta_uri_from_config(config, **dictio):
+  secs=config.sections()
+  for s in secs:
+    opt=config.options(s)
+    if 'delta_uri' not in opt:
+      print 'Error!! sources.conf section ',s,'does not contain delta_uri'
+      raise SystemExit(1)
+    match=True
+    for a in dictio:
+      #damn it, ConfigParser changes everything to lowercase !
+      if ( a.lower() in opt ) and ( dictio[a] != config.get( s, a) ) :
+        #print '!!',a, repr(dictio[a]) , ' != ',repr(config.get( s, a))
+        match=False
+        break
+    if match:
+      return  config.get( s, 'delta_uri' )
+  if VERBOSE:
+    print '(sources.conf does not provide a server for ', repr(dictio['PackageName']),')'
+
+
+
 def delta_upgrade_(args):
   original_cwd = os.getcwd()
 
@@ -3303,25 +3341,6 @@ def delta_upgrade_(args):
         print '-Closing connection to: ',url
       conn.close()
 
-  def delta_uri_from_config(**dictio):
-    secs=config.sections()
-    for s in secs:
-      opt=config.options(s)
-      if 'delta_uri' not in opt:
-        print 'Error!! sources.conf section ',s,'does not contain delta_uri'
-        raise SystemExit(1)
-      match=True
-      for a in dictio:
-        #damn it, ConfigParser changes everything to lowercase !
-        if ( a.lower() in opt ) and ( dictio[a] != config.get( s, a) ) :
-          #print '!!',a, repr(dictio[a]) , ' != ',repr(config.get( s, a))
-          match=False
-          break
-      if match:
-        return  config.get( s, 'delta_uri' )
-    if VERBOSE:
-      print '(sources.conf does not provide a server for ', repr(dictio['PackageName']),')'
-  
   
   ################################################# various HTTP facilities
   def _http_whine_(uri,r):
@@ -3545,7 +3564,8 @@ def delta_upgrade_(args):
       if VERBOSE > 1:
         print 'Looking for a delta for %s from %s to %s ' % \
               ( p.name, installed_version, candidate_version )
-      delta_uri_base=delta_uri_from_config(Origin=origin.origin,
+      delta_uri_base=delta_uri_from_config(config,
+                                           Origin=origin.origin,
                                            Label=origin.label,
                                            Site=origin.site,
                                            Archive=origin.archive,
@@ -3786,6 +3806,66 @@ elif action == 'delta-upgrade':
     raise SystemExit(2)
   raise SystemExit(0)
 
+elif action == 'patch-url':
+  config=ConfigParser.SafeConfigParser()
+  config.read(['/etc/debdelta/sources.conf', os.path.expanduser('~/.debdelta/sources.conf')  ])
+
+  try:
+    import  apt_pkg
+  except ImportError:
+    print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
+    raise SystemExit
+  
+  try:
+    import  apt
+  except ImportError:
+    print 'ERROR!!! python module "apt" is missing. Please install a newer version of python-apt (newer than 0.6.12)'
+    raise SystemExit
+  
+  apt_pkg.init()
+  
+  cache=apt.Cache()
+  cache.upgrade(True)
+
+  for a in argv:
+    print 'Lookup ',a
+    p = cache[a]
+    candidate=p.candidate
+    origin = p.candidate.origins[0]
+    arch=candidate.architecture
+    if not candidate.uris :
+      print 'Sorry, cannot find an URI to download the debian package of ',a
+      continue
+    deb_uri = candidate.uri
+    installed_version=p.installed.version
+    candidate_version=p.candidate.version
+    deb_path=string.split(deb_uri,'/')
+    deb_path=string.join(deb_path[(deb_path.index('pool')):],'/')
+
+    delta_uri_base=delta_uri_from_config(config,
+                                         Origin=origin.origin,
+                                           Label=origin.label,
+                                           Site=origin.site,
+                                           Archive=origin.archive,
+                                           PackageName=p.name)
+
+    if delta_uri_base == None:
+      print 'Sorry, no debdelta source is available to upgrade ',a
+      continue
+
+    if installed_version == candidate_version:
+      print 'Sorry, this package is already at its newest version ',a
+      continue
+
+    #delta name
+    delta_name=p.name+'_'+version_mangle(installed_version)+\
+                '_'+ version_mangle(candidate_version)+'_'+\
+                arch+'.debdelta'
+  
+    uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
+
+    print 'The package ',a,' may be upgraded by using: ', uri
+
 
 ##################################################### apt method
 
@@ -3893,6 +3973,105 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.144
+log
+@Use "subprocess" instead of os.popen
+@
+text
+@d82 4
+d146 1
+a146 1
+RCS_VERSION="$Id: debdelta,v 1.143 2009/08/06 21:02:31 debdev Exp $"
+d154 1
+a154 1
+  actions =  ('delta','patch','deltas','delta-upgrade')
+d2413 21
+a2433 1
+  
+a2601 19
+  def delta_uri_from_config(**dictio):
+    secs=config.sections()
+    for s in secs:
+      opt=config.options(s)
+      if 'delta_uri' not in opt:
+        print 'Error!! sources.conf section ',s,'does not contain delta_uri'
+        raise SystemExit(1)
+      match=True
+      for a in dictio:
+        #damn it, ConfigParser changes everything to lowercase !
+        if ( a.lower() in opt ) and ( dictio[a] != config.get( s, a) ) :
+          #print '!!',a, repr(dictio[a]) , ' != ',repr(config.get( s, a))
+          match=False
+          break
+      if match:
+        return  config.get( s, 'delta_uri' )
+    if VERBOSE:
+      print '(sources.conf does not provide a server for ', repr(dictio['PackageName']),')'
+  
+d2825 2
+a2826 1
+      delta_uri_base=delta_uri_from_config(Origin=origin.origin,
+d3067 60
+@
+
+
+1.143
+log
+@Fix problem when the home directory does not exists (e.g. user "nobody").
+@
+text
+@d96 1
+a96 1
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser
+d106 3
+d142 1
+a142 1
+RCS_VERSION="$Id: debdelta,v 1.142 2009/08/05 15:39:04 debdev Exp $"
+d216 1
+a216 1
+  f=os.popen('grep bogomips /proc/cpuinfo')
+d324 1
+a324 1
+  p=os.popen('ar t '+f,'r')
+d336 1
+a336 1
+  p=os.popen('tar t '+f,'r')
+d386 2
+a387 1
+    o,i=os.popen2(shell)
+d732 1
+a732 1
+        p=os.popen('env -i dpkg -s '+b)
+d771 1
+a771 1
+    p=os.popen('env -i dpkg -L '+pa)
+d1011 1
+a1011 1
+    p=os.popen('md5sum '+TD+'NEW.file')
+d1094 1
+a1094 1
+      pm=os.popen('md5sum '+TD+n)
+d1775 1
+a1775 1
+    pm=os.popen('cd '+TD+'; ar p OLD.file '+name+' | md5sum -')
+d1823 1
+a1823 1
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
+d1827 1
+a1827 1
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
+d1831 1
+a1831 1
+          return os.popen('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
+d1919 1
+a1919 1
+  f=os.popen('hostname -f')
+d2052 1
+a2052 1
+      p=os.popen('ar p '+f+' control.tar.gz | tar -x -z -f - -O ./control')
 @
 
 

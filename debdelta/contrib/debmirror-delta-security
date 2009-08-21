@@ -19,17 +19,18 @@ secdebmirlock=$secdebmir/Archive-Update-in-Progress-`hostname  -f`
 #where is the full mirror of debian stable
 fulldebmir=/mirror/debian
 #the name by which "stable" is known in that mirror
-stable="etch"
+stable="lenny"
 
 #where to create the repository of deltas
-deltamir=/data6/mirror/debian-security-deltas
+deltamir=/mirror/debian-security-deltas
 
 #where is the debdeltas program
-debdeltas=/home/debdev/bin/debdeltas
+debdeltas=/usr/bin/debdeltas
 #options to your taste
-debdelta_opt=" -n 3 --delta-algo xdelta "
+debdelta_opt=" -n 3 --delta-algo xdelta3 "
 
 #do mirror security
+# you will need a patched version of 'debmirror', see in /usr/share/debdelta
 trap "rm  $VERBOSE -f $secdebmirlock" 0
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
  --nosource -h security.debian.org \
