@@ -143,7 +143,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.146 2009/08/21 10:18:35 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.147 2009/08/21 10:57:19 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1822,17 +1822,17 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       o = 'OLD/'+name
       #system('ar p OLD.file '+name+' >> '+o, TD)
-      if name[-3:] == '.gz' :
+      if 'data.tar.gz' in ar_list_old  :
         def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | gzip -cd')
-      elif name[-4:] == '.bz2' :
+          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
+      elif 'data.tar.bzip2' in ar_list_old :
         info.append('needs-minibzip2')
         def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | bzip2 -cd')
-      elif name[-5:] == '.lzma' :
+          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.bz2 | bzip2 -cd')
+      elif 'data.tar.lzma' in ar_list_old :
         info.append('needs-lzma')
         def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file '+name+' | unlzma -c')
+          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
       else: assert(0)
       delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
