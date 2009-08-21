@@ -143,7 +143,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.145 2009/08/21 08:16:41 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.146 2009/08/21 10:18:35 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -855,7 +855,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         elif 'data.tar.gz' in ar_list_old:
           system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
         elif 'data.tar.lzma' in ar_list_old:
-          system('ar p '+TD+'OLD.file data.tar.lzma | unlzma | tar -x -p -f - -C '+TD+'OLD/DATA', TD)
+          system('ar p '+TD+'OLD.file data.tar.lzma | unlzma -c | tar -x -p -f - -C '+TD+'OLD/DATA', TD)
         else: assert(0)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
@@ -1135,7 +1135,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif f[-5:] == '.lzma' :
       system('unlzma '+f,TD)
       if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('unlzma '+f+'\n')
+        script.write('lzma '+f+'\n')
       f=f[:-5]
       c='.lzma'
     else: assert(0)
