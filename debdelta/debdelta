@@ -143,7 +143,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.147 2009/08/21 10:57:19 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.148 2009/08/21 12:19:07 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1029,10 +1029,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
     info.append('old-control-tree')
 
   info.append('needs-'+USE_DELTA_ALGO)
-
-  #backward compatibility
-  for i in info:
-    script.write('#'+i+'\n')
 
   #### check for disk space
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
