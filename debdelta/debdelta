@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.153 2009/08/22 12:17:39 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.154 2009/08/22 12:25:32 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -503,7 +503,7 @@ def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
   if DEBUG > 2 : print '    system(',a,')=',
   ret = os.system("cd '" +TD +"' ; ( "+a+" ) > "+temp_name+" 2> "+temp_err_name)
   if DEBUG > 2 : print ret
-  if DEBUG and (ignore_output==False and (os.stat(temp_name)[ST_SIZE] > 0 or os.stat(temp_err_name)[ST_SIZE] > 0 )):
+  if DEBUG and ignore_output==False and (os.stat(temp_name)[ST_SIZE] > 0 or os.stat(temp_err_name)[ST_SIZE] > 0 ):
     print ' command "%s" returned %d and  produced output as follows' % (a,ret)
     for i in open(temp_name):
       print 'stdout:  ',repr(i)
@@ -851,7 +851,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
   if DEBUG and  newdeb and os.path.exists(newdeb) and os.path.getsize(newdeb) > 0 :
       die("Don't want to overwrite: "+newdeb)
   
-  o=system('ar xvo '+delta,  TD+'/PATCH', return_output=True)
+  o=system('ar xvo '+delta,  TD+'/PATCH', return_output=True, ignore_output=True)
   ar_list_delta=[a[4:] for a in open(o).read().split('\n') if a]
   os.unlink(o)
   
