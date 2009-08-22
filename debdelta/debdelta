@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.154 2009/08/22 12:25:32 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.155 2009/08/22 12:25:50 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2484,7 +2484,7 @@ def do_deltas(debs):
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
         #complete the delta file prepending to it the info
-        hashes_info=append_info(delta,info)
+        hashes_info=append_info(delta,info_delta)
         # sign ghe delta
         if DO_GPG:
           gpg_hashes['info']=hashes_info
