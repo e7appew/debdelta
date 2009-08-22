@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.159 2009/08/22 17:29:43 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.160 2009/08/22 17:31:15 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -597,6 +597,10 @@ def _compute_hashes_db_(li,DIR):
   return db
 
 def verify_signature(signature, DIR):
+  a="-----BEGIN PGP SIGNED MESSAGE-----\n"
+  if open(signature).read(len(a)) != a:
+    return ('BAD_FORMAT',signature)
+
   role=os.path.basename(signature)
   assert  role[:4] == "_gpg"
   role=role[4:]
