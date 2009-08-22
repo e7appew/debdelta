@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.156 2009/08/22 12:34:52 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.157 2009/08/22 16:47:39 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -597,11 +597,15 @@ def _compute_hashes_db_(li,DIR):
   return db
 
 def verify_signature(signature, DIR):
+  role=os.path.basename(signature)
+  assert  role[:4] == "_gpg"
+  role=role[4:]
+
   (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_gpg_verified")
   #(read_end, write_end) = os.pipe()
   p=subprocess.Popen(GPG_BASE_CMD_LINE+['--status-fd',"2",'--output',"-",signature],
                      stdout=subprocess.PIPE,stderr=temp_fd)
-  r=_verify_signature_no_gpg(p.stdout, DIR)
+  r=_verify_signature_no_gpg(p.stdout, DIR, role)
   p.wait()
   
   os.close(temp_fd)
@@ -617,7 +621,7 @@ def verify_signature(signature, DIR):
   
   return r
 
-def _verify_signature_no_gpg(signature, DIR):
+def _verify_signature_no_gpg(signature, DIR, role):
   #list stuff, skipping signatures
   dir_list = [a for a in os.listdir(DIR) if a[:4] != '_gpg']
   #compute signatures
@@ -630,7 +634,11 @@ def _verify_signature_no_gpg(signature, DIR):
   else: raise AssertionError
   a=f.readline()
   #should check headers
+  if a != "Version: 4\n":
+    return ("UNSUPPORTED_VERSION",a)
   while a and a[:5] != 'Files':
+    if a[:5] == "Role:" and a != ("Role: "+role+"\n") :
+      return ("ROLE_MISMATCH",a)
     a=f.readline()
   if not a:
     return ("UNCHECKED",dir_list)
@@ -660,14 +668,17 @@ def _verify_signature_no_gpg(signature, DIR):
 def _write_signature(db,filename,role):
   "starting from a database of hashes, see _compute_hashes_, it writes a signature file"
   f=open(filename,mode='w')
-  #FIXME write something in 'Signer'
-  f.write("Version: 4\nSigner: \nDate: %s\nRole: %s\nFiles: \n" % (time.ctime(),role))
+  ##this is the format of dpkg-sig, but is redundant, since the "date" and "signer"
+  ##are already available thru the gpg signature
+  #f.write("Version: 4\nSigner: \nDate: %s\nRole: %s\nFiles: \n" % (time.ctime(),role))
+  ##and actually dpkg-sig will validate also a simpler file, so, lets save a few bytes
+  f.write("Version: 4\nRole: %s\nFiles:\n" % (role,))
   for a in db:
     (m,s,l) = db[a]
     f.write('\t'+m+" "+s+" "+str(l)+" "+a+"\n")
   f.close()
   
-def sign_delta(delta, db, role="creator"):
+def sign_delta(delta, db, role="maker"):
   TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
   _write_signature(db,TD+'/_temp',role)
   p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
