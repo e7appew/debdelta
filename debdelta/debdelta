@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.152 2009/08/22 10:57:38 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.153 2009/08/22 12:17:39 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1104,6 +1104,13 @@ def do_delta(olddeb,newdeb,delta):
       os.unlink(delta)
     rmtree(T)
     raise
+  else:
+    (delta, percent, elaps, info, gpg_hashes) = r
+    info_hashes=append_info(delta,info)
+    if DO_GPG:
+      gpg_hashes['info']=info_hashes
+      sign_delta(delta,gpg_hashes)
+
   rmtree(T)
   return r
 
@@ -3193,7 +3200,6 @@ if action == 'patch':
     print ' need 3 filenames ;  try --help'
     raise SystemExit(1)
 
-
   newdeb=abspath(argv[2])
   if newdeb == '/dev/null':
       newdeb = None
@@ -3205,7 +3211,8 @@ if action == 'patch':
   except Exception,s:
     puke( 'debpatch failed',s)
     raise SystemExit(2)
-  
+  raise SystemExit(0)
+
 elif action == 'delta' :
   if len(argv) != 3 :  
     print ' need 3 filenames ;  try --help'
@@ -3222,13 +3229,8 @@ elif action == 'delta' :
   except:
     puke('debdelta failed' )
     raise SystemExit(3)
-  else:
-    (delta, percent, elaps, info, gpg_hashes) = r
-    info_hashes=append_info(delta,info)
-    if DO_GPG:
-      gpg_hashes['info']=info_hashes
-      sign_delta(delta,gpg_hashes)
-  
+  raise SystemExit(0)
+
 elif action == 'deltas' :
   try:
     do_deltas(argv)
@@ -3237,7 +3239,8 @@ elif action == 'deltas' :
   except:
     puke( 'debdeltas failed')
     raise SystemExit(2)
-  
+  raise SystemExit(0)
+
 elif action == 'delta-upgrade':
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
@@ -3309,7 +3312,7 @@ elif action == 'patch-url':
     uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
 
     print 'The package ',a,' may be upgraded by using: ', uri
-
+  raise SystemExit(0)
 
 ##################################################### apt method
 
