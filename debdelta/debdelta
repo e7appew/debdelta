@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.151 2009/08/22 10:50:17 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.152 2009/08/22 10:57:38 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -238,6 +238,7 @@ if os.path.exists('/proc/cpuinfo'):
   f=my_popen_read('grep bogomips /proc/cpuinfo')
   BOGOMIPS=float(f.read().split(':')[-1])
   f.close()
+  del f
 else:
   if VERBOSE:
     print ' Warning, /proc not mounted, using bogus BOGOMIPS'
@@ -431,6 +432,7 @@ if a != s :
     print 'output='+repr(a)
     print 'Errror in prepare_for_echo.'
     raise SystemExit(2)
+del r,s,a
 
 ###
 
@@ -669,7 +671,7 @@ def sign_delta(delta, db, role="creator"):
   p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
   p.wait()
   if p.returncode:
-    print 'GPG returncode ',p.returncode," output: \n",a
+    print 'GnuPG fails to sign, returncode ',p.returncode,"\n"
     return
   os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
   rmtree(TD)
