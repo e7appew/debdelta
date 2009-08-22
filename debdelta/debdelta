@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.157 2009/08/22 16:47:39 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.158 2009/08/22 16:59:02 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -644,9 +644,9 @@ def _verify_signature_no_gpg(signature, DIR, role):
     return ("UNCHECKED",dir_list)
   #parse files
   for a in f:
-    if a[0] == '\t':
+    if a[0] == '\t' or  a[0] == ' ':
       a=a.rstrip('\n')
-      a=a.lstrip('\t')
+      a=a.lstrip()
       a=a.split(' ')
       if VERBOSE > 3 : print '    checking hashes ',a
       (md5,sha1,le,na)=a
@@ -661,6 +661,8 @@ def _verify_signature_no_gpg(signature, DIR, role):
       if sha1 != csha1 :
         return ('SHA1',na)
       dir_list.remove(na)
+    else:
+      break
   if dir_list:
     return ("UNCHECKED",dir_list)
   return True
