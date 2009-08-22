@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.158 2009/08/22 16:59:02 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.159 2009/08/22 17:29:43 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -633,36 +633,41 @@ def _verify_signature_no_gpg(signature, DIR, role):
     f=signature
   else: raise AssertionError
   a=f.readline()
-  #should check headers
   if a != "Version: 4\n":
     return ("UNSUPPORTED_VERSION",a)
-  while a and a[:5] != 'Files':
-    if a[:5] == "Role:" and a != ("Role: "+role+"\n") :
-      return ("ROLE_MISMATCH",a)
-    a=f.readline()
-  if not a:
-    return ("UNCHECKED",dir_list)
-  #parse files
-  for a in f:
-    if a[0] == '\t' or  a[0] == ' ':
-      a=a.rstrip('\n')
-      a=a.lstrip()
-      a=a.split(' ')
-      if VERBOSE > 3 : print '    checking hashes ',a
-      (md5,sha1,le,na)=a
-      if na not in dir_list:
-        return ('ABSENT',na)
-      (cmd5,csha1,cle)=hashes[na]
-      if int(le) != cle:
-        return ('SIZE',na)
-      # check hashes
-      if md5 != cmd5 :
-        return ('MD5',na)
-      if sha1 != csha1 :
-        return ('SHA1',na)
-      dir_list.remove(na)
+  a=f.readline()
+  while a:
+    if a[:5] == "Role:":
+      if a[5:].strip() != role :
+        return ("ROLE_MISMATCH",a)
+      a=f.readline()
+    elif a[:6] == "Files:" :
+      #parse files
+      a=f.readline()
+      while a and  a[0] in ( '\t' , ' ') :
+        a=a.rstrip('\n')
+        a=a.lstrip()
+        a=a.split(' ')
+        if VERBOSE > 3 : print '    checking hashes ',a
+        (md5,sha1,le,na)=a
+        if na not in dir_list:
+          return ('ABSENT',na)
+        (cmd5,csha1,cle)=hashes[na]
+        if int(le) != cle:
+          return ('SIZE',na)
+        # check hashes
+        if md5 != cmd5 :
+          return ('MD5',na)
+        if sha1 != csha1 :
+          return ('SHA1',na)
+        dir_list.remove(na)
+        a=f.readline()
+    elif VERBOSE > 2 :
+      print '   signature header ignored: ', a
+      a=f.readline()
     else:
-      break
+      a=f.readline()
+  #end parsing
   if dir_list:
     return ("UNCHECKED",dir_list)
   return True
