@@ -9,6 +9,8 @@ Usage: debdelta [ option...  ] fromfile tofile patchout
   Computes a delta from fromfile to tofile and writes it to patchout
 
 Options:
+--signing-key KEY
+            key used to sign the delta (using GnuPG)
 --no-md5    do not include MD5 info in debdelta
 --needsold  create a patch that can only be used if the old .deb is available
  -M Mb      maximum memory  to use (for 'bsdiff' or 'xdelta')
@@ -24,6 +26,8 @@ Usage: debdeltas [ option...  ]  [deb_files and dirs, or Package files]
   It orders by version number and produce deltas to the newest version
 
 Options:
+--signing-key KEY
+            key used to sign the deltas (using GnuPG)
 --dir DIR   force saving of deltas in this DIR
             (otherwise they go in the dir of the newer deb_file)
 
@@ -58,6 +62,7 @@ Usage: debpatch --info  patch
 
 Options:
 --no-md5   do not verify MD5 (if found in info in debdelta)
+ -A        accept unsigned deltas
 """
 
 doc['delta-upgrade']="""\
@@ -77,6 +82,7 @@ Options:
              unavailable = all other cases
              after = continue downloading debs after patching thread has ended
             default is s,b,e
+ -A         accept unsigned deltas
 """
 
 doc['patch-url']="""\
@@ -89,6 +95,8 @@ doc_common="""\
 --no-act    do not do that (whatever it is!)
  -d         add extra debugging checks
  -k         keep temporary files (use for debugging)
+--gpg-home HOME
+            specify a different home for GPG
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
@@ -97,7 +105,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath
@@ -139,11 +147,19 @@ ACT     = True
 DO_MD5  = True
 DEB_POLICY = ['b','s','e']
 
+DO_GPG = True #this is changed a few lines below
+GPG_SIGNING_KEY = None
+if os.getuid() == 0:
+  GPG_HOME="/etc/debdelta/gnupg"
+else:
+  GPG_HOME=None
+GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
+
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.149 2009/08/22 07:02:08 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.150 2009/08/22 09:48:41 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -159,9 +175,16 @@ else:
 
   __doc__ = doc[action] + doc_common
 
+
+
+  #GPG signatures are required for debdelta-upgrade and debpatch
+  DO_GPG = action in ( "delta-upgrade", "patch")
+  
   try: 
-    ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=','max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug') )
+    ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
+                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=',
+                    'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug',
+                    'signing-key=', "accept-unsigned", "gpg-home=") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
@@ -209,6 +232,13 @@ else:
     elif o ==  '--help' or o ==  '-h':
       print __doc__
       raise SystemExit(0)
+    elif (o ==  '--signing-key') and action in ("delta", "deltas"):
+      GPG_SIGNING_KEY=v
+      DO_GPG=True
+    elif (o ==  '--accept-unsigned' or o == '-A') and action in ("delta-upgrade", "patch"):
+      DO_GPG=False
+    elif (o ==  '--gpg-home'):
+      GPG_HOME=v
     else:
       print ' option ',o,'is unknown, try --help'
       raise SystemExit(1)
@@ -307,8 +337,13 @@ def append_info(delta,info):
   for i in info:
     infofile.write(i+'\n')
   infofile.close()
+  if DO_GPG:
+    r=_compute_hashes_(TD+"/info")
+  else:
+    r=None
   system(['ar','rSi','0',delta, 'info'],  TD)
   rmtree(TD)
+  return r
   
 def de_n(a):
   if a and a[-1] ==  '\n' :
@@ -535,6 +570,125 @@ def puke(s,e=''):
   else: print s,' : ',e
   if DEBUG : print traceback.print_tb(trace)
 
+################################################################### GPG
+
+if GPG_HOME:
+  GPG_BASE_CMD_LINE=["gpg","--homedir",GPG_HOME]
+else:
+  GPG_BASE_CMD_LINE=["gpg","--keyring",GPG_MASTER_PUB_KEYRING]
+
+if not VERBOSE:
+  GPG_BASE_CMD_LINE+=['--quiet']
+
+GPG_SIGN  =GPG_BASE_CMD_LINE+["--sign","--armor","--clearsign","--default-key",GPG_SIGNING_KEY]
+
+
+def _compute_hashes_(na):
+  "hash the file"
+  #FIXME this is not present in older Python
+  import hashlib
+  o = open(na)
+  m=hashlib.md5()
+  s=hashlib.sha1()
+  a=o.read(1024)
+  while a:
+    m.update(a)
+    s.update(a)
+    a=o.read(1024)
+  r = ( m.hexdigest(), s.hexdigest(), os.stat(na)[ST_SIZE])
+  return r
+
+def _compute_hashes_db_(li,DIR):
+  db={}
+  for na in li:
+    db[na] = _compute_hashes_(DIR+'/'+na)
+  return db
+
+def verify_signature(signature, DIR):
+  (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_gpg_verified")
+  #(read_end, write_end) = os.pipe()
+  p=subprocess.Popen(GPG_BASE_CMD_LINE+['--status-fd',"2",'--output',"-",signature],
+                     stdout=subprocess.PIPE,stderr=temp_fd)
+  r=_verify_signature_no_gpg(p.stdout, DIR)
+  p.wait()
+  
+  os.close(temp_fd)
+  
+  if VERBOSE > 1 or p.returncode:
+    for j in open(temp_name):
+      print '   GPG> ',j,
+  
+  os.unlink(temp_name)
+  
+  if p.returncode:
+    return ('GPG_VERIFY_FAILED',signature)
+  
+  return r
+
+def _verify_signature_no_gpg(signature, DIR):
+  #list stuff, skipping signatures
+  dir_list = [a for a in os.listdir(DIR) if a[:4] != '_gpg']
+  #compute signatures
+  hashes = _compute_hashes_db_(dir_list, DIR)
+  #scan hashes file (GPG already verified)
+  if type(signature) in (str,unicode):
+    f=open(signature) 
+  elif hasattr(signature,'readline'):
+    f=signature
+  else: raise AssertionError
+  a=f.readline()
+  #should check headers
+  while a and a[:5] != 'Files':
+    a=f.readline()
+  if not a:
+    return ("UNCHECKED",dir_list)
+  #parse files
+  for a in f:
+    if a[0] == '\t':
+      a=a.rstrip('\n')
+      a=a.lstrip('\t')
+      a=a.split(' ')
+      if VERBOSE > 3 : print '    checking hashes ',a
+      (md5,sha1,le,na)=a
+      if na not in dir_list:
+        return ('ABSENT',na)
+      (cmd5,csha1,cle)=hashes[na]
+      if int(le) != cle:
+        return ('SIZE',na)
+      # check hashes
+      if md5 != cmd5 :
+        return ('MD5',na)
+      if sha1 != csha1 :
+        return ('SHA1',na)
+      dir_list.remove(na)
+  if dir_list:
+    return ("UNCHECKED",dir_list)
+  return True
+
+def _write_signature(db,filename,role):
+  "starting from a database of hashes, see _compute_hashes_, it writes a signature file"
+  f=open(filename,mode='w')
+  #FIXME write something in 'Signer'
+  f.write("Version: 4\nSigner: \nDate: %s\nRole: %s\nFiles: \n" % (time.ctime(),role))
+  for a in db:
+    (m,s,l) = db[a]
+    f.write('\t'+m+" "+s+" "+str(l)+" "+a+"\n")
+  f.close()
+  
+def sign_delta(delta, db, role="creator"):
+  TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
+  _write_signature(db,TD+'/_temp',role)
+  p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
+  p.wait()
+  if p.returncode:
+    print 'GPG returncode ',p.returncode," output: \n",a
+    return
+  os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
+  rmtree(TD)
+
+
+
+
 #################################################################### apply patch
 
 ########### info auxiliary routines
@@ -707,8 +861,25 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
   if DEBUG and  newdeb and os.path.exists(newdeb) and os.path.getsize(newdeb) > 0 :
       die("Don't want to overwrite: "+newdeb)
   
-  system('ar xo '+delta,  TD+'/PATCH')
-
+  o=system('ar xvo '+delta,  TD+'/PATCH', return_output=True)
+  ar_list_delta=[a[4:] for a in open(o).read().split('\n') if a]
+  os.unlink(o)
+  
+  is_signed=False
+  for a in ar_list_delta:
+    if a[:4] == '_gpg':
+      r = verify_signature(TD+'/PATCH/'+a,TD+'/PATCH')
+      if True != r:
+        die(delta+": the signature "+a+" fails as follows: "+repr(r))
+      is_signed=True
+      if VERBOSE:
+        print ' The signature '+a+' is correctly verified for ',delta
+  if not is_signed:
+    if DO_GPG:
+      die("Delta is not signed: "+delta)
+    else:
+      print "WARNING, delta is not signed: "+delta
+  
   _delta_info_unzip_(TD)
 
   if not os.path.isfile(TD+'PATCH/patch.sh'):
@@ -1021,6 +1192,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   
   if DEBUG > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)  
 
+  gpg_hashes = {}
+  
   if DO_MD5 :
     # compute a MD5 of NEW deb
     p=my_popen_read('md5sum '+TD+'NEW.file')
@@ -1243,6 +1416,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if VERBOSE > 1 :
       print '   delta is %3.2f%% of %s, speed: %dkB /sec'  % \
             ( ( deltasize * 100. /  nsize ) , n, (nsize / 1024. / ( tim + 0.001 )))
+    #possibly GPG
+    if DO_GPG:
+      gpg_hashes[p[6:]] = _compute_hashes_(TD+p)
     #save it
     patch_append(p[6:])
     #clean up
@@ -1891,6 +2067,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
   # Use the smallest compressed patch.sh
   patch_files.sort()
   if VERBOSE > 1 : print ' '+patch_files[0][1]+' wins on patch.sh'
+  
+  if DO_GPG:
+    gpg_hashes[patch_files[0][2]] = _compute_hashes_(TD+"PATCH/"+patch_files[0][2])
+  
   patch_append(patch_files[0][2])
   
   #OK, OK... this is not yet correct, since I will add the info file later on
@@ -1906,7 +2086,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     print ' delta time: %.2f sec, speed: %dkB /sec, (%s time: %.2fsec speed  %dkB /sec) (corr %.2f sec)' %  \
           (elaps, newdebsize / 1024. / (elaps+0.001), \
            USE_DELTA_ALGO,bsdiff_time, bsdiff_datasize / 1024. / (bsdiff_time + 0.001) , time_corr )
-  return (delta, percent, elaps, info)
+  return (delta, percent, elaps, info, gpg_hashes)
 
 
 ##################################################### compute many deltas
@@ -2271,7 +2451,7 @@ def do_deltas(debs):
         if ret == None:
           continue
         
-        (delta_, percent, elaps, info_delta) = ret
+        (delta_, percent, elaps, info_delta, gpg_hashes) = ret
         assert(delta == delta_)
         info_delta.append('ServerID: '+HOSTID)
         info_delta.append('ServerBogomips: '+str(BOGOMIPS))
@@ -2306,7 +2486,13 @@ def do_deltas(debs):
           
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
-        append_info(delta,info_delta)
+        #complete the delta file prepending to it the info
+        hashes_info=append_info(delta,info)
+        # sign ghe delta
+        if DO_GPG:
+          gpg_hashes['info']=hashes_info
+          sign_delta(delta,gpg_hashes)
+
     #delete debs in --alt that are too old
     if CLEAN_ALT:
       while l>=0:
@@ -3047,8 +3233,11 @@ elif action == 'delta' :
     puke('debdelta failed' )
     raise SystemExit(3)
   else:
-    (delta, percent, elaps, info) = r
-    append_info(delta,info)
+    (delta, percent, elaps, info, gpg_hashes) = r
+    info_hashes=append_info(delta,info)
+    if DO_GPG:
+      gpg_hashes['info']=info_hashes
+      sign_delta(delta,gpg_hashes)
   
 elif action == 'deltas' :
   try:
