@@ -16,7 +16,6 @@ Options:
  -M Mb      maximum memory  to use (for 'bsdiff' or 'xdelta')
 --delta-algo ALGO
             use a specific backend for computing binary diffs;
-            possible values are: xdelta xdelta-bzip xdelta3 bsdiff
 """
 
 
@@ -32,10 +31,6 @@ Options:
             (otherwise they go in the dir of the newer deb_file)
 
 --alt DIR   for any cmdline argument, search for debs also in this dir 
-
-            If DIR ends in // , then the dirname of the cmdline argument
-            will be appended to DIR, as well (useful when creating archives).
-            DIR may also be a Package file, as found in a Debian repository.
             
  -n N       how many deltas to produce for each package (default 1)
 --no-md5    do not include MD5 info in debdelta
@@ -71,17 +66,8 @@ Usage: debdelta-upgrade [packages]
 
 Options:
 --dir DIR   directory where to save results
-            (default: /var/cache/apt/archives for root,
-              /tmp/archive for non-root users)
 --deb-policy POLICY
             policy to decide which debs to download,
-            it is a comma separated list of (abbreviations of)
-             source = debs where there is no /etc/debdelta/sources.conf line
-             big = debs where the delta is too big
-             error = debs where the delta fails to apply
-             unavailable = all other cases
-             after = continue downloading debs after patching thread has ended
-            default is s,b,e
  -A         accept unsigned deltas
 """
 
@@ -97,6 +83,8 @@ doc_common="""\
  -k         keep temporary files (use for debugging)
 --gpg-home HOME
             specify a different home for GPG
+
+See man page for more options and details.
 """
 
 minigzip='/usr/lib/debdelta/minigzip'
@@ -159,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.150 2009/08/22 09:48:41 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.151 2009/08/22 10:50:17 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
