@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.155 2009/08/22 12:25:50 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.156 2009/08/22 12:34:52 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -208,7 +208,9 @@ else:
         print 'Error: --avoid ',AVOID,' does not exist.'
         raise SystemExit(3)
     elif o == '--dir'  :
-      DIR = v
+      DIR = abspath(v)
+      if v[-2:] == '//':
+        DIR += '//'
       if not os.path.isdir(DIR):
         print 'Error: --dir ',DIR,' does not exist.'
         raise SystemExit(3)
