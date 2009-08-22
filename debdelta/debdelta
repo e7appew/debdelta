@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.160 2009/08/22 17:31:15 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.161 2009/08/22 17:32:32 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -872,8 +872,6 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
 
   if olddeb != '/':
       check_deb(olddeb)
-  if DEBUG and  newdeb and os.path.exists(newdeb) and os.path.getsize(newdeb) > 0 :
-      die("Don't want to overwrite: "+newdeb)
   
   o=system('ar xvo '+delta,  TD+'/PATCH', return_output=True, ignore_output=True)
   ar_list_delta=[a[4:] for a in open(o).read().split('\n') if a]
