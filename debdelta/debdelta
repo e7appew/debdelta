@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.161 2009/08/22 17:32:32 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.162 2009/08/24 09:30:58 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2027,7 +2027,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       if 'data.tar.gz' in ar_list_old  :
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
-      elif 'data.tar.bzip2' in ar_list_old :
+      elif 'data.tar.bz2' in ar_list_old :
         info.append('needs-minibzip2')
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.bz2 | bzip2 -cd')
