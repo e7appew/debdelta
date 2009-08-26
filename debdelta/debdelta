@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.163 2009/08/26 19:28:04 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.164 2009/08/26 19:29:06 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -882,10 +882,10 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     if a[:4] == '_gpg':
       r = verify_signature(TD+'/PATCH/'+a,TD+'/PATCH')
       if True != r:
-        die(delta+": the signature "+a+" fails as follows: "+repr(r))
+        die(delta+": the signature file "+a+" fails as follows: "+repr(r))
       is_signed=True
       if VERBOSE:
-        print ' The signature '+a+' is correctly verified for ',delta
+        print ' The signature by "'+a[4:]+'" is correctly verified for ',delta
   if not is_signed:
     if DO_GPG:
       die("Delta is not signed: "+delta)
