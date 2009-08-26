@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.162 2009/08/24 09:30:58 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.163 2009/08/26 19:28:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2169,7 +2169,13 @@ def do_deltas(debs):
       sys.stderr.write('Error: pathname "%s" does not contain "dists"\n' % packages)
       return
     base = string.join(dir[:a],'/')
-    for l in open(packages):
+    if packages[-3:] == '.gz':
+      F=subprocess.Popen(["zcat",packages],stdout=subprocess.PIPE).stdout
+    if packages[-4:] == '.bz2':
+      F=subprocess.Popen(["bzcat",packages],stdout=subprocess.PIPE).stdout
+    else:
+      F=open(packages)
+    for l in F:
       l=l.rstrip('\n')
       if l[:9] == 'Package: ':
           pack=l[9:]
@@ -2328,7 +2334,7 @@ def do_deltas(debs):
   #reduce ALT, by preprocessing Packages
   ALT_NOP=[]
   for alt in ALT:
-    if os.path.basename(alt) == 'Packages':
+    if os.path.basename(alt) in ('Packages', 'Packages.gz','Packages.bz2'):
       scan_Packages(alt,'ALT')
     else:
       ALT_NOP.append(alt)
@@ -2336,7 +2342,7 @@ def do_deltas(debs):
   #scan cmdline arguments and prepare list of debs and deltas
   for arg in debs:
     if os.path.isfile(arg):
-      if os.path.basename(arg) == 'Packages':
+      if os.path.basename(arg) in ('Packages', 'Packages.gz','Packages.bz2'):
         for a in  iterate_Packages(arg):
           info_by_file[a]['Label'] = 'CMDLINE'
           of = info_by_file[a]['Filename']
