@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.172 2009/08/27 20:46:41 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.173 2009/08/27 20:51:03 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2197,7 +2197,7 @@ def do_deltas(debs):
   def iterate_Packages(packages):
     packages=abspath(packages)
     assert os.path.isfile(packages)
-    assert os.path.basename(packages) == 'Packages'
+    assert os.path.basename(packages) in  ('Packages', 'Packages.gz','Packages.bz2')
     dir=os.path.dirname(packages)
     dir=dir.split('/')
     try:
@@ -2208,7 +2208,7 @@ def do_deltas(debs):
     base = string.join(dir[:a],'/')
     if packages[-3:] == '.gz':
       F=subprocess.Popen(["zcat",packages],stdout=subprocess.PIPE).stdout
-    if packages[-4:] == '.bz2':
+    elif packages[-4:] == '.bz2':
       F=subprocess.Popen(["bzcat",packages],stdout=subprocess.PIPE).stdout
     else:
       F=open(packages)
