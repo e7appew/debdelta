@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.166 2009/08/27 11:53:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.167 2009/08/27 12:05:31 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1516,9 +1516,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     pack_level=6
     if format ==  0 :
       pass
-    if format ==  FAST :
+    elif format ==  FAST :
       pack_level == 1
-    if format ==  SLOW :
+    elif format ==  SLOW :
       pack_level == 9
     else:
       print ' Warning: unsupported compression .gz format: ',oct(format),n
@@ -1603,7 +1603,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
     oo=copy(oo)
     nn=copy(nn)
     if oo.pop() != nn.pop() :
-      penalty=0.2
       return 0.2 + files_similarity_score__noext__(oo,nn)
     else:
       return files_similarity_score__noext__(oo,nn)
