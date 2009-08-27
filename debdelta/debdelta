@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.168 2009/08/27 12:13:29 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.169 2009/08/27 12:59:13 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1761,7 +1761,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     global time_corr
     time_corr=-time.time()
 
-    if VERBOSE > 2 : print '  finding correspondences  ',n
+    if VERBOSE > 2 : print '  finding correspondences for ', new_filename
 
     reverse_old_md5={}
     if old_md5:
@@ -1829,7 +1829,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if VERBOSE > 1 : print '  time lost so far in finding correspondence %.2f' % time_corr
     
     ######### now do real scanning
-    if VERBOSE > 2 : print '  scanning ',n
+    if VERBOSE > 2 : print '  scanning ',new_filename
 
     #helper function
     def mega_cat_chunk(oldoffset,newoffset):
@@ -1983,10 +1983,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
     script_md5_check_file(n,data_tar_md5)
 
   for name in ar_list_new :
-    n = 'NEW/'+name
-    system('ar p '+TD+'NEW.file '+name+' >> '+TD+n,TD)
+    newname = 'NEW/'+name
+    system('ar p '+TD+'NEW.file '+name+' >> '+TD+newname,TD)
 
-    newsize = os.stat(TD+n)[ST_SIZE]
+    newsize = os.stat(TD+newname)[ST_SIZE]
     if VERBOSE > 1: print '  studying ' , name , ' of len %dkB' % (newsize/1024)
     #add 'ar' structure
     s = newdeb_file.read(60)
@@ -2001,14 +2001,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
       extrachar = ''
     #add file to debdelta
     if newsize < 128:      #file is too short to compute a delta,
-      p=open(TD+n)
+      p=open(TD+newname)
       append_NEW_file( p.read(newsize))
       p.close()
-      unlink(TD+n)
+      unlink(TD+newname)
     elif not NEEDSOLD and name[:11] == 'control.tar' :
       #(mm this is almost useless, just saves a few bytes)
-      o = 'OLD/'+name
-      system('ar p OLD.file '+name+' >> '+o, TD)
+      oldname = 'OLD/'+name
+      system('ar p OLD.file '+name+' >> '+oldname, TD)
       ##avoid using strange files that dpkg may not install in /var...info/
       skip=[]
       for a in os.listdir(TD+'OLD/CONTROL') :
@@ -2016,12 +2016,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
           skip.append(a)
       #delta it
       #never chunked .. otherwise the first file in the ar will not be '0'!
-      delta_tar(o,n,'CONTROL',skip, chunked_p=False)
-      if DEBUG > 3 : md5_ar(TD,n,name)
-      script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
+      delta_tar(oldname,newname,'CONTROL',skip, chunked_p=False)
+      if DEBUG > 3 : md5_ar(TD,newname,name)
+      script.write('cat '+newname+' >> NEW.file ;  rm '+newname+'\n')
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
-      o = 'OLD/'+name
-      #system('ar p OLD.file '+name+' >> '+o, TD)
       if 'data.tar.gz' in ar_list_old  :
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
@@ -2034,24 +2032,26 @@ def do_delta_(olddeb,newdeb,delta,TD):
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
       else: assert(0)
-      delta_tar(x,n,'DATA',old_conffiles,old_md5,new_md5,\
+      delta_tar(x,newname,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
-      if DEBUG > 3 : md5_ar(TD,n,name)
-      script.write('cat '+n+' >> NEW.file ;  rm '+n+'\n')
+      del x
+      if DEBUG > 3 : md5_ar(TD,newname,name)
+      script.write('cat '+newname+' >> NEW.file ;  rm '+newname+'\n')
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
-      p=verbatim(n)
-      script.write('cat '+p+' >> NEW.file ; rm '+p+'\n')
+      patchname=verbatim(newname)
+      script.write('cat '+patchname+' >> NEW.file ; rm '+patchname+'\n')
     elif  NEEDSOLD :
       #file is long, and has old version ; lets compute a delta
-      o = 'OLD/'+name
-      system('ar p OLD.file '+name+' >> '+o, TD)
-      script.write('ar p OLD.file '+name+' >> '+o+'\n')
-      (o,co) = unzip(o)
-      (n,cn) = unzip(n)
-      delta_files(o,n)
-      script_zip(n,cn)
-      script.write('cat '+n+cn+' >> NEW.file ;  rm '+n+'\n')
-      unlink(TD+n)
+      oldname = 'OLD/'+name
+      system('ar p OLD.file '+name+' >> '+oldname, TD)
+      script.write('ar p OLD.file '+name+' >> '+oldname+'\n')
+      (oldname,co) = unzip(oldname)
+      (newname,cn) = unzip(newname)
+      delta_files(oldname,newname)
+      script_zip(newname,cn)
+      script.write('cat '+newname+cn+' >> NEW.file ;  rm '+newname+'\n')
+      unlink(TD+newname)
+      del co,cn
     else:
       die('internal error j98')
     #pad new deb
@@ -2062,6 +2062,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   if s:
     if VERBOSE > 2: print '   ar leftover character: ',repr(s)
     append_NEW_file(s)
+  del s
 
   #this is done already from the receiving end
   if DEBUG > 2 and newdeb_md5sum :
@@ -2080,6 +2081,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.bz2'), 'bzip2', 'patch.sh.bz2'))
   system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)
   patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.gz'), 'gzip', 'patch.sh.gz'))
+  del v
 
   # Use the smallest compressed patch.sh
   patch_files.sort()
