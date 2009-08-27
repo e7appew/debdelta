@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.167 2009/08/27 12:05:31 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.168 2009/08/27 12:13:29 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1682,7 +1682,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
         try:
           mega_cat.write(a)
         except OSError,s :
-           raise DebDeltaError(' OSError (at _a_) while writing: '+str(s), True)
+          raise DebDeltaError(' OSError (at _a_) while writing: '+str(s), True)
         a=f.read(1024)
       f.close()
       if rm:
