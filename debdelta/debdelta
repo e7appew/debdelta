@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.169 2009/08/27 12:59:13 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.170 2009/08/27 13:18:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1035,8 +1035,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
       if olddeb == '/':
         die('This patch needs the old version Debian package')
       unpack ('OLD',olddeb,TD)
-    elif 'needs-old' == a and olddeb == '/':
-      die('This patch needs the old version Debian package')
+    elif 'needs-old' == a:
+      if olddeb == '/':
+        die('This patch needs the old version Debian package')
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
@@ -1339,14 +1340,18 @@ def do_delta_(olddeb,newdeb,delta,TD):
     else: assert(0)
     return (f,c)
 
-  def script_zip(n,cn,newhead):
+  def script_zip(n,cn,newhead=None):
+    "inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)"
     if cn == '.gz' :
-      s=prepare_for_echo(newhead)
-      script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
+      if newhead:
+        s=prepare_for_echo(newhead)
+        script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
+      else:
+        script.write('./minigzip -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     elif  cn == '.bz2' :
-      script.write(' ./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+' \n')
+      script.write('./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     elif cn == '.lzma' :
-      script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+' \n')
+      script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
@@ -2049,7 +2054,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       (newname,cn) = unzip(newname)
       delta_files(oldname,newname)
       script_zip(newname,cn)
-      script.write('cat '+newname+cn+' >> NEW.file ;  rm '+newname+'\n')
+      script.write('cat '+newname+cn+' >> NEW.file ;  rm '+newname+cn+'\n')
       unlink(TD+newname)
       del co,cn
     else:
