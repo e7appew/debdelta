@@ -146,8 +146,11 @@ GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
+#see README.features
+DISABLEABLE_FEATURES=['lzma']
+DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.170 2009/08/27 13:18:08 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.171 2009/08/27 20:35:41 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -172,7 +175,7 @@ else:
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
                  ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=',
                     'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug',
-                    'signing-key=', "accept-unsigned", "gpg-home=") )
+                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(2)
@@ -222,6 +225,8 @@ else:
     elif o ==  '--help' or o ==  '-h':
       print __doc__
       raise SystemExit(0)
+    elif (o ==  '--disable-feature') and action in ("delta", "deltas"):
+      DISABLED_FEATURES += v.split(',')
     elif (o ==  '--signing-key') and action in ("delta", "deltas"):
       GPG_SIGNING_KEY=v
       DO_GPG=True
@@ -232,6 +237,12 @@ else:
     else:
       print ' option ',o,'is unknown, try --help'
       raise SystemExit(1)
+
+for i in DISABLED_FEATURES:
+  if i not in DISABLEABLE_FEATURES:
+    print ' feature ',i,' cannot be disabled.'
+    raise SystemExit(1)
+
 
 def dummy(): #otherwise the python mode for emacs fails to index my routines
   pass
@@ -1050,6 +1061,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         elif 'data.tar.gz' in ar_list_old:
           system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
         elif 'data.tar.lzma' in ar_list_old:
+          if not os.path.exists('/usr/bin/lzma'):
+            die('This patch needs lzma. Please install the Debian package "lzma".')
           system('ar p '+TD+'OLD.file data.tar.lzma | unlzma -c | tar -x -p -f - -C '+TD+'OLD/DATA', TD)
         else: assert(0)
         _fix_data_tree_(TD)
@@ -1077,6 +1090,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         die('This patch needs lzma. Please install the Debian package "lzma".')
     elif 'needs-minibzip2' == a:
       pass #its your lucky day
+    elif a[:6] == 'needs-':
+      raise DebDeltaError('patch says "'+a+"' and this is unsupported. Get a newer debdelta.",retriable=True)
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
   ##then , really execute the patch
@@ -1193,6 +1208,11 @@ def do_delta_(olddeb,newdeb,delta,TD):
     
   ##### unpack control.tar.gz, scan control, write  parameters
   info=[]
+  def info_append(s):
+    "smart appending that avoids duplicate entries"
+    if s not in info:
+      info.append(s)
+  
   for o in 'OLD', 'NEW' :
       os.mkdir(TD+o+'/CONTROL')
       #unpack control.tar.gz
@@ -1232,7 +1252,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
     info.append('old-data-tree')
     info.append('old-control-tree')
 
-  info.append('needs-'+USE_DELTA_ALGO)
+  a=USE_DELTA_ALGO
+  if a == 'xdelta-bzip':
+    a='xdelta'
+  if not os.path.exists('/usr/bin/'+a):
+    raise DebDeltaError('please install the package "'+a+'".', retriable=True)
+  info.append('needs-'+a)
+  del a
 
   #### check for disk space
   if 'NEW/Installed-Size' in params and 'OLD/Installed-Size' in params:
@@ -1332,6 +1358,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       f=f[:-4]
       c='.bz2'
     elif f[-5:] == '.lzma' :
+      info_append('needs-lzma')
       system('unlzma '+f,TD)
       if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
         script.write('lzma '+f+'\n')
@@ -1349,8 +1376,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
       else:
         script.write('./minigzip -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     elif  cn == '.bz2' :
+      info_append('needs-minibzip2')
       script.write('./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     elif cn == '.lzma' :
+      info_append('needs-lzma')
       script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     else: assert(0)
 
@@ -2029,11 +2058,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
       elif 'data.tar.bz2' in ar_list_old :
-        info.append('needs-minibzip2')
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.bz2 | bzip2 -cd')
       elif 'data.tar.lzma' in ar_list_old :
-        info.append('needs-lzma')
+        info_append('needs-lzma')
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
       else: assert(0)
@@ -2074,14 +2102,15 @@ def do_delta_(olddeb,newdeb,delta,TD):
     script_md5_check_file("NEW.file",md5=newdeb_md5sum)
   
   #script is done
-  script.close()
+  script.clos
 
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   v=''
   #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
   patch_files = []
-  system('lzma -q -9 -k '+v+' PATCH/patch.sh', TD)
-  patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.lzma'), 'lzma', 'patch.sh.lzma'))
+  if 'lzma' not in DISABLED_FEATURES and os.path.exists('/usr/bin/lzma'):
+    system('lzma -q -9 -k '+v+' PATCH/patch.sh', TD)
+    patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.lzma'), 'lzma', 'patch.sh.lzma'))
   system('bzip2 -q --keep -9  '+v+'  PATCH/patch.sh', TD)
   patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.bz2'), 'bzip2', 'patch.sh.bz2'))
   system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)
@@ -2091,11 +2120,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
   # Use the smallest compressed patch.sh
   patch_files.sort()
   if VERBOSE > 1 : print ' '+patch_files[0][1]+' wins on patch.sh'
+  if patch_files[0][1] == 'lzma':
+    info_append('needs-lzma')
   
   if DO_GPG:
     gpg_hashes[patch_files[0][2]] = _compute_hashes_(TD+"PATCH/"+patch_files[0][2])
   
   patch_append(patch_files[0][2])
+  del patch_files
   
   #OK, OK... this is not yet correct, since I will add the info file later on
   elaps =  time.time() - start_sec
