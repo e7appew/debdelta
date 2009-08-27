@@ -147,7 +147,7 @@ CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
 
-RCS_VERSION="$Id: debdelta,v 1.165 2009/08/27 11:50:12 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.166 2009/08/27 11:53:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1297,7 +1297,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
       pm=my_popen_read('md5sum '+TD+n)
       a=pm.readline()
       pm.read()
-      pm.close
       md5=a[:32]
     print "    adding extra MD5 for ",n
     script.write('echo "'+md5+'  '+n+'" | md5sum -c > /dev/null\n')
