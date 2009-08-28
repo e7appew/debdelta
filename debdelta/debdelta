@@ -103,9 +103,6 @@ from types import StringType, FunctionType, TupleType, ListType, DictType
 
 import shutil
 
-def my_popen_read(cmd):
-  return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE).stdout
-
 ################################################# main program, read options
 
 #target of: maximum memory that bsdiff will use
@@ -150,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.175 2009/08/28 10:30:39 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.176 2009/08/28 17:47:54 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -285,6 +282,9 @@ else:
     return __wrap__(a,shutil.rmtree)
 
 #################################################### various routines
+
+def my_popen_read(cmd):
+  return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE).stdout
 
 def freespace(w):
   assert(os.path.exists(w))
@@ -3232,6 +3232,10 @@ def delta_upgrade_(args):
           ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
 
 ################################################# main program, do stuff
+
+def act():
+  "fake function that marks where the action starts"
+  pass
 
 if action == 'patch':
   if INFO  :
