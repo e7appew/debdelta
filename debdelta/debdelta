@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.185 2009/08/28 20:00:41 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.186 2009/08/28 20:08:30 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -703,14 +703,19 @@ def _write_signature(db,filename,role):
   
 def sign_delta(delta, db, role="maker"):
   TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
-  _write_signature(db,TD+'/_temp',role)
-  p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
-  p.wait()
-  if p.returncode:
+  try:
+    _write_signature(db,TD+'/_temp',role)
+    p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
+    p.wait()
+    r=os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
+  except:
     rmtree(TD)
-    raise DebDeltaError('GnuPG fails to sign, returncode '+str(p.returncode))
-  os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
+    raise
   rmtree(TD)
+  if p.returncode:
+    raise DebDeltaError('GnuPG fails to sign, returncode '+str(p.returncode))
+  if r:
+    raise DebDeltaError('ar fails to add the signature')
 
 
 
