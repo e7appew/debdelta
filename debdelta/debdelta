@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.188 2009/08/28 20:14:47 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.189 2009/08/28 20:45:55 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2153,6 +2153,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
 ##################################################### compute many deltas
 
 def do_deltas(debs):
+  exitstatus=0
+  
   original_cwd = os.getcwd()
   start_time = time.time()
   import warnings
@@ -2519,8 +2521,10 @@ def do_deltas(debs):
             os.unlink(delta)
           if not s.retriable :
             open(delta+'-fails','w').close()
+          exitstatus=max(exitstatus, s.exitstatus)
           ret = None
         except:
+          exitstatus=4
           if os.path.exists(delta):
             os.unlink(delta)
           puke( " *** Error while creating delta  "+delta)
@@ -2556,6 +2560,7 @@ def do_deltas(debs):
           except KeyboardInterrupt:
             raise
           except:
+            exitstatus=max(exitstatus,2)
             puke(" *** Error while testing delta  "+delta)
             if os.path.exists(delta):
               os.unlink(delta)
@@ -2584,6 +2589,8 @@ def do_deltas(debs):
         l-=1
 
   if VERBOSE: print 'Total running time: %.1f ' % ( -start_time + time.time())
+
+  return exitstatus
 
 ##################################################### delta-upgrade
 
@@ -3321,7 +3328,7 @@ elif action == 'delta' :
 
 elif action == 'deltas' :
   try:
-    do_deltas(argv)
+    exitcode=do_deltas(argv)
   except KeyboardInterrupt:
     puke('debdeltas exited by keyboard interrupt')
     raise SystemExit(5)
@@ -3331,7 +3338,7 @@ elif action == 'deltas' :
   except Exception,s:
     puke('debdeltas',s)
     raise SystemExit(4)
-  raise SystemExit(0)
+  raise SystemExit(exitcode)
 
 elif action == 'delta-upgrade':
   import warnings
