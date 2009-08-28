@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.177 2009/08/28 17:51:51 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.178 2009/08/28 17:53:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -239,10 +239,6 @@ for i in DISABLED_FEATURES:
   if i not in DISABLEABLE_FEATURES:
     print ' feature ',i,' cannot be disabled.'
     raise SystemExit(3)
-
-
-def dummy(): #otherwise the python mode for emacs fails to index my routines
-  pass
 
 if os.path.exists('/proc/cpuinfo'):
   f=my_popen_read('grep bogomips /proc/cpuinfo')
