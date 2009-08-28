@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.193 2009/08/28 21:13:49 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.194 2009/08/28 21:27:52 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -230,7 +230,10 @@ else:
     elif (o ==  '--accept-unsigned' or o == '-A') and action in ("delta-upgrade", "patch"):
       DO_GPG=False
     elif (o ==  '--gpg-home'):
-      GPG_HOME=v
+      GPG_HOME=abspath(v)
+      if not os.path.isdir(GPG_HOME):
+        print 'Error: --gpg-home ',GPG_HOME,' does not exist.'
+        raise SystemExit(3)
     else:
       print ' option ',o,'is unknown, try --help'
       raise SystemExit(3)
