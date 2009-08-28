@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.176 2009/08/28 17:47:54 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.177 2009/08/28 17:51:51 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -159,7 +159,7 @@ else:
   
   if action not in actions:
     print 'wrong filename: should be "deb" + '+repr(actions)
-    raise SystemExit(0)
+    raise SystemExit(4)
 
   __doc__ = doc[action] + doc_common
 
@@ -175,7 +175,7 @@ else:
                     'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
-      raise SystemExit(2)
+      raise SystemExit(3)
 
   for  o , v  in  opts :
     if o == '-v' : VERBOSE += 1
@@ -192,7 +192,7 @@ else:
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
-        raise SystemExit(1)
+        raise SystemExit(3)
       if int(v) <= 12:
         print 'Warning: "-M ',int(v),'" is quite small.'
       MAXMEMORY = 1024 * 1024 * int(v)
@@ -233,12 +233,12 @@ else:
       GPG_HOME=v
     else:
       print ' option ',o,'is unknown, try --help'
-      raise SystemExit(1)
+      raise SystemExit(3)
 
 for i in DISABLED_FEATURES:
   if i not in DISABLEABLE_FEATURES:
     print ' feature ',i,' cannot be disabled.'
-    raise SystemExit(1)
+    raise SystemExit(3)
 
 
 def dummy(): #otherwise the python mode for emacs fails to index my routines
@@ -444,7 +444,7 @@ if a != s :
     print 'shell='+SHELL
     print 'output='+repr(a)
     print 'Errror in prepare_for_echo.'
-    raise SystemExit(2)
+    raise SystemExit(4)
 del r,s,a
 
 ###
