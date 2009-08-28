@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.178 2009/08/28 17:53:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.179 2009/08/28 17:55:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -488,13 +488,21 @@ def tempo():
 class DebDeltaError(Exception):  #should derive from (Exception):http://docs.python.org/dev/whatsnew/pep-352.html
   # Subclasses that define an __init__ must call Exception.__init__
   # or define self.args.  Otherwise, str() will fail.
-  def __init__(self,s,retriable=False):
+  self.retriable = False
+  self.exitcode = 2
+  def __init__(self,s,retriable=False,exitcode=None):
     assert(type(s) == StringType)
     self.retriable = retriable
     if retriable:
       self.args=(s + ' (retriable) ',)
     else:
       self.args=(s + ' (non retriable) ',)
+    if exitcode == None:
+      if retriable:
+        exitcode = 1
+      else:
+        exitcode = 2
+    self.exitcode=exitcode
 
 def die(s):
   #if s : sys.stderr.write(s+'\n')
