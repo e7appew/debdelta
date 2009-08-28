@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.187 2009/08/28 20:11:49 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.188 2009/08/28 20:14:47 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1438,7 +1438,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif algo == 'jojodiff' :
       system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
       script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+' ; rm '+p+'\n')
-    else: raise
+    else: raise AssertionError(' unsupported delta algo ')
     return p
 
   def delta_files(o,n):
