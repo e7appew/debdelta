@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.179 2009/08/28 17:55:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.180 2009/08/28 17:56:58 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -450,13 +450,12 @@ def prepare_for_echo(s):
     if DEBUG > 1 :
         a=apply_prepare_for_echo(SHELL,r)
         if a != s:
-            print 'Errror in prepare_for_echo.'
-            if DEBUG or VERBOSE > 2 :
-                print 'string='+repr(s)
-                print 'repres='+repr(r)
-                print 'shell='+SHELL
-                print 'output='+repr(a)
-            raise SystemExit(2)
+            z = 'Error in prepare_for_echo()\n'
+            z += 'string='+repr(s)+'\n'
+            z += 'repres='+repr(r)+'\n'
+            z += 'shell='+SHELL+'\n'
+            z += 'output='+repr(a)+'\n'
+            raise DebDeltaError(z, exitcode=4)
     return r
 
 #####################################################################
