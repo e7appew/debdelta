@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.182 2009/08/28 18:26:23 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.183 2009/08/28 19:19:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -706,8 +706,8 @@ def sign_delta(delta, db, role="maker"):
   p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
   p.wait()
   if p.returncode:
-    print 'GnuPG fails to sign, returncode ',p.returncode,"\n"
-    return
+    rmtree(TD)
+    raise DebDeltaError('GnuPG fails to sign, returncode '+str(p.returncode))
   os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
   rmtree(TD)
 
@@ -2668,8 +2668,7 @@ def delta_uri_from_config(config, **dictio):
   for s in secs:
     opt=config.options(s)
     if 'delta_uri' not in opt:
-      print 'Error!! sources.conf section ',s,'does not contain delta_uri'
-      raise SystemExit(1)
+      raise DebDeltaError('sources.conf section '+repr(s)+'does not contain delta_uri',exitcode=3)
     match=True
     for a in dictio:
       #damn it, ConfigParser changes everything to lowercase !
@@ -2745,8 +2744,7 @@ def delta_upgrade_(args):
       a=str(s)
     if DEB_DIR == '/var/cache/apt/archives' :
       a=a+' (is APT running?)'
-    print 'Could not lock dir: ',DEB_DIR, a
-    raise SystemExit(1)
+    raise DebDeltaError('could not lock dir: '+DEB_DIR+' '+a, retriable=True)
     
   print 'Recreated debs are saved in ',DEB_DIR
 
@@ -3243,7 +3241,7 @@ if action == 'patch':
       print '(printing info - extra arguments are ignored)'
     elif  len(argv) == 0  :
       print ' need a  filename ;  try --help'
-      raise SystemExit(1)
+      raise SystemExit(3)
     try:
         delta=abspath(argv[0])
         check_is_delta(delta)
@@ -3251,19 +3249,20 @@ if action == 'patch':
         for s in info:
           if s:
             print ' info: ',s
-    except (KeyboardInterrupt, SystemExit):
-        if DEBUG : puke('debpatch exited')
+    except KeyboardInterrupt:
+        puke('debpatch exited by keyboard interrupt')
+        raise SystemExit(5)
     except DebDeltaError,s:
-        print  str(s)
-        raise SystemExit(1)
-    except :
-        puke( "Unexpected error" )
-        raise SystemExit(1)
+        puke('debpatch',s)
+        raise SystemExit(s.exitcode)
+    except Exception,s:
+        puke("debpatch",s)
+        raise SystemExit(4)
     raise SystemExit(0)
   #really patch
   if len(argv) != 3 :
     print ' need 3 filenames ;  try --help'
-    raise SystemExit(1)
+    raise SystemExit(3)
 
   newdeb=abspath(argv[2])
   if newdeb == '/dev/null':
@@ -3271,39 +3270,48 @@ if action == 'patch':
 
   try:
     do_patch(abspath(argv[0]), abspath(argv[1]), newdeb)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debpatch exited')
+  except KeyboardInterrupt:
+    puke('debpatch exited by keyboard interrupt')
+    raise SystemExit(5)
+  except DebDeltaError,s:
+    puke('debpatch',s)
+    raise SystemExit(s.exitcode)
   except Exception,s:
-    puke( 'debpatch failed',s)
-    raise SystemExit(2)
+    puke('debpatch',s)
+    raise SystemExit(4)
   raise SystemExit(0)
 
 elif action == 'delta' :
   if len(argv) != 3 :  
     print ' need 3 filenames ;  try --help'
-    raise SystemExit(1)
+    raise SystemExit(3)
   
   delta=abspath(argv[2])
   try:
     r = do_delta(abspath(argv[0]), abspath(argv[1]), delta)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debdeltas exited')
+  except KeyboardInterrupt:
+    puke('debdelta exited by keyboard interrupt')
+    raise SystemExit(5)
   except DebDeltaError,s:
-    puke('Failed: ',s)
-    raise SystemExit(2)
-  except:
-    puke('debdelta failed' )
-    raise SystemExit(3)
+    puke('debdelta',s)
+    raise SystemExit(s.exitcode)
+  except Exception, s:
+    puke('debdelta',s)
+    raise SystemExit(4)
   raise SystemExit(0)
 
 elif action == 'deltas' :
   try:
     do_deltas(argv)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debdeltas exited')
-  except:
-    puke( 'debdeltas failed')
-    raise SystemExit(2)
+  except KeyboardInterrupt:
+    puke('debdeltas exited by keyboard interrupt')
+    raise SystemExit(5)
+  except DebDeltaError,s:
+    puke('debdeltas',s)
+    raise SystemExit(s.exitcode)
+  except Exception,s:
+    puke('debdeltas',s)
+    raise SystemExit(4)
   raise SystemExit(0)
 
 elif action == 'delta-upgrade':
@@ -3311,11 +3319,15 @@ elif action == 'delta-upgrade':
   warnings.simplefilter("ignore",FutureWarning)
   try:
     delta_upgrade_(argv)
-  except (KeyboardInterrupt, SystemExit):
-    if DEBUG : puke('debdelta-upgrade exited')
-  except:
-    puke('delta-upgrade failed')
-    raise SystemExit(2)
+  except KeyboardInterrupt:
+    puke('debdelta-upgrade exited due to keyboard interrupt')
+    raise SystemExit(5)
+  except DebDeltaError,s:
+    puke('debdelta-upgrade',s)
+    raise SystemExit(s.exitcode)
+  except Exception, s:
+    puke('debdelta-upgrade',s)
+    raise SystemExit(4)
   raise SystemExit(0)
 
 elif action == 'patch-url':
