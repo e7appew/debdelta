@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.190 2009/08/28 20:48:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.191 2009/08/28 20:53:42 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -708,13 +708,14 @@ def sign_delta(delta, db, role="maker"):
     _write_signature(db,TD+'/_temp',role)
     p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
     p.wait()
-    r=os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
+    if p.returncode==0:
+      r=os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
   except:
     rmtree(TD)
     raise
   rmtree(TD)
   if p.returncode:
-    raise DebDeltaError('GnuPG fails to sign, returncode '+str(p.returncode))
+    raise DebDeltaError('GnuPG fails to sign')
   if r:
     raise DebDeltaError('ar fails to add the signature')
 
@@ -2547,6 +2548,7 @@ def do_deltas(debs):
             continue
 
         if DEBUG :
+          ##patch test
           pret=None
           try:
             #test, ignoring gpg, that is added later on
@@ -2570,12 +2572,18 @@ def do_deltas(debs):
           
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
+          ##end patch test
         #complete the delta file prepending to it the info (a 2nd time)
-        hashes_info=append_info(delta,info_delta)
-        # sign ghe delta
-        if DO_GPG:
-          gpg_hashes['info']=hashes_info
-          sign_delta(delta,gpg_hashes)
+        try:
+          hashes_info=append_info(delta,info_delta)
+          # sign ghe delta
+          if DO_GPG:
+            gpg_hashes['info']=hashes_info
+            sign_delta(delta,gpg_hashes)
+        except:
+          puke('debdeltas')
+          if os.path.exists(delta):
+            os.unlink(delta)
 
     #delete debs in --alt that are too old
     if CLEAN_ALT:
