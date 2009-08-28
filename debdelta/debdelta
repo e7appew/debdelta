@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.184 2009/08/28 19:28:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.185 2009/08/28 20:00:41 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -328,6 +328,7 @@ def scan_control(p,params=None,prefix=None,info=None):
     a=p.readline()
 
 def append_info(delta,info):
+  "insert into the delta (that is an AR archive) the info file, as a first element, possibly removing a previous occurrence"
   #new style : special info file
   TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
   infofile=open(TD+'/info','w')
@@ -856,10 +857,10 @@ def scan_diversions():
 
 ############ do_patch
 
-def do_patch(delta,olddeb,newdeb, info=None, diversions=None):
+def do_patch(delta,olddeb,newdeb, info=None, diversions=None, do_gpg=DO_GPG):
   try:
     T=tempo()
-    r=do_patch_(delta,olddeb,newdeb,TD=T, info=info, diversions=diversions)
+    r=do_patch_(delta,olddeb,newdeb,TD=T, info=info, diversions=diversions, do_gpg=do_gpg)
   except:
     rmtree(T)
     if newdeb and os.path.exists(newdeb):
@@ -868,7 +869,7 @@ def do_patch(delta,olddeb,newdeb, info=None, diversions=None):
   rmtree(T)
   return r
 
-def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
+def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG):
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -901,9 +902,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
       if VERBOSE:
         print ' The signature by "'+a[4:]+'" is correctly verified for ',delta
   if not is_signed:
-    if DO_GPG:
+    if do_gpg:
       die("Delta is not signed: "+delta)
-    else:
+    elif do_gpg != None:
       print "WARNING, delta is not signed: "+delta
   
   _info_patch_unzip_(TD)
@@ -2494,23 +2495,37 @@ def do_deltas(debs):
         
         if VERBOSE: print 'Creating :',delta
         ret= None
+        tdir=tempo()
         try:
-          ret=do_delta(old['File'],new['File'], delta)
+          ret=do_delta_(old['File'],new['File'], delta, TD=tdir)
+          (delta_, percent, elaps, info_delta, gpg_hashes) = ret
+          #insert a first time, it is needed for the testing
+          append_info(delta,info_delta)
+        except KeyboardInterrupt:
+          if os.path.exists(delta):
+            os.unlink(delta)
+          rmtree(tdir)
+          raise
         except DebDeltaError,s:
           if not VERBOSE: print 'Creating: ',delta
           print ' Creation of delta failed, reason: ',str(s)
+          if os.path.exists(delta):
+            os.unlink(delta)
           if not s.retriable :
-            p=open(delta+'-fails','w')
-            p.close()
-        except KeyboardInterrupt:
-          raise
+            open(delta+'-fails','w').close()
+          ret = None
         except:
+          if os.path.exists(delta):
+            os.unlink(delta)
           puke( " *** Error while creating delta  "+delta)
+          open(delta+'-fails','w').close()
+          ret = None
+
+        rmtree(tdir)
 
         if ret == None:
           continue
-        
-        (delta_, percent, elaps, info_delta, gpg_hashes) = ret
+
         assert(delta == delta_)
         info_delta.append('ServerID: '+HOSTID)
         info_delta.append('ServerBogomips: '+str(BOGOMIPS))
@@ -2518,19 +2533,18 @@ def do_deltas(debs):
         if MAX_DELTA_PERCENT and  percent > MAX_DELTA_PERCENT:
             os.unlink(delta)
             if VERBOSE : print ' Warning, too big!'
-            p=open(delta+'-too-big','w')
-            p.close()
+            open(delta+'-too-big','w').close()
             continue
 
         if DEBUG :
           pret=None
           try:
-            pret=do_patch(delta,old['File'],None , info=info_delta)
+            #test, ignoring gpg, that is added later on
+            pret=do_patch(delta,old['File'],None , info=info_delta, do_gpg=None)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
             if not  s.retriable :
-              p=open(delta+'-fails','w')
-              p.close()
+              open(delta+'-fails','w').close()
               if os.path.exists(delta):
                 os.unlink(delta)
           except KeyboardInterrupt:
@@ -2545,7 +2559,7 @@ def do_deltas(debs):
           
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
-        #complete the delta file prepending to it the info
+        #complete the delta file prepending to it the info (a 2nd time)
         hashes_info=append_info(delta,info_delta)
         # sign ghe delta
         if DO_GPG:
