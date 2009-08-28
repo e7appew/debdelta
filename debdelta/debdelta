@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.173 2009/08/27 20:51:03 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.174 2009/08/28 09:08:45 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1042,11 +1042,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
 
   ###see into parameters: the patch may need extra info and data
   for a in params:
-    if 'unpack-old' == a:
-      if olddeb == '/':
-        die('This patch needs the old version Debian package')
-      unpack ('OLD',olddeb,TD)
-    elif 'needs-old' == a:
+    if 'needs-old' == a:
       if olddeb == '/':
         die('This patch needs the old version Debian package')
     elif 'old-data-tree' == a :
