@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.183 2009/08/28 19:19:08 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.184 2009/08/28 19:28:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1136,19 +1136,18 @@ def do_delta(olddeb,newdeb,delta):
   try:
     T=tempo()
     r=do_delta_(olddeb,newdeb,delta,TD=T)
+    (delta, percent, elaps, info, gpg_hashes) = r
+    info_hashes=append_info(delta,info)
+    if DO_GPG:
+      gpg_hashes['info']=info_hashes
+      sign_delta(delta,gpg_hashes)
   except:
     if delta and os.path.exists(delta):
       os.unlink(delta)
     rmtree(T)
     raise
   else:
-    (delta, percent, elaps, info, gpg_hashes) = r
-    info_hashes=append_info(delta,info)
-    if DO_GPG:
-      gpg_hashes['info']=info_hashes
-      sign_delta(delta,gpg_hashes)
-
-  rmtree(T)
+    rmtree(T)
   return r
 
 def do_delta_(olddeb,newdeb,delta,TD):
