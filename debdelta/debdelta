@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.191 2009/08/28 20:53:42 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.192 2009/08/28 21:05:19 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2718,6 +2718,9 @@ def delta_uri_from_config(config, **dictio):
 
 
 def delta_upgrade_(args):
+  # a list of all error exitcodes that derive from downloading and applying
+  mainexitcodes = [0]
+  
   original_cwd = os.getcwd()
 
   import  thread , pickle, urllib, fcntl, atexit, signal
@@ -2799,7 +2802,7 @@ def delta_upgrade_(args):
   (qout,qin)=os.pipe()
   thread_returns={}
   ######################## thread_do_patch
-  def thread_do_patch(qout,threads,no_delta,returns):
+  def thread_do_patch(qout,threads,no_delta,returns,exitcodes):
       if VERBOSE > 1 : print ' Patching thread started. '
       debs_size=0
       debs_time=0
@@ -2827,11 +2830,13 @@ def delta_upgrade_(args):
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
             elif VERBOSE: print ' No deb-policy "e", no download of ',deb_uri
+            exitcodes.append(s.exitcode)
           except:
             puke( " *** Error while applying delta for "+name+": ")
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
             elif VERBOSE: print ' No deb-policy "e", no download of ',deb_uri
+            exitcodes.append(4)
           else:
             if name in params_of_delta :
               p= params_of_delta[name]
@@ -2942,6 +2947,7 @@ def delta_upgrade_(args):
       except (httplib.HTTPException, socket.error),e:
         puke('Connection error: ',e)
         conn_close(uri)
+        mainexitcodes.append(1)
         return e
       #print '1K Content-Range', r.getheader('Content-Range') #HACK
       if r.status == 206:
@@ -2999,6 +3005,7 @@ def delta_upgrade_(args):
           r = conn.getresponse()
         except (httplib.HTTPException,socket.error),e:
           puke( 'Connection error (fatal): ',e)
+          mainexitcodes.append(1)
           try:
             conn_close(uri,fatal=True)
           except: pass
@@ -3017,6 +3024,7 @@ def delta_upgrade_(args):
         print 'Not enough disk space to download: ',os.path.basename(uri)
         r.read()
         r.close()
+        mainexitcodes.append(1)
         return None
       if r.status == 200 :
         out=open(outnametemp,'w')
@@ -3176,7 +3184,8 @@ def delta_upgrade_(args):
   available_deltas.sort()
 
   threads=[]
-  threads.append(thread.start_new_thread(thread_do_patch  , (qout,threads,no_delta, thread_returns) ) )
+  threads.append(thread.start_new_thread(thread_do_patch  ,
+                 (qout,threads,no_delta, thread_returns, mainexitcodes) ) )
   
   ## second merry-go-round, try downloading available delta
   for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
@@ -3262,6 +3271,8 @@ def delta_upgrade_(args):
     a=float(debs_down_size  + thread_returns['debs_size'])
     print ' total resulting debs size %s time %dsec virtual speed: %s/sec' %  \
           ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
+    
+  return max(mainexitcodes)
 
 ################################################# main program, do stuff
 
@@ -3352,7 +3363,7 @@ elif action == 'delta-upgrade':
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
   try:
-    delta_upgrade_(argv)
+    exitcode=delta_upgrade_(argv)
   except KeyboardInterrupt:
     puke('debdelta-upgrade exited due to keyboard interrupt')
     raise SystemExit(5)
@@ -3362,7 +3373,7 @@ elif action == 'delta-upgrade':
   except Exception, s:
     puke('debdelta-upgrade',s)
     raise SystemExit(4)
-  raise SystemExit(0)
+  raise SystemExit(exitcode)
 
 elif action == 'patch-url':
   config=ConfigParser.SafeConfigParser()
@@ -3372,13 +3383,13 @@ elif action == 'patch-url':
     import  apt_pkg
   except ImportError:
     print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
-    raise SystemExit
+    raise SystemExit(1)
   
   try:
     import  apt
   except ImportError:
     print 'ERROR!!! python module "apt" is missing. Please install a newer version of python-apt (newer than 0.6.12)'
-    raise SystemExit
+    raise SystemExit(1)
   
   apt_pkg.init()
   
