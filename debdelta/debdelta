@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.186 2009/08/28 20:08:30 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.187 2009/08/28 20:11:49 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -569,10 +569,11 @@ def check_is_delta(f):
   p.close()
 
 def puke(s,e=''):
+  " write informations on stderr, if DEBUG also traceback"
   (typ, value, trace)=sys.exc_info()
-  if VERBOSE or e == '':    print s,' : ',e,str(typ),str(value)
-  else: print s,' : ',e
-  if DEBUG : print traceback.print_tb(trace)
+  sys.stderr.write(str(s)+' : '+str(e)+str(typ)+str(value)+'\n')
+  if DEBUG :
+    sys.stderr.write( traceback.print_tb(trace)+'\n')
 
 ################################################################### GPG
 
