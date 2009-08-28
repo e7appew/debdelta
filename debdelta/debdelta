@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.192 2009/08/28 21:05:19 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.193 2009/08/28 21:13:49 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2555,18 +2555,20 @@ def do_deltas(debs):
             pret=do_patch(delta,old['File'],None , info=info_delta, do_gpg=None)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
-            if not  s.retriable :
-              open(delta+'-fails','w').close()
-              if os.path.exists(delta):
-                os.unlink(delta)
-          except KeyboardInterrupt:
-            raise
-          except:
-            exitstatus=max(exitstatus,2)
-            puke(" *** Error while testing delta  "+delta)
             if os.path.exists(delta):
               os.unlink(delta)
-          
+            if not  s.retriable :
+              open(delta+'-fails','w').close()
+          except KeyboardInterrupt:
+            if os.path.exists(delta):
+              os.unlink(delta)
+            raise
+          except Exception,s:
+            exitstatus=max(exitstatus,4)
+            puke(" *** Error while testing delta  "+delta,s)
+            if os.path.exists(delta):
+              os.unlink(delta)
+            open(delta+'-fails','w').close()
           if pret == None:
             continue
           
