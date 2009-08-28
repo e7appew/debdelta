@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.174 2009/08/28 09:08:45 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.175 2009/08/28 10:30:39 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -718,7 +718,8 @@ def sign_delta(delta, db, role="maker"):
 
 ########### info auxiliary routines
 
-def _delta_info_unzip_(TD):
+def _info_patch_unzip_(TD):
+  "unzip info and patch.sh"
   if os.path.exists(TD+'PATCH/info.gz'):
     system('gunzip PATCH/info.gz',TD)
   if os.path.exists(TD+'PATCH/patch.sh.gz'):
@@ -726,6 +727,8 @@ def _delta_info_unzip_(TD):
   elif os.path.exists(TD+'PATCH/patch.sh.bz2'):
     system('bunzip2 PATCH/patch.sh.bz2',TD)  
   elif os.path.exists(TD+'PATCH/patch.sh.lzma'):
+    if not os.path.exists('/usr/bin/unlzma'):
+      raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
     system('unlzma PATCH/patch.sh.lzma',TD)
 
 def get_info_slow(delta,T=None):
@@ -738,7 +741,7 @@ def get_info_slow(delta,T=None):
   delta=abspath(delta)
   system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2',
          TD+'/PATCH', ignore_output=True)
-  _delta_info_unzip_(TD)
+  _info_patch_unzip_(TD)
   info = _scan_delta_info_(TD)
   if T == None:
     rmtree(TD)
@@ -903,7 +906,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
     else:
       print "WARNING, delta is not signed: "+delta
   
-  _delta_info_unzip_(TD)
+  _info_patch_unzip_(TD)
 
   if not os.path.isfile(TD+'PATCH/patch.sh'):
     die('Error. File '+delta+' is not a debdelta file.')
@@ -1058,7 +1061,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
           system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
         elif 'data.tar.lzma' in ar_list_old:
           if not os.path.exists('/usr/bin/lzma'):
-            die('This patch needs lzma. Please install the Debian package "lzma".')
+            raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
           system('ar p '+TD+'OLD.file data.tar.lzma | unlzma -c | tar -x -p -f - -C '+TD+'OLD/DATA', TD)
         else: assert(0)
         _fix_data_tree_(TD)
@@ -1083,7 +1086,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None):
         die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
     elif 'needs-lzma' == a:
       if not os.path.exists('/usr/bin/lzma'):
-        die('This patch needs lzma. Please install the Debian package "lzma".')
+        raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
     elif 'needs-minibzip2' == a:
       pass #its your lucky day
     elif a[:6] == 'needs-':
@@ -2156,8 +2159,7 @@ def do_deltas(debs):
       apt_pkg.InitSystem()
       from apt_pkg import VersionCompare
     except ImportError:
-      print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
-      raise SystemExit
+      raise DebDeltaError('python module "apt_pkg" is missing. Please install python-apt', retriable=True)
     
   f=my_popen_read('hostname -f')
   try:
@@ -2698,14 +2700,12 @@ def delta_upgrade_(args):
   try:
     import  apt_pkg
   except ImportError:
-    print 'ERROR!!! python module "apt_pkg" is missing. Please install python-apt'
-    raise SystemExit
+    raise DebDeltaError('python module "apt_pkg" is missing. Please install python-apt',True)
   
   try:
     import  apt
   except ImportError:
-    print 'ERROR!!! python module "apt" is missing. Please install a newer version of python-apt (newer than 0.6.12)'
-    raise SystemExit
+    raise DebDeltaError('python module "apt" is missing. Please install a newer version of python-apt (newer than 0.6.12).',True)
   
   apt_pkg.init()
 
