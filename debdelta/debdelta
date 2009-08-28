@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.180 2009/08/28 17:56:58 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.181 2009/08/28 18:25:31 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -240,12 +240,11 @@ for i in DISABLED_FEATURES:
     print ' feature ',i,' cannot be disabled.'
     raise SystemExit(3)
 
-if os.path.exists('/proc/cpuinfo'):
-  f=my_popen_read('grep bogomips /proc/cpuinfo')
-  BOGOMIPS=float(f.read().split(':')[-1])
-  f.close()
-  del f
-else:
+try:
+  BOGOMIPS=float(subprocess.Popen('grep bogomips /proc/cpuinfo',
+                                  shell=True, stdout=subprocess.PIPE).
+                 stdout.read().split(':')[-1])
+except:
   if VERBOSE:
     print ' Warning, /proc not mounted, using bogus BOGOMIPS'
   BOGOMIPS=3000.0
