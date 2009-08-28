@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.189 2009/08/28 20:45:55 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.190 2009/08/28 20:48:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -572,7 +572,7 @@ def puke(s,e=''):
   " write informations on stderr, if DEBUG also traceback"
   (typ, value, trace)=sys.exc_info()
   sys.stderr.write(str(s)+' : '+str(e)+str(typ)+str(value)+'\n')
-  if DEBUG :
+  if DEBUG and trace and traceback.print_tb(trace):
     sys.stderr.write( traceback.print_tb(trace)+'\n')
 
 ################################################################### GPG
