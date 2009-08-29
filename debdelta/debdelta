@@ -96,7 +96,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
-from os.path import abspath
+from os.path import abspath, expanduser
 from copy    import copy
 
 from types import StringType, FunctionType, TupleType, ListType, DictType
@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.194 2009/08/28 21:27:52 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.195 2009/08/29 06:25:09 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -208,7 +208,7 @@ else:
         print 'Error: --avoid ',AVOID,' does not exist.'
         raise SystemExit(3)
     elif o == '--dir'  :
-      DIR = abspath(v)
+      DIR = abspath(expanduser(v))
       if v[-2:] == '//':
         DIR += '//'
       if not os.path.isdir(DIR):
@@ -230,7 +230,7 @@ else:
     elif (o ==  '--accept-unsigned' or o == '-A') and action in ("delta-upgrade", "patch"):
       DO_GPG=False
     elif (o ==  '--gpg-home'):
-      GPG_HOME=abspath(v)
+      GPG_HOME=abspath(expanduser(v))
       if not os.path.isdir(GPG_HOME):
         print 'Error: --gpg-home ',GPG_HOME,' does not exist.'
         raise SystemExit(3)
@@ -749,7 +749,7 @@ def get_info_slow(delta,T=None):
     TD=tempo()
   if TD[-1] != '/':
     TD = TD + '/'
-  delta=abspath(delta)
+  delta=abspath(expanduser(delta))
   system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2',
          TD+'/PATCH', ignore_output=True)
   _info_patch_unzip_(TD)
@@ -1170,7 +1170,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   start_sec = time.time()
 
   debdelta_conf=ConfigParser.SafeConfigParser()
-  debdelta_conf.read(['/etc/debdelta/debdelta.conf', os.path.expanduser('~/.debdelta/debdelta.conf')  ])
+  debdelta_conf.read(['/etc/debdelta/debdelta.conf', expanduser('~/.debdelta/debdelta.conf')  ])
 
   debdelta_conf_skip=[]
   for s in debdelta_conf.sections():
@@ -2731,7 +2731,7 @@ def delta_upgrade_(args):
   import  thread , pickle, urllib, fcntl, atexit, signal
 
   config=ConfigParser.SafeConfigParser()
-  a=config.read(['/etc/debdelta/sources.conf', os.path.expanduser('~/.debdelta/sources.conf')  ])
+  a=config.read(['/etc/debdelta/sources.conf', expanduser('~/.debdelta/sources.conf')  ])
   # FIXME this does not work as documented in Python
   #if VERBOSE > 1 : print 'Read config files: ',repr(a)
   
@@ -3382,7 +3382,7 @@ elif action == 'delta-upgrade':
 
 elif action == 'patch-url':
   config=ConfigParser.SafeConfigParser()
-  config.read(['/etc/debdelta/sources.conf', os.path.expanduser('~/.debdelta/sources.conf')  ])
+  config.read(['/etc/debdelta/sources.conf', expanduser('~/.debdelta/sources.conf')  ])
 
   try:
     import  apt_pkg
