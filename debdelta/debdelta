@@ -147,7 +147,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.195 2009/08/29 06:25:09 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.196 2009/09/03 21:40:17 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3108,13 +3108,25 @@ def delta_upgrade_(args):
             deb_uri=indexfile.ArchiveURI(deb_path)
             break
       
-      newdeb=os.path.basename(deb_uri)
-      if os.path.exists(DEB_DIR+'/'+newdeb) or \
-             os.path.exists('/var/cache/apt/archives/'+newdeb):
-        if VERBOSE > 1 : print  'Already downloaded: ',newdeb
+      #try all possible variants of the filename
+      newdebs=[p.name+'_'+candidate_version+'_'+arch+'.deb',
+               os.path.basename(deb_uri)]
+      if ':' in candidate_version:
+        a=candidate_version.split(':')
+        newdebs.append(p.name+'_'+a[1]+'_'+arch+'.deb')
+        newdebs.append(p.name+'_'+a[0]+'%3A'+a[1]+'_'+arch+'.deb')
+        newdebs.append(p.name+'_'+a[0]+'%3a'+a[1]+'_'+arch+'.deb')
+      
+      for newdeb in newdebs:
+        if os.path.exists(DEB_DIR+'/'+newdeb) or \
+            os.path.exists('/var/cache/apt/archives/'+newdeb):
+          if VERBOSE > 1 : print  'Already downloaded: ',p.name,candidate_version
+          newdeb=None
+          break
+      if newdeb == None:
         continue
-      newdeb = DEB_DIR+'/'+newdeb
-
+      newdeb = DEB_DIR+'/'+newdebs[-1]
+      
       if VERBOSE > 1:
         print 'Looking for a delta for %s from %s to %s ' % \
               ( p.name, installed_version, candidate_version )
