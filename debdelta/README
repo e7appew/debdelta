@@ -47,7 +47,7 @@ installed in the host, it can use the installed data; in this case,
 
 Example:
 
-$ debpatch  /tmp/emacs.debdelta / /tmp/emacs.deb
+$ debpatch -A  /tmp/emacs.debdelta / /tmp/emacs.deb
 
 ----- debdeltas
 
@@ -65,7 +65,8 @@ Example usage:
 $ debdeltas /var/cache/apt/archives/*deb
 
 'debdeltas' can also scan 'Packages' file on its own.
-See the script contrib/debmirror-others for an usage example.
+See the script /usr/share/debdelta/debmirror-delta-security
+for an usage example.
 
 With the --dir argument, it will put the deltas in a different tree
 (this is necessary if you use 'debmirror' , since 'debmirror' will
@@ -110,9 +111,7 @@ More info are in README.upgrade
 
 ------------- TODO
 
-Top of the list is: GPG signatures.
-
-Second: prepare an APT method so that 
+Prepare an APT method so that 
 'apt-get upgrade' would actually use deltas.
 Some code is already written.
 
@@ -130,7 +129,7 @@ see README.txt
 ------------ exact patching and exact recompression
 
 When debdelta recreates a .deb, it must be identical to the desired
-one (otherwise APT will refuse it when cheking signatures).
+one (otherwise APT will refuse it when checking signatures).
 
 Suppose a .deb has inside a huge file
  /usr/share/doc/foobar/document.info.gz

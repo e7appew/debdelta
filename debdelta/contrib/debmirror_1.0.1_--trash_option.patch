@@ -1,0 +1,62 @@
+--- /usr/bin/debmirror	2009-08-23 07:05:18.000000000 +0200
++++ bin/debmirror_1.0.1_mine	2009-08-23 21:07:16.000000000 +0200
+@@ -62,7 +62,7 @@
+           [--ignore=regex] [--exclude=regex] [--include=regex]
+           [--exclude-deb-section=regex] [--max-batch=number]
+           [--rsync-batch=number] [--ignore-missing-release]
+-          [--ignore-release-gpg]
++          [--ignore-release-gpg] [--trash=dir]
+           [--limit-priority=regex] [--dry-run]
+           [--proxy=http://user:pass\@url:port/] [--help]
+           [--rsync-options=options] [--ignore-small-errors]
+@@ -186,6 +186,10 @@
+ 
+ Do not clean up the local mirror after mirroring is complete.
+ 
++=item --trash=dir
++
++When cleaning up, instead of deleting, move files in this directory.
++
+ =item --ignore=regex
+ 
+ Never delete any files whose filenames match the regex. May be used multiple times.
+@@ -426,6 +430,8 @@
+ use Digest::MD5;
+ use Digest::SHA1;
+ use LWP::UserAgent;
++use File::Basename;
++use File::Copy;
+ 
+ # Yeah, I use too many global variables in this program.
+ our ($debug, $progress, $verbose, $passive, $skippackages, $getcontents);
+@@ -437,6 +443,7 @@
+ our $cleanup=0;
+ our $post_cleanup=1;
+ our $no_cleanup=0;
++our $trash_dir=0;
+ our $do_source=1;
+ our $host="ftp.debian.org";
+ our $user="anonymous";
+@@ -495,6 +502,7 @@
+ 	   'adddir=s'               => \@extra_dirs,
+ 	   'cleanup'                => \$cleanup,
+ 	   'postcleanup'            => \$post_cleanup,
++  	   'trash=s'                => \$trash_dir,
+ 	   'nocleanup'              => \$no_cleanup,
+ 	   'ignore=s'               => \@ignores,
+ 	   'exclude=s'              => \@excludes,
+@@ -1782,7 +1790,14 @@
+     unless (exists $files{$file} or (defined($ignore) && $file=~/$ignore/o)) {
+       say("deleting $file") if ($verbose);
+       if (! $dry_run) {
++ 	  if ( ! $trash_dir ) {
+ 	unlink $file or die "unlink $file: $!";
++ 	  } else {
++ 	      rename ($file, ($trash_dir . "/" . basename($file) )) or
++ 	      { copy ($file, ($trash_dir . "/" . basename($file) )) and
++ 		    unlink $file  
++ 	      }  or  die "cannot move or copy $file to trash: $!";
++ 	  }
+       }
+     }
+   }

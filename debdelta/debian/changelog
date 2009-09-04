@@ -1,11 +1,37 @@
+debdelta (0.32) unstable; urgency=low
+
+  * debdeltas: add support for Packages.gz and  Packages.bz2 .
+  * debdeltas: add option --test  (that does what '-d' was doing before)
+  * debdelta,debdeltas:
+    - add option --disable-feature ,
+    - and add document README.features explaining backward compatibility,
+    - and correct some bugs in features handling.
+  * Change Depends: lzma, xdelta, xdelta3, bsdiff to Recommends
+     ('debpatch' and 'debdelta-upgrade' will ask if they are needed).
+  * Fix exit status and document it in man page.
+  * Fix -v and -d , and document '-d' better in man pages.
+  * debpatch, debdelta-upgrade : if '-d' and a delta fails, 
+    create some files that may be used to address the bug.
+  * Bug fix: "redownload package already in the cache", thanks to Sandro
+    Tosi (Closes: #544784).
+
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 04 Sep 2009 23:29:06 +0200
+
 debdelta (0.31) unstable; urgency=low
 
+  * Add GPG signatures (YAY!!)
+  * Update man pages to explain how to use signatures.
   * Add a README.upgrade document in /usr/share/doc/debdelta
-  * Copy some useful stuff in /usr/share/debdelta :
-     dpkg-sig , patched to support debdelta signatures
-     debmirror-delta-security : an example script to create deltas 
-        from stable to stable-security
+  * Copy some useful stuff from contrib/ in /usr/share/debdelta :
+     dpkg-sig : a version of dpkg-sig, patched to support
+                debdelta signatures
+     debmirror-delta-security : an example script to create deltas
+        to upgrade from stable to stable-security
+     debpatch.sh : a simple script that explains how debpatch works
   * Rearrange debian/rules
+  * Correct some bugs in lzma support, but more testing is needed
+  * debdelta : correct bug when the old deb contains data.tar.XX
+    the new one contains  data.tar.YY and XX != YY
 
  -- A Mennucc1 <mennucc1@debian.org>  Fri, 21 Aug 2009 11:08:20 +0200
 
@@ -26,7 +52,9 @@ debdelta (0.29) unstable; urgency=low
     thanks to Paul Wise (Closes: #506383).
   * Use hashlib, not md5 module, in newer python,
     thanks to Lars Wirzenius (Closes: #537869).
-  * Support lzma , thanks to Pär Andersson (Closes: #540005)
+  * Add support for lzma ,
+    thanks to Pär Andersson (Closes: #540005),
+    (but it was not tested).
 
  -- A Mennucc1 <mennucc1@debian.org>  Wed, 05 Aug 2009 14:09:02 +0200
 

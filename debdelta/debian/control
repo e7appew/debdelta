@@ -3,12 +3,12 @@ Section: devel
 Priority: optional
 Build-Depends: zlib1g-dev, libbz2-dev
 Maintainer: A Mennucc1 <mennucc1@debian.org>
-Standards-Version: 3.7.3
+Standards-Version: 3.8.3.0
 
 Package: debdelta
 Architecture: any
-Depends: python, xdelta, bsdiff, bzip2, lzma, binutils, ${shlibs:Depends}
-Recommends: python-apt, xdelta3
+Depends: python, bzip2, binutils, ${shlibs:Depends}
+Recommends: python-apt, xdelta3, xdelta, lzma, xdelta, bsdiff
 Description: diff and patch utilities which work with Debian packages
  debdelta is a program suite designed to compute changes between
  Debian packages. These changes (debdeltas) are similar to the output of the

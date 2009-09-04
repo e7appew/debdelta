@@ -19,10 +19,10 @@ Q: How do you integrate this approach with the minimal security
 A: 'debpatch' recreates the new .deb , and guarantees that it is equal to the
   one in archives, so archive signatures can be verified
  (for this reason, 'debdelta'  does not use dpkg-repack ).
- Unfortunately, delta files are not signed (this is though in my TODO list).
+ Moreover, since version 0.31, delta files are GPG signed.
 
 
-Q: What about the kind of signatures dpkg-sig provides?
+Q: What if any or both the debs are signed using dpkg-sig ?
 
 A: Supported.
 
@@ -34,7 +34,7 @@ A: supported since version 0.24
 
 Q: And with lzma?
 
-A: Since version 0.29
+A: Since version 0.31
 
 
 Q: can 'debpatch' recreate the new .deb using the installed old .deb, even when
@@ -53,3 +53,25 @@ Q: can 'debpatch' recreate the new .deb using the installed old .deb,
   when 'prelink' is used in the host?
 
 A: since version 0.27
+
+
+Q: How does 'debdelta' work? What is the content of delta files?
+
+A: See the example script /usr/share/debdelta/debpatch.sh
+
+
+Q: What about backward compatibility? If I create a delta with the
+   most recent version of 'debdelta' will another user be able to
+   apply it with an older version of 'debpatch' ?
+
+A: It depends. A debdelta contains some keywords in the form
+  'need-xxxx' that express the requirements for applying it, so that
+  'debpatch' will graciously fail if it sees that it cannot satisfy
+  the requirements, and ask to be upgraded.
+
+
+Q: What about backward compatibility, the other way round? If I created
+   a delta long ago with a very old version of 'debdelta', will I be 
+   be able to apply it with a future version of 'debpatch' ?
+
+A: This should always be possible (but for bugs).

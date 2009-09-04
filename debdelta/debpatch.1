@@ -1,51 +1,94 @@
-.TH DEBPATCH "1" "april 2007" "debpatch" "User Commands"
+.TH DEBPATCH "1" "aug 2009" "debpatch" "User Commands"
+
 .SH NAME 
+
 debpatch \- Applies a patch to recreate a debian package.
+
 .SH SYNOPSIS
+
 .B debpatch 
-[\fIOPTION\fR]... \fIPATCHIN \fIFROMFILE\fR \fITOFILE\fR 
+[\fIOPTION\fR]... \fIDELTA \fIFROMFILE\fR \fITOFILE\fR 
 .br
 .B debpatch 
-[\fIOPTION\fR]... \fIPATCHIN \fI/\fR \fITOFILE\fR 
+[\fIOPTION\fR]... \fIDELTA \fI/\fR \fITOFILE\fR 
 .br
 .B debpatch 
 \fB\-\-info\fR \fIPATCH\fR
+
 .SH DESCRIPTION
 
-This program is designed to apply a patch (PATCHIN) to a Debian
+This program is designed to apply a patch (DELTA) to a Debian
 package (FROMFILE) and create the Debian package (TOFILE).
 If the Debian package (FROMFILE) was installed in the host
 system and the .deb file is not available, then the argument
 (FROMFILE) may be  substituted by the keyword / : then debpatch will
 get the needed data from the host filesystem.
+
 .SH OPTIONS
+
 .TP
-\fB\-\-info\fR \fIPATCH\fR    Write info on \fIPATCH\fR
+\fB\-\-info\fR \fIPATCH
+Write info on \fIPATCH
 .TP
-\fB\-\-no\-md5\fR        do not verify MD5 info.
+\fB\-\-no\-md5
+do not verify MD5 info.
 .TP
-\fB\-v\fR              verbose (can be added multiple times).
+\fB\-v
+verbose (can be added multiple times).
 .TP
-\fB\-d\fR              add extra debugging checks.
+\fB\-d
+print full traceback on Python errors; save useful info in temporary files 
+in case that a delta fails.
 .TP
-\fB\-k\fR              keep temporary files (use for debugging).
+\fB\-k
+keep temporary files (use for debugging).
+.TP
+.B \-A \--accept-unsigned
+accept unsigned deltas.
+.TP
+.BI \--gpg-home 
+specify a different home for GnuPG,
+default for root is
+.I /etc/debdelta/gnupg
+while for other users is unset. See 
+.I --homedir
+in 
+.BR gpg(1)
+for details.
+
 .SH EXAMPLES
+
 See 
-.B debdelta (1)
+.BR debdelta (1)
+
 .SH SECURITY
+
 See
-.B debdelta (1)
+.BR debdelta (1)
+
+.SH EXIT STATUS
+
+See 
+.BR debdelta (1)
+
 .SH "REPORTING BUGS"
+
 Report bugs to <mennucc1@debian.org>.
+
 .SH AUTHORS
+
 Debpatch was written and is copyright \(co 2006-09 Andrea Mennucci.
 .br
 This man page was written by Jegou Pierre-yves <pierreyves.jeg@voila.fr>.
+
 .SH COPYING
+
 This is free software.  You may redistribute copies of it under the terms of
 the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.
 There is NO WARRANTY, to the extent permitted by law.
+
 .SH "SEE ALSO"
+
 .BR debdelta-upgrade (1),
 .BR debdelta (1),
-.BR /usr/share/doc/debdelta/README.
+.BR /usr/share/doc/debdelta/README .

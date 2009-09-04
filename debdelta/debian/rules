@@ -44,27 +44,33 @@ binary-arch:	checkroot build
 	$(checkdir)
 	rm -rf $(D)
 	# dirs
-	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta $(D)/usr/share/debdelta
-	install -m 755 debian/postrm $(D)/DEBIAN/
-	# /usr/share
+	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta $(D)/usr/share/debdelta $(D)/usr/share/keyrings
+	# control
 	install contrib/debmirror-delta-security $(D)/usr/share/debdelta
-	install contrib/debmirror-20051209_--trash_option.patch  $(D)/usr/share/debdelta
+	install -m 755 debian/postrm $(D)/DEBIAN/
+	install -m 755 debian/postinst $(D)/DEBIAN/
+	# /usr/share
+	install debpatch.sh $(D)/usr/share/debdelta
+	install contrib/debmirror-delta-security $(D)/usr/share/debdelta
+	install contrib/dpkg-sig $(D)/usr/share/debdelta
+	cp contrib/debmirror_2007_--trash_option.patch  $(D)/usr/share/debdelta
+	ln -s ../../bin/debdelta  $(D)/usr/share/debdelta/debpatch-url
+	cp keyrings/pub.gpg $(D)/usr/share/keyrings/debian-debdelta-archive-keyring.gpg
+	chmod 0644 $(D)/usr/share/keyrings/debian-debdelta-archive-keyring.gpg
 	# /usr/lib
 	$(INSTALL_PROGRAM)  minigzip $(D)/usr/lib/debdelta/minigzip
 	$(INSTALL_PROGRAM)  minibzip2 $(D)/usr/lib/debdelta/minibzip2
 	# /etc
 	install -d $(D)/etc/debdelta
 	cp etc/sources.conf $(D)/etc/debdelta/sources.conf
-	# /usr/bin
-	cp  debdelta $(D)/usr/bin/debdelta
 	echo /etc/debdelta/sources.conf >> $(D)/DEBIAN/conffiles
-	chmod +x  $(D)/usr/bin/debdelta
+	# /usr/bin
+	install debdelta $(D)/usr/bin/debdelta
 	ln -s debdelta  $(D)/usr/bin/debpatch
-	ln -s ../../bin/debdelta  $(D)/usr/share/debdelta/debpatch-url
 	ln -s debdelta  $(D)/usr/bin/debdeltas
 	ln -s debdelta  $(D)/usr/bin/debdelta-upgrade
 	# /usr/share/doc
-	cp FAQ README README.upgrade debian/copyright debian/changelog $(docdir)
+	cp FAQ README README.upgrade README.features debian/copyright debian/changelog $(docdir)
 	cd $(docdir) && gzip -9 changelog README README.upgrade FAQ
 	# man
 	cp *.1 $(mandir)
@@ -73,8 +79,8 @@ binary-arch:	checkroot build
 	dpkg-shlibdeps $(D)/usr/lib/debdelta/minigzip  $(D)/usr/lib/debdelta/minibzip2
 	dpkg-gencontrol -isp
 	chown -R root:root $(D)
-	chmod -R u+w,go=rX $(D)
-	dpkg-deb -Zlzma --build $(D) ..
+	#chmod -R u+w,go=rX $(D)
+	dpkg-deb --build $(D) ..
 
 define checkdir
 	test -f debdelta -a -f debian/rules

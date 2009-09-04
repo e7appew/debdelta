@@ -1,6 +1,34 @@
 #!/bin/sh
 set -e
-# Automatically added by dh_installdebconf
-if [ "$1" = purge ] && [ -r /var/lib/debdelta ] ; then
-  rm -r /var/lib/debdelta
+
+GPG_HOME=/etc/debdelta/gnupg
+
+if [ "$1" = purge ] ; then
+  if  [ -r /var/lib/debdelta ] ; then
+    rm -r /var/lib/debdelta
+  fi
+
+  if test -f "${GPG_HOME}/secring.gpg" ; then 
+    if test -s "${GPG_HOME}/secring.gpg" ; then
+      echo debdelta: does not delete nonempty  ${GPG_HOME}/secring.gpg
+    else
+      rm ${GPG_HOME}/secring.gpg 
+    fi
+  fi
+
+  if test -f "${GPG_HOME}/pubring.gpg" ; then
+      if  echo "4509b7260dc7aee6ec8dac68263bc662  ${GPG_HOME}/pubring.gpg" | md5sum -c --quiet ; then 
+      rm ${GPG_HOME}/pubring.gpg 
+    else
+      echo debdelta: does not delete modified  ${GPG_HOME}/pubring.gpg
+    fi
+  fi
+
+  if test -f "${GPG_HOME}/pubring.gpg~" ; then
+    rm ${GPG_HOME}/pubring.gpg~
+  fi
+
+  #unfortunately I could not spot a good way to detect if the
+  # trustdb does contain useful info
+
 fi

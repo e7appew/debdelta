@@ -1,0 +1,72 @@
+When 'debdelta' is improved, features are added. In some cases, a
+delta created with a newer version of debdelta may not work with an
+older version of 'debpatch'. 
+
+The feature that 'debdelta' or 'debdeltas' use when creating a delta
+depend on command line option, but also on the content of the deb
+files that are debdelta-ed.
+
+Whenever a feature is used in creating a delta, a special keywords of
+the form "needs-FEATURE" is added to the info (that is contained in
+the delta file, and can be browsed using 'debpatch --info'). An older
+version of debpatch will graciously exit if it finds in the info a
+feature that it does not recognize.
+
+To obtain backward compatibility, some features can be disabled
+by setting the commandline option --disable-feature
+
+Here is the listing of features, divided in sections
+
+--- delta format
+
+needs-old
+  the delta was created with the option --needsold; such delta can
+  only be applied if the old .deb is available, (but not using the
+  installed version of the old deb).  This is rarely used.
+
+--- binary delta backends
+
+needs-bsdiff
+ this delta needs the program 'bsdiff' ,
+ that is available in the samename package;
+ currently bsdiff is the default backend 
+ (see the option --delta-algo ).
+
+needs-xdelta
+ this delta needs the program 'xdelta'
+ that is available in the samename package;
+ it is used if --delta-algo is set to xdelta
+
+needs-xdelta3
+ this delta needs the program 'xdelta3'
+ that is available in the samename package;
+ it is used if --delta-algo is set to xdelta3
+
+The support for all 3 above was added before Debian/lenny.
+
+---- compressor
+
+debdelta uses internally bzip2 and gzip in many places,
+and it depends on those, so there is no 'needs-bzip2'
+and 'needs-gzip'. For other compressors,
+things are as follows.
+
+needs-minibzip2
+ this delta needs the program 'minibzip2'
+ that is available in the package 'debdelta' itself;
+ it is used to recreate data.tar.bz2, (so that it 
+ is identical to the one created by dpkg-deb).
+ The support for this was added before Debian/lenny.
+
+needs-lzma 
+ this delta needs the program 'lzma' that is available in the samename
+ package.  The support for this was added in 'debdelta' 0.31, and will
+ be available in Debian/stable with the release of Debian/squeeze.
+ 'lzma' is needed if the new or old deb contains data.tar.lzma (but
+ this is not yet allowed in repositories, as of Aug 09). Moreover,
+ 'lzma' may be used to compress the internal file 'patch.sh' in the
+ delta file, if this provides a shorter file than 'bzip2' and
+ 'gzip'. This latter usage can be disabled by setting
+ '--disable-feature lzma' (and such option provides compatibility with
+ debdelta in Debian/lenny).
+

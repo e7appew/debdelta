@@ -1,0 +1,19 @@
+#!/bin/sh -e
+
+GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
+GPG_HOME="/etc/debdelta/gnupg"
+
+case "$1" in
+  configure|reconfigure)
+    if test ! -r ${GPG_HOME} ; then
+      echo "Debdelta: creating keyrings in ${GPG_HOME}"
+      mkdir  ${GPG_HOME}
+      chmod 0700  ${GPG_HOME}
+      touch   ${GPG_HOME}/secring.gpg   ${GPG_HOME}/pubring.gpg 
+      chmod 0600  ${GPG_HOME}/secring.gpg  ${GPG_HOME}/pubring.gpg
+    else
+      echo "Debdelta: updating public keyring in ${GPG_HOME}"
+    fi
+    gpg --no-tty --batch --no-options --no-auto-check-trustdb --homedir ${GPG_HOME} --import ${GPG_MASTER_PUB_KEYRING} || true 
+    ;;
+esac

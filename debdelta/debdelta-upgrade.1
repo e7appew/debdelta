@@ -1,25 +1,35 @@
-.TH DEBDELTA-UPGRADE "1" "april 2007" "debdelta-upgrade" "User Commands"
+.TH DEBDELTA-UPGRADE "1" "aug 2009" "debdelta-upgrade" "User Commands"
+
 .SH NAME
+
 debdelta-upgrade \- Downloads all deltas that may be used to 'apt-get
 upgrade', and apply them. 
+
 .SH SYNOPSIS
+
 .B debdelta-upgrade
 [\fIOPTION\fR]... [\fIPACKAGE\fR] ...
+
 .SH DESCRIPTION
+
 This program is designed to download changes (deltas) that may be used to 
 .B apt-get upgrade
 all listed packages, and apply them.
 If no package is listed in the command line, then it will apply to all upgradable packages. See
 .BR debdelta (1)
 for more details on the delta files.
+
 .SH OPTIONS
+
 .TP
-\fB\-\-dir \fIDIR\fR     directory where to save results.
-     (default: /var/cache/apt/archives for root, 
-     /tmp/archive for non-root users)
+\fB\-\-dir \fIDIR
+directory where to save results.
+(default: /var/cache/apt/archives for root, 
+/tmp/archive for non-root users)
 .TP
-\fB\-\-deb\-policy \fIPOLICY\fR   policy to decide which debs to download,
-  it is a comma separated list of (abbreviations of)
+\fB\-\-deb\-policy \fIPOLICY
+policy to decide which debs to download,
+it is a comma separated list of (abbreviations of)
     source =  there is no /etc/debdelta/sources.conf line
     big =  the delta is too big
     error =  the delta fails to apply
@@ -27,12 +37,31 @@ for more details on the delta files.
     after = continue downloading debs after patching has ended
   default is s,b,e
 .TP
-\fB\-v\fR            verbose (can be added multiple times).
+\fB\-v
+verbose (can be added multiple times).
 .TP
-\fB\-d\fR            add extra debugging checks.
+\fB\-d
+print full traceback on Python errors; save useful info in temporary files 
+in case that a delta fails; do not print download progress in stderr.
 .TP
-\fB\-k\fR            keep temporary files (use for debugging).
+\fB\-k
+keep temporary files (use for debugging).
+.TP
+.B \-A \--accept-unsigned
+accept unsigned deltas.
+.TP
+.BI \--gpg-home 
+specify a different home for GnuPG,
+default for root is
+.I /etc/debdelta/gnupg
+while for other users is unset. See 
+.I --homedir
+in 
+.BR gpg(1)
+for details.
+
 .SH EXAMPLES
+
 When invoked as root,
 .I apt-get update && debdelta-upgrade && apt-get upgrade
 will download delta files, recreate the needed Debian 
@@ -40,25 +69,48 @@ packages, and then upgrade your Debian host. When only
 slow Internet connection is available, the above procedure may
 be significantly faster than "apt-get update && apt-get upgrade".
 (Use -v to see how much faster.)
+
 .SH SECURITY
-A Debian package that is recreated using debbdelta-upgrade is byte-by-byte
+
+A Debian package that is recreated using
+.I debbdelta-upgrade
+is byte-by-byte
 identical to the original one; when  "apt-get upgrade"
 is subsequently invoked, the cryptographic
 archive authentication support (see 
-.BR apt-secure (8)
-) will guarantee that it can be trusted to be installed. Currently,
-though, the delta file itself is not cryptograhically protected.
+.I apt-secure (8)
+) will guarantee that it can be trusted to be installed.  Moreover,
+the delta files themselves are cryptograhically protected using GnuPG,
+MD5 and SHA1 (using the same method as
+.BR dpkg-sig (1)
+), and 
+.I debdelta-upgrade
+will refuse to apply corrupted or unsigned deltas (but, see option
+.B -A
+).
+
+.SH EXIT STATUS
+
+See 
+.BR debdelta (1)
+
 .SH "REPORTING BUGS"
+
 Report bugs to <mennucc1@debian.org>.
+
 .SH AUTHORS
+
 Debdelta was written and is copyright \(co 2006-09 Andrea Mennucci.
 .br
 This man page was written by Jegou Pierre-yves  <pierreyves.jeg@voila.fr>.
 .SH COPYING
 This is free software.  You may redistribute copies of it under the terms of
-the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.
+the GNU General Public License <http://www.gnu.org/licenses/gpl.hqtml>.
 There is NO WARRANTY, to the extent permitted by law.
+
 .SH "SEE ALSO"
+
 .BR debdelta (1),
 .BR apt-get (8),
-.BR /usr/share/doc/debdelta/README.
+.BR /usr/share/doc/debdelta/README.upgrade ,
+.BR /usr/share/doc/debdelta/README .

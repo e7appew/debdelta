@@ -1,5 +1,12 @@
 #!/bin/sh -e
 
+# A simple script that will create a repository of deltas, that may be
+# used by debdelta-upgrade for upgrading package in stable and
+# stable-security
+
+# Copyright (C) 2006-09 Andrea Mennucci.
+# License: GNU Library General Public License, version 2 or later
+
 #who I am
 b=`basename $0`
 
@@ -27,10 +34,11 @@ deltamir=/mirror/debian-security-deltas
 #where is the debdeltas program
 debdeltas=/usr/bin/debdeltas
 #options to your taste
-debdelta_opt=" -n 3 --delta-algo xdelta3 "
+debdelta_opt=" -n 3 --delta-algo xdelta3 --sign my_favorite_key"
 
 #do mirror security
-# you will need a patched version of 'debmirror', see in /usr/share/debdelta
+# you will need a patched version of 'debmirror' that supports the 
+#  --trash option, see in /usr/share/debdelta
 trap "rm  $VERBOSE -f $secdebmirlock" 0
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
  --nosource -h security.debian.org \
@@ -40,7 +48,7 @@ trap "rm  $VERBOSE -f $secdebmirlock" 0
 lockfile -r 1  /tmp/$b.lock || exit 1
 trap "rm  $VERBOSE -f /tmp/$b.lock" 0
 cd $secdebmir
-for p in `find dists -name Packages` ; do
+for p in `find dists -name Packages.gz` ; do
  q=`echo $p | sed "s:/stable/updates/:/$stable/:"`
  $debdeltas $VERBOSE -vd $debdelta_opt  \
   --alt $fulldebmir/$q   --alt $deltamir/old_debs  \
