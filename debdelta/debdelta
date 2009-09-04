@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.200 2009/09/04 15:18:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.201 2009/09/04 15:51:11 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2529,7 +2529,7 @@ def do_deltas(debs):
             os.unlink(delta)
           if not s.retriable :
             open(delta+'-fails','w').close()
-          exitstatus=max(exitstatus, s.exitstatus)
+          exitstatus=max(exitstatus, s.exitcode)
           ret = None
         except:
           exitstatus=4
