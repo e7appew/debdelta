@@ -3,6 +3,8 @@
 # Copyright (C) 2006-09 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
 
+EMAIL="mennucc1@debian.org"
+
 doc={}
 doc['delta']="""\
 Usage: debdelta [ option...  ] fromfile tofile patchout
@@ -150,7 +152,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.202 2009/09/04 18:00:43 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.203 2009/09/04 21:56:50 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -515,6 +517,7 @@ def die(s):
 
 
 def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
+  " if return_output , it will return (stdout,stderr,exitcode) regardless"
   if type(a) != StringType :
     a=string.join(a,' ')
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
@@ -531,14 +534,13 @@ def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
     for i in open(temp_err_name):
       print 'stderr:  ',repr(i)
   os.close(temp_fd)
-  os.unlink(temp_err_name)
   os.close(temp_err_fd)
+  if return_output:
+    return temp_name, temp_err_name, ret
+  os.unlink(temp_err_name)
+  os.unlink(temp_name)
   if ret == 0:
-    if return_output:
-      return temp_name
-    else:
-      os.unlink(temp_name)
-      return
+    return
   elif ret == 2:
     raise KeyboardInterrupt
   elif ret != 256 or a[:6] != 'xdelta' :
@@ -1048,6 +1050,9 @@ def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
   for L,N in ((controlfiles,"Control"),(files,"Files")):
     o.write(N+":\n")
     for a,b in L:
+      if not os.path.exists(b):
+        o.write(' NONEXISTENT\n '+b+'\n \n')
+        continue
       name,mode,tartype,uid,gid,uname,gname,data=stat_to_tar(b)
       if tartype == tarfile.REGTYPE:
         data=hash_to_hex(sha1_hash_file(b))
@@ -1101,9 +1106,12 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
   if olddeb != '/':
       check_deb(olddeb)
   
-  o=system('ar xvo '+delta,  TD+'/PATCH', return_output=True, ignore_output=True)
-  ar_list_delta=[a[4:] for a in open(o).read().split('\n') if a]
-  os.unlink(o)
+  temp_name, temp_err_name, ret=system('ar xvo '+delta,  TD+'/PATCH', return_output=True, ignore_output=True)
+  if ret :
+    raise DebDeltaError('Cannot extract from '+delta)
+  ar_list_delta=[a[4:] for a in open(temp_name).read().split('\n') if a]
+  os.unlink(temp_name)
+  os.unlink(temp_err_name)
   
   is_signed=False
   for a in ar_list_delta:
@@ -1328,36 +1336,42 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
 
+  a=''
+  if DEBUG: a='-v'
+  script_time = - time.time()
+  temp_name, temp_err_name, ret=  system(SHELL+' -e '+a+' PATCH/patch.sh', TD,
+                                         ignore_output=True, return_output=True)
+  script_time += time.time()
+
   #helper for debugging
-  if olddeb != '/':
-    def fore(): pass
-  elif DEBUG == 0:
+  if DEBUG == 0:
     def fore():
-      sys.stderr.write('(Faulty delta. Please consider the option "-d" ).\n')
+      sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
+  elif olddeb != '/':
+    def fore():
+      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
   else:
     def fore():
-      temp_name=''
+      temp_fore_name=''
       try:
-        (temp_fd,temp_name) = tempfile.mkstemp(prefix="debforensic_")
+        (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
         temp_file=os.fdopen(temp_fd,'w')
-        temp_file.write('Delta: '+delta+'\n')
+        #temp_file.write('Delta: '+delta+'\n')
+        #temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
         forensics_rfc(temp_file,params,control_file_pairs,
                       linked_file_pairs,diverted,diversions,conf_files)
+        temp_file.close()
       except Exception,s:
-        sys.stderr.write('While creating forensic '+temp_name+' error:'+str(s)+'\n')
-      else:
-        sys.stderr.write('Faulty delta. Please send by email to mennucc1@debian.org the forensic file: '+temp_name+'\n')
+        sys.stderr.write('!!While creating forensic '+temp_name+' error:'+str(s)+'\n')
+      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                       delta+'\n!! '+temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
 
   ##then , really execute the patch
-  a=''
-  if VERBOSE > 2 : a = '-v'
-  script_time = - time.time()
-  try:
-    system(SHELL+' -e '+a+' PATCH/patch.sh', TD)
-  except:
+
+  if ret:
     fore()
-    raise
-  script_time += time.time()
+    raise DebDeltaError(' Error in applying patch.sh in: '+delta)
 
   #then we check for the conformance
   if  'NEW/Size' in params:
@@ -1376,6 +1390,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
         fore()
         raise
     else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
+
+  os.unlink(temp_name)
+  os.unlink(temp_err_name)
 
   if newdeb:
       shutil.move(TD+'NEW.file',newdeb)
