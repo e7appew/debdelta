@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.199 2009/09/04 15:15:52 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.200 2009/09/04 15:18:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1110,7 +1110,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
   ##then , really execute the patch
   a=''
-  if VERBOSE > 1 : a = '-v'
+  if VERBOSE > 2 : a = '-v'
   script_time = - time.time()
   system(SHELL+' -e '+a+' PATCH/patch.sh', TD)
   script_time += time.time()
