@@ -148,11 +148,13 @@ GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
 CLEAN_DELTAS = False
 CLEAN_ALT    = False
 
+DO_PREDICTOR = False
+
 #see README.features
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.203 2009/09/04 21:56:50 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.204 2009/09/04 22:01:19 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3068,7 +3070,8 @@ def delta_upgrade_(args):
 
 
   ##### predictor for patching time
-  predictor = Predictor()
+  if DO_PREDICTOR:
+    predictor = Predictor()
 
   #this is a dictonary (key is package name) of parameters of deltas
   #(to add some math in the future)
@@ -3116,10 +3119,11 @@ def delta_upgrade_(args):
             if name in params_of_delta :
               p= params_of_delta[name]
               name,elaps=ret
-              predictor.update(p,elaps)
-              if VERBOSE > 1 :
-                t=predictor.patch_time_predictor(p)
-                if t: print '  (Predicted %.3f sec )'  % t
+              if DO_PREDICTOR:
+                predictor.update(p,elaps)
+                if VERBOSE > 1 :
+                  t=predictor.patch_time_predictor(p)
+                  if t: print '  (Predicted %.3f sec )'  % t
             debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
               os.unlink(delta)
@@ -3529,8 +3533,6 @@ def delta_upgrade_(args):
         debs_down_size = r[1]
     if not no_delta : 
       time.sleep(0.1)
-
-  #save predictor...
   
   for i in http_conns:
     if http_conns[i] != None :
