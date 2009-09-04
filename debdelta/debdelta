@@ -93,7 +93,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time, tarfile, stat
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath, expanduser
@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.201 2009/09/04 15:51:11 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.202 2009/09/04 18:00:43 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -858,6 +858,7 @@ def patch_check_tmp_space(params,olddeb):
 def scan_diversions():
   f=open('/var/lib/dpkg/diversions')
   d={}
+
   a=1
   while 1:
     a=f.readline()
@@ -868,6 +869,201 @@ def scan_diversions():
     d[a]=(b,p)
   f.close()
   return d
+
+###################################################### debforensic extract
+
+#in base-passwd 3.5.11
+#/usr/share/base-passwd/passwd.master
+base_passwd="""root::0:0:root:/root:/bin/bash
+daemon:*:1:1:daemon:/usr/sbin:/bin/sh
+bin:*:2:2:bin:/bin:/bin/sh
+sys:*:3:3:sys:/dev:/bin/sh
+sync:*:4:65534:sync:/bin:/bin/sync
+games:*:5:60:games:/usr/games:/bin/sh
+man:*:6:12:man:/var/cache/man:/bin/sh
+lp:*:7:7:lp:/var/spool/lpd:/bin/sh
+mail:*:8:8:mail:/var/mail:/bin/sh
+news:*:9:9:news:/var/spool/news:/bin/sh
+uucp:*:10:10:uucp:/var/spool/uucp:/bin/sh
+proxy:*:13:13:proxy:/bin:/bin/sh
+www-data:*:33:33:www-data:/var/www:/bin/sh
+backup:*:34:34:backup:/var/backups:/bin/sh
+list:*:38:38:Mailing List Manager:/var/list:/bin/sh
+irc:*:39:39:ircd:/var/run/ircd:/bin/sh
+gnats:*:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/bin/sh
+nobody:*:65534:65534:nobody:/nonexistent:/bin/sh"""
+base_passwd_db={}
+base_passwd_anti_db={}
+for a in base_passwd.split('\n'):
+    a=a.split(':')
+    base_passwd_db[a[0]]=int(a[2])
+    base_passwd_anti_db[int(a[2])]=a[0]
+
+base_group="""root:*:0:
+daemon:*:1:
+bin:*:2:
+sys:*:3:
+adm:*:4:
+tty:*:5:
+disk:*:6:
+lp:*:7:
+mail:*:8:
+news:*:9:
+uucp:*:10:
+man:*:12:
+proxy:*:13:
+kmem:*:15:
+dialout:*:20:
+fax:*:21:
+voice:*:22:
+cdrom:*:24:
+floppy:*:25:
+tape:*:26:
+sudo:*:27:
+audio:*:29:
+dip:*:30:
+www-data:*:33:
+backup:*:34:
+operator:*:37:
+list:*:38:
+irc:*:39:
+src:*:40:
+gnats:*:41:
+shadow:*:42:
+utmp:*:43:
+video:*:44:
+sasl:*:45:
+plugdev:*:46:
+staff:*:50:
+games:*:60:
+users:*:100:
+nogroup:*:65534:"""
+
+base_group_db={}
+base_group_anti_db={}
+for a in base_group.split('\n'):
+    a=a.split(':')
+    base_group_db[a[0]]=int(a[2])
+    base_group_anti_db[int(a[2])]=a[0]
+
+# all code following return name,mode,tartype,uid,gid,uname,gname
+
+#adapted from tarfile.py, a Python module
+def stat_to_tar(name):
+    "returns name,mode,tartype,uid,gid,uname,gname,data"
+    statres = os.lstat(name)
+    stmd = statres.st_mode
+    data = None
+    if stat.S_ISREG(stmd):
+        tartype = tarfile.REGTYPE
+        # here ideally we should SHA1 the file ; 
+        # but this is done elsewhere for performance, 
+        # and to have multi_hash in the future
+    elif stat.S_ISDIR(stmd):
+        tartype = tarfile.DIRTYPE
+    elif stat.S_ISFIFO(stmd):
+        tartype = tarfile.FIFOTYPE
+    elif stat.S_ISLNK(stmd):
+        tartype = tarfile.SYMTYPE
+        data = os.readlink(name)
+    elif stat.S_ISCHR(stmd):
+        tartype = tarfile.CHRTYPE
+    elif stat.S_ISBLK(stmd):
+        tartype = tarfile.BLKTYPE
+    elif stat.S_ISSOCK(stmd):
+        tartype = 'SOCKET'  #SOCKETs are not supported in tar files
+    else: raise TypeError
+    
+    if tartype in (tarfile.CHRTYPE, tarfile.BLKTYPE):
+        data = str(os.major(statres.st_rdev))+' '+str( os.minor(statres.st_rdev))
+
+    uid,gid = statres.st_uid, statres.st_gid 
+    
+    if uid in base_passwd_anti_db :
+        uname = base_passwd_anti_db[uid]
+    else:
+        try:
+            uname = pwd.getpwuid(uid)[0]
+        except KeyError:
+            uname = None
+
+    if gid in base_group_anti_db :
+        gname = base_group_anti_db[gid]
+    else:    
+        try:
+            gname = grp.getgrgid(gid)[0]
+        except KeyError:
+            gname = None
+
+    #07777 is used in tarfile.TarInfo.tobuf
+    return  name.lstrip('/'), stmd & 07777, tartype, uid, gid, uname, gname, data
+
+
+def tarinfo_to_ls(tartype,tarmode):
+    "returns a string -rwxrwxrwx such as what ls -l prints "
+    if ord(tartype) == 0 :
+        a='_'
+    else:
+        if tartype >= '0' and tartype <= '6' :
+            a="-hlcbdp"[ord(tartype) - ord('0')] 
+        else:
+            a='?'
+    return a+tarfile.filemode(tarmode)[1:]
+
+
+def sha1_hash_file(f):
+    #FIXME this is not present in older Python
+    import hashlib
+    s=hashlib.sha1()
+    if type(f) == StringType:
+      f=open(f)
+    a=f.read(1024)
+    while a:
+      s.update(a)
+      a=f.read(1024)
+    f.close()
+    return s.digest()
+
+def hash_to_hex(s):
+    a=''
+    for i in s:
+        a=a+ ( '%02x' % ord(i)  )
+    return a
+
+def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
+  o.write('Package: '+db['OLD/Package']+'\n')
+  o.write('Version: '+db['OLD/Version']+'\n')
+  o.write('Architecture: '+db['OLD/Architecture']+'\n')
+  if diverted:
+    o.write("Diversions:\n")
+    for a in diverted:
+      b,p = diversions[a]
+      o.write(" From: "+a+'\n')
+      o.write(" To: "+b+'\n')
+      o.write(" By: "+p+'\n')
+  if conffiles:
+    o.write("Conffiles:\n")
+    for a in conffiles:
+      o.write(' '+a+'\n')
+  for L,N in ((controlfiles,"Control"),(files,"Files")):
+    o.write(N+":\n")
+    for a,b in L:
+      name,mode,tartype,uid,gid,uname,gname,data=stat_to_tar(b)
+      if tartype == tarfile.REGTYPE:
+        data=hash_to_hex(sha1_hash_file(b))
+      if uname == None: uname=str(uid)
+      if gname == None: gname=str(gid)
+      o.write(' '+tarinfo_to_ls(tartype,mode)+" "+uname+' '+gname)
+      if N == "Files" and tartype == tarfile.REGTYPE and a in conffiles:
+        o.write(" [conffile]\n")
+      else:
+        o.write("\n")
+      o.write(" "+a+"\n")
+      if data!=None:
+        o.write(" "+data+"\n")
+      else:
+        o.write(" \n")
+
 
 ############ do_patch
 
@@ -894,7 +1090,10 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
     newdeb=abspath(newdeb)
   if olddeb != '/':
     olddeb=abspath(olddeb)
-    
+  elif diversions == None:
+    diversions=scan_diversions()
+  
+  
   start_sec = time.time()
   
   check_is_delta(delta)
@@ -933,6 +1132,14 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
   if info == None :
       info=_scan_delta_info_(TD)
   params=info_2_db(info)
+  
+  #this is not needed in preparing the patch, but may help in forensic
+  conf_files=[]
+  a='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
+  if DEBUG and os.path.isfile(a):
+    #note that filenames have leading /
+    conf_files=[p for p in open(a).read().split('\n') if p]
+  del a
   
   ###
   s=patch_check_tmp_space(params,olddeb)
@@ -978,8 +1185,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
   ### some auxiliary routines, separated to make code more readable
 
   def dpkg_L_faster(pa,diversions):
-    " 'diversions' must be prepared by scan_diversions() "
+    "Scan dpkg -L . 'diversions' must be prepared by scan_diversions() . Returns list of pairs of files ,and list of diverted files. "
     s=[]
+    diverted=[]
     f=open('/var/lib/dpkg/info/'+pa+'.list')
     while 1:
       a=f.readline()
@@ -987,14 +1195,20 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
       a=de_n(a)
       if a in diversions:
         b,p= diversions[a]
-        if p != pa:    s.append((a,b))
-        else:     s.append((a,a))
+        if p != pa:
+          s.append((a,b))
+          diverted.append(a)
+        else:
+          s.append((a,a))
       else: s.append((a,a))
     f.close()
-    return s
+    return s,diverted
 
   def dpkg_L(pa):
+    "Scan dpkg -L . Currently unused, see previous function."
+    sys.stderr.write('INTERNAL WARNING: USING OBSOLETE dpkg_L\n')
     s=[]
+    diverted=[]
     p=my_popen_read('env -i dpkg -L '+pa)
     a=p.readline()
     while a:
@@ -1007,17 +1221,18 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
         i = a.index(':')
         divert = a[i+2:]
         s.append( (orig,divert) )
+        diverted.append(orig)
       else:
         s.append( (a,a) )
       a=p.readline()
     p.close()
-    return s
+    return s, diverted
 
   def _symlink_data_tree(pa,TD,diversions):
     if diversions:
-      s=dpkg_L_faster(pa,diversions)
+      s,diverted=dpkg_L_faster(pa,diversions)
     else:
-      s=dpkg_L(pa)
+      s,diverted=dpkg_L(pa)
     for orig,divert in s:          
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
@@ -1037,6 +1252,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
           os.symlink(divert, a)
       else:
         if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
+    return s,diverted
 
 
   def chmod_add(n,m):
@@ -1058,6 +1274,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
         i=os.path.join(dirpath,i)
         chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
 
+  control_file_pairs=[]
+  linked_file_pairs,diverted=[],[]
+  
   ###see into parameters: the patch may need extra info and data
   for a in params:
     if 'needs-old' == a:
@@ -1066,8 +1285,7 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
-        pa=params['OLD/Package']
-        _symlink_data_tree(pa,TD,diversions)
+        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions)
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
@@ -1087,8 +1305,9 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
           p=params['OLD/Package']
           for  b in dpkg_keeps_controls :
             a='/var/lib/dpkg/info/' + p +'.'+b
-            if os.path.exists(a ):
+            if os.path.exists(a):
               os.symlink(a,TD+'OLD/CONTROL/'+b)
+              control_file_pairs.append((b,a))
         #else... we always unpack the control of a .deb
     elif 'needs-xdelta3' == a:
       if not os.path.exists('/usr/bin/xdelta3'):
@@ -1108,24 +1327,54 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
       raise DebDeltaError('patch says "'+a+"' and this is unsupported. Get a newer debdelta.",retriable=True)
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
+
+  #helper for debugging
+  if olddeb != '/':
+    def fore(): pass
+  elif DEBUG == 0:
+    def fore():
+      sys.stderr.write('(Faulty delta. Please consider the option "-d" ).\n')
+  else:
+    def fore():
+      temp_name=''
+      try:
+        (temp_fd,temp_name) = tempfile.mkstemp(prefix="debforensic_")
+        temp_file=os.fdopen(temp_fd,'w')
+        temp_file.write('Delta: '+delta+'\n')
+        forensics_rfc(temp_file,params,control_file_pairs,
+                      linked_file_pairs,diverted,diversions,conf_files)
+      except Exception,s:
+        sys.stderr.write('While creating forensic '+temp_name+' error:'+str(s)+'\n')
+      else:
+        sys.stderr.write('Faulty delta. Please send by email to mennucc1@debian.org the forensic file: '+temp_name+'\n')
+
   ##then , really execute the patch
   a=''
   if VERBOSE > 2 : a = '-v'
   script_time = - time.time()
-  system(SHELL+' -e '+a+' PATCH/patch.sh', TD)
+  try:
+    system(SHELL+' -e '+a+' PATCH/patch.sh', TD)
+  except:
+    fore()
+    raise
   script_time += time.time()
 
   #then we check for the conformance
   if  'NEW/Size' in params:
     newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
     if newdebsize != int(params['NEW/Size']):
+      fore()
       raise DebDeltaError('New deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
 
   if DO_MD5:
     if 'NEW/MD5sum' in params:
       if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
-      system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c', TD,
-             ignore_output=True)
+      try:
+        system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c', TD,
+               ignore_output=True)
+      except:
+        fore()
+        raise
     else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
 
   if newdeb:
@@ -1286,6 +1535,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   a=TD+'/OLD/CONTROL/conffiles'
   if os.path.exists(a):
     p=open(a)
+    #files do not have leading /
     old_conffiles=[ de_bar(a) for a in p.read().split('\n') ]
     p.close()
   else:
