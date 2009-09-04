@@ -132,6 +132,9 @@ ACT     = True
 DO_MD5  = True
 DEB_POLICY = ['b','s','e']
 
+#for debdeltas: test patches internally
+DO_TEST = False
+
 DO_GPG = True #this is changed a few lines below
 GPG_SIGNING_KEY = None
 if os.getuid() == 0:
@@ -147,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.197 2009/09/04 13:28:11 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.198 2009/09/04 13:42:59 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -172,7 +175,7 @@ else:
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
                  ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=',
                     'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug',
-                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=") )
+                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(3)
@@ -201,6 +204,7 @@ else:
       if N_DELTAS <= 0:
         print 'Error: -n ',v,' is negative or zero.'
         raise SystemExit(3) 
+    elif o == '--test' and action == 'deltas' : DO_TEST = True
     elif o == '--info' and action == 'patch' : INFO = True
     elif o == '--avoid'  :
       AVOID = v
@@ -2550,7 +2554,7 @@ def do_deltas(debs):
             open(delta+'-too-big','w').close()
             continue
 
-        if DEBUG :
+        if DO_TEST :
           ##patch test
           pret=None
           try:
