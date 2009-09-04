@@ -150,7 +150,7 @@ CLEAN_ALT    = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.198 2009/09/04 13:42:59 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.199 2009/09/04 15:15:52 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1092,13 +1092,13 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
         #else... we always unpack the control of a .deb
     elif 'needs-xdelta3' == a:
       if not os.path.exists('/usr/bin/xdelta3'):
-        die('This patch needs xdelta3. Please install the Debian package "xdelta3".')
+        raise DebDeltaError('This patch needs xdelta3. Please install the Debian package "xdelta3".',retriable=True)
     elif 'needs-xdelta' == a:
       if not os.path.exists('/usr/bin/xdelta'):
-        die('This patch needs xdelta. Please install the Debian package "xdelta".')
+        raise DebDeltaError('This patch needs xdelta. Please install the Debian package "xdelta".',retriable=True)
     elif 'needs-bsdiff' == a:
       if not os.path.exists('/usr/bin/bsdiff'):
-        die('This patch needs bsdiff. Please install the Debian package "bsdiff".')
+        raise DebDeltaError('This patch needs bsdiff. Please install the Debian package "bsdiff".',retriable=True)
     elif 'needs-lzma' == a:
       if not os.path.exists('/usr/bin/lzma'):
         raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
