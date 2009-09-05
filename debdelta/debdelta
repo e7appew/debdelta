@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.204 2009/09/04 22:01:19 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.205 2009/09/05 15:08:17 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1359,28 +1359,29 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
       try:
         (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
         temp_file=os.fdopen(temp_fd,'w')
-        #temp_file.write('Delta: '+delta+'\n')
-        #temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
+        temp_file.write('Delta: '+delta+'\n')
+        temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
         forensics_rfc(temp_file,params,control_file_pairs,
                       linked_file_pairs,diverted,diversions,conf_files)
         temp_file.close()
       except Exception,s:
         sys.stderr.write('!!While creating forensic '+temp_name+' error:'+str(s)+'\n')
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       delta+'\n!! '+temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+                       #delta+'\n!! '+
+                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
 
   ##then , really execute the patch
 
   if ret:
     fore()
-    raise DebDeltaError(' Error in applying patch.sh in: '+delta)
+    raise DebDeltaError('error in patch.sh.')
 
   #then we check for the conformance
   if  'NEW/Size' in params:
     newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
     if newdebsize != int(params['NEW/Size']):
       fore()
-      raise DebDeltaError('New deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
+      raise DebDeltaError('new deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
 
   if DO_MD5:
     if 'NEW/MD5sum' in params:
