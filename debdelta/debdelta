@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.206 2009/09/07 15:16:50 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.207 2009/09/07 15:19:04 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1440,17 +1440,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
   
   start_sec = time.time()
 
-  debdelta_conf=ConfigParser.SafeConfigParser()
-  debdelta_conf.read(['/etc/debdelta/debdelta.conf', expanduser('~/.debdelta/debdelta.conf')  ])
-
-  debdelta_conf_skip=[]
-  for s in debdelta_conf.sections():
-    if fnmatch.fnmatch(os.path.basename(olddeb),s):
-      opt=debdelta_conf.options(s)
-      if 'skip' in opt:
-        debdelta_conf_skip += debdelta_conf.get(s,'skip').split(';') 
-      break
-  
   #I do not like global variables but I do not know of another solution
   global bsdiff_time, bsdiff_datasize
   bsdiff_time = 0
@@ -1509,6 +1498,18 @@ def do_delta_(olddeb,newdeb,delta,TD):
   info.append('NEW/Size: '+str(newdebsize))
   params=info_2_db(info)
   
+  #scan debdelta.conf to find any special requirement
+  debdelta_conf=ConfigParser.SafeConfigParser()
+  debdelta_conf.read(['/etc/debdelta/debdelta.conf', expanduser('~/.debdelta/debdelta.conf')  ])
+
+  debdelta_conf_skip=[]
+  for s in debdelta_conf.sections():
+    if fnmatch.fnmatch(params['OLD/Package'],s):
+      opt=debdelta_conf.options(s)
+      if 'skip' in opt:
+        debdelta_conf_skip += debdelta_conf.get(s,'skip').split(';') 
+      break
+
   if VERBOSE > 1 : print '  debdelta.conf says we will skip: ', repr(debdelta_conf_skip)  
 
   gpg_hashes = {}
