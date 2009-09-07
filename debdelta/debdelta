@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.207 2009/09/07 15:19:04 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.208 2009/09/07 15:25:10 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2016,22 +2016,34 @@ def do_delta_(olddeb,newdeb,delta,TD):
     oldnames = []
     oldtarinfos = {}
     for oldtarinfo in oldtar:
-      oldname = oldtarinfo.name
+      oldname = de_bar(oldtarinfo.name)
+
+      #this always happens
+      #if VERBOSE > 3 and oldname != de_bar(oldname):
+      #  print '     filename in old tar has weird ./ in front: ' , oldname 
+
+      if  not oldtarinfo.isreg():
+        if VERBOSE > 2 : print '  skipping old non-regular ',repr(oldname)
+        continue
+
+      if  oldtarinfo.size == 0:
+        if VERBOSE > 2 : print '  skipping old empty ',repr(oldname)
+        continue
+
+      if shell_not_allowed(oldname):
+        if VERBOSE > 2 : print '  skipping non-allowed-name ',repr(oldname)
+        continue
 
       for j in debdelta_conf_skip:
         if fnmatch.fnmatch(oldname,j):
-          if VERBOSE > 2 : print '  skipping ',repr(oldname),' as per rule ',repr(j)
+          if VERBOSE > 2 : print '  skipping following as per rule ',repr(j)
           skip.append(oldname)
           break
-        
-      if  (oldname in skip) or shell_not_allowed(oldname) or \
-             not oldtarinfo.isreg() or oldtarinfo.size == 0:
-        continue
-      if VERBOSE > 3 and oldname != de_bar(oldname):
-        print '     filename in old tar has weird ./ in front: ' , oldname 
-      oldname = de_bar(oldname)
+      
       if oldname in skip:
+        if VERBOSE > 2 : print '  skipping ',repr(oldname)
         continue
+
       oldnames.append(oldname)
       oldtarinfos[oldname] = oldtarinfo
       oldtar.extract(oldtarinfo,TD+"OLD/"+CWD )
