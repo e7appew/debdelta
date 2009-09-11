@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.209 2009/09/11 11:46:11 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.210 2009/09/11 12:35:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1869,7 +1869,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if VERBOSE > 2 : print '   ',n[9:],'  (= to %d%%): ' % (100*before/newsize) ,
     delta_files(p+'.old',p+'.new')
     os.rename(TD+p+'.faked.gz',TD+o)
-    script.write("mv "+p+".new '"+o[:-3]+"' ;  gzip "+gzip_flags+" '"+o[:-3]+"'\n")
+    script.write("gzip -c "+gzip_flags+" < "+p+".new  > '"+o+"' ; rm "+p+".new\n")
     if DEBUG > 1 :  script_md5_check_file(o)
     os.unlink(TD+p+'.new.gz')
     
