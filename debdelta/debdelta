@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.210 2009/09/11 12:35:08 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.211 2009/09/11 12:37:07 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1840,7 +1840,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       return
     if a[9] != '\003' :
       if VERBOSE : print ' Warning: unknown OS in .gz format: ',oct(ord(a[9])),n
-    p='PATCH/tmp_gzip'
+    p='_tmp_'
     #save new file and unzip
     shutil.copy2(TD+n,TD+p+'.new.gz')
     system("gunzip '"+n+"'",TD)
