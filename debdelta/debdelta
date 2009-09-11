@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.208 2009/09/07 15:25:10 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.209 2009/09/11 11:46:11 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1554,7 +1554,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   if os.path.exists(a):
     p=open(a)
     #files do not have leading /
-    old_conffiles=[ de_bar(a) for a in p.read().split('\n') ]
+    old_conffiles=[ de_bar(a) for a in p.read().split('\n') if a]
     p.close()
   else:
     old_conffiles=[]
