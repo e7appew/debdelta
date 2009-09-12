@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.211 2009/09/11 12:37:07 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.212 2009/09/12 14:29:18 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -395,17 +395,17 @@ def list_tar(f):
 ALLOWED = '<>()[]{}.,;:!_-+/ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 ECHO_TEST = r"""c='\0151\0141'
-echo='echo -ne'
-if test c`$echo 'i'"$c" `o = ciiao  ; then
+E='echo -ne'
+if test c`$E 'i'"$c" `o = ciiao  ; then
  :
 else
- echo='echo -n'
- if test c`$echo  'i'"$c" `o = ciiao  ; then 
+ E='echo -n'
+ if test c`$E 'i'"$c" `o = ciiao  ; then 
   :
  else
   #echo WARNING : BUILTIN echo DOES NOT WORK OK
-  echo='/bin/echo -ne'
-  test c`$echo  'i'"$c" `o = ciiao  
+  E='/bin/echo -ne'
+  test c`$E 'i'"$c" `o = ciiao  
  fi
 fi
 """
@@ -430,7 +430,7 @@ def prepare_for_echo__(s):
   return r
 
 def apply_prepare_for_echo(shell,repres):
-    a=ECHO_TEST  + " $echo '" + repres +  "' \n exit "
+    a=ECHO_TEST  + " $E '" + repres +  "' \n exit "
     p = subprocess.Popen([shell], stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
     (i, o) = (p.stdout, p.stdin)
     o.write(a)
@@ -1473,7 +1473,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   
   #start writing script 
   script=open(TD+'PATCH/patch.sh','w')
-  script.write('#!/bin/sh -e\n')
+  script.write('#!/bin/bash -e\n')
     
   ##### unpack control.tar.gz, scan control, write  parameters
   info=[]
@@ -1653,7 +1653,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if cn == '.gz' :
       if newhead:
         s=prepare_for_echo(newhead)
-        script.write("$echo  '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
+        script.write("$E '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
       else:
         script.write('./minigzip -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
     elif  cn == '.bz2' :
@@ -1970,7 +1970,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   fake_tar_2nd=fake_tar_header_2nd()
   fake_tar_2nd_echo=prepare_for_echo(fake_tar_2nd)
   script.write("FTH='"+fake_tar_2nd_echo+"'\n")
-  script.write(ECHO_TEST)
+  script.write("E='echo -ne'\n")
   
   script.write('CR () { cat "$1"  >> OLD/mega_cat ; rm "$1" ;}\n')
   
@@ -2230,7 +2230,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #recreate also parts of the tar headers
       mega_cat.write(newtarinfo.name+fake_tar_2nd)
       s=prepare_for_echo(newtarinfo.name)
-      script.write("$echo '"+ s +"'\"${FTH}\" >> OLD/mega_cat\n")
+      script.write("$E '"+ s +"'\"${FTH}\" >> OLD/mega_cat\n")
 
       if newtarinfo.isdir():
         if VERBOSE > 2 : print '   directory   in new : ', name
@@ -2284,7 +2284,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def append_NEW_file(s):
     'appends some data to NEW.file'
     s=prepare_for_echo(s)
-    script.write("$echo '"+ s +"' >> NEW.file\n")
+    script.write("$E '"+ s +"' >> NEW.file\n")
     
   #this following is actually
   #def delta_debs_using_old(old,new):
