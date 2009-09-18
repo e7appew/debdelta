@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.212 2009/09/12 14:29:18 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.213 2009/09/18 13:39:58 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1090,7 +1090,8 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
     TD = TD + '/'
   
   HAVE_PRELINK=os.path.exists('/usr/sbin/prelink')
-
+  HAVE_LOCALEPURGE=os.path.exists('/etc/locale.nopurge') or os.path.exists('/usr/sbin/localepurge')
+  
   delta=abspath(delta)
   if newdeb:
     newdeb=abspath(newdeb)
@@ -1236,12 +1237,13 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
     p.close()
     return s, diverted
 
+  localepurged=[]
   def _symlink_data_tree(pa,TD,diversions):
     if diversions:
       s,diverted=dpkg_L_faster(pa,diversions)
     else:
       s,diverted=dpkg_L(pa)
-    for orig,divert in s:          
+    for orig,divert in s:
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
         d=os.path.dirname(a)
@@ -1258,8 +1260,13 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
-      else:
-        if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
+      elif not os.path.exists(divert):
+        if VERBOSE : print ' Disappeared file? ',divert
+        for z in ('locale','man','gnome/help','omf','doc/kde/HTML'):
+          w='/usr/share/'+z
+          if orig[:len(w)] == w:
+            localepurged.append(orig)
+      elif VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
     return s,diverted
 
 
@@ -1336,6 +1343,10 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
 
+  if localepurged and HAVE_LOCALEPURGE and not DEBUG:
+    #actually we cannot be 100% sure that the delta really needs those files, but it is quite plausible
+    raise DebDeltaError('localepurge removed '+str(len(localepurged))+' files.')
+
   a=''
   if DEBUG: a='-v'
   script_time = - time.time()
@@ -1345,34 +1356,45 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
 
   #helper for debugging
   if DEBUG == 0:
-    def fore():
-      sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
+    def fore(ret=None):
+      if ret != 2:
+        sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
   elif olddeb != '/':
-    def fore():
-      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+    def fore(ret=None):
+      if ret != 2:
+        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                         delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
   else:
-    def fore():
+    def fore(ret=None):
       temp_fore_name=''
       try:
         (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
         temp_file=os.fdopen(temp_fd,'w')
         temp_file.write('Delta: '+delta+'\n')
         temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
+        temp_file.write('LocalePurgedFilesN: '+str(len(localepurged))+'\n')
+        if ret:
+          temp_file.write('PatchExitCode: '+str(ret)+'\n')
         forensics_rfc(temp_file,params,control_file_pairs,
                       linked_file_pairs,diverted,diversions,conf_files)
         temp_file.close()
-      except Exception,s:
-        sys.stderr.write('!!While creating forensic '+temp_name+' error:'+str(s)+'\n')
-      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       #delta+'\n!! '+
-                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+      except OSError: #Exception,s:
+        die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
+      if ret != 2 and not localepurged and not HAVE_LOCALEPURGE:
+        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                         #delta+'\n!! '+
+                         temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
 
   ##then , really execute the patch
 
   if ret:
-    fore()
-    raise DebDeltaError('error in patch.sh.')
+    fore(ret)
+    if ret == 2:
+      raise KeyboardInterrupt
+    elif localepurged:
+      raise DebDeltaError('"debdelta" is incompatible with "localepurge".')
+    else:
+      raise DebDeltaError('error in patch.sh.')
 
   #then we check for the conformance
   if  'NEW/Size' in params:
