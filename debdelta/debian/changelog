@@ -1,3 +1,14 @@
+debdelta (0.33) unstable; urgency=low
+
+  * debdelta-upgrade: add checks and bails out if  localepurge
+     has deleted files from the package
+  * correct bug in parsing of /etc/debdelta/debdelta.conf :
+      now sections match to the package name, not filename
+  * debdelta: simplify deltas a bit
+  * review the output of '-v'
+
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 18 Sep 2009 15:43:16 +0200
+
 debdelta (0.32) unstable; urgency=low
 
   * debdeltas: add support for Packages.gz and  Packages.bz2 .

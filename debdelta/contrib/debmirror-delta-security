@@ -37,9 +37,9 @@ debdeltas=/usr/bin/debdeltas
 debdelta_opt=" -n 3 --delta-algo xdelta3 --sign my_favorite_key"
 
 #do mirror security
-# you will need a patched version of 'debmirror' that supports the 
-#  --trash option, see in /usr/share/debdelta
 trap "rm  $VERBOSE -f $secdebmirlock" 0
+#this version of 'debmirror' is patched to support the '--trash' option,
+#  --trash option, see in /usr/share/debdelta
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
  --nosource -h security.debian.org \
  -r debian-security -d stable/updates  --arch=i386,amd64
@@ -56,4 +56,4 @@ for p in `find dists -name Packages.gz` ; do
 done
 
 #do clean up a bit
-find $deltamir/old_debs -type f -mtime +60 | xargs -r rm
+find $deltamir/old_debs -type f -mtime +80 | xargs -r rm
