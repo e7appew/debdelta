@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.213 2009/09/18 13:39:58 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.214 2009/09/22 17:21:06 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2808,7 +2808,7 @@ def do_deltas(debs):
           print 'Would create:',delta
           continue
         
-        if VERBOSE : print 'Creating :',delta
+        if VERBOSE : print 'Creating:',delta
         ret= None
         tdir=tempo()
         try:
@@ -2822,7 +2822,7 @@ def do_deltas(debs):
           rmtree(tdir)
           raise
         except DebDeltaError,s:
-          if not VERBOSE : print 'Creating: ',delta
+          if not VERBOSE : print 'Creating:',delta
           print ' Creation of delta failed, reason: ',str(s)
           if os.path.exists(delta):
             os.unlink(delta)
@@ -2926,7 +2926,7 @@ class Predictor:
 
     s=os.path.join(basedir,'upgrade.db')
     if not os.path.exists(basedir):
-      print 'Creating: ',basedir
+      print 'Creating:',basedir
       os.makedirs(basedir)
     self.upgrade_stats=shelve.open(s,flag='c')
 
@@ -3128,7 +3128,7 @@ def delta_upgrade_(args):
           if VERBOSE >= 2 : print '  Now patching for: ',name
           try:
             ret=do_patch(delta,'/',newdeb , diversions=diversions)
-            if VERBOSE == 0 : print 'Created ',newdeb,'   '
+            if VERBOSE == 0 : print 'Created:',os.path.basename(newdeb),'   '
           except KeyboardInterrupt:
             thread.interrupt_main()
             return
@@ -3203,9 +3203,9 @@ def delta_upgrade_(args):
     if  r.status == 200 or  r.status == 206:
       pass
     if r.status == 404:
-      print a,' is not present: ',uri
+      print a,' is not present:',uri
     else:
-      print a,' is not available (',repr(r.status), r.reason,'): ', uri
+      print a,' is not available (',repr(r.status), r.reason,'):', uri
 
 
   def _parse_ContentRange(r):
