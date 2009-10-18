@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.215 2009/09/22 17:35:30 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.216 2009/10/18 14:08:10 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3390,7 +3390,12 @@ def delta_upgrade_(args):
         installed_version=p.installed.version
         candidate_version=p.candidate.version
         deb_path=string.split(deb_uri,'/')
-        deb_path=string.join(deb_path[(deb_path.index('pool')):],'/')
+        try:
+          thepoolindex=deb_path.index('pool')
+        except ValueError:
+          sys.stderr.write('! Package "%s" (version %s) does not have "pool" in the uri %s \n' % (p.name, candidate_version, deb_uri))
+          continue
+        deb_path=string.join(deb_path[(thepoolindex):],'/')
       else:
         #thanks a lot to Michael Vogt
         p._lookupRecord(True)
