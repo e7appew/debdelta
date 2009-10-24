@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.216 2009/10/18 14:08:10 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.217 2009/10/24 12:43:20 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3029,7 +3029,7 @@ def delta_upgrade_(args):
   
   original_cwd = os.getcwd()
 
-  import  thread , pickle, urllib, fcntl, atexit, signal
+  import  thread , Queue, pickle, urllib, fcntl, atexit, signal
 
   config=ConfigParser.SafeConfigParser()
   a=config.read(['/etc/debdelta/sources.conf', expanduser('~/.debdelta/sources.conf')  ])
@@ -3106,21 +3106,18 @@ def delta_upgrade_(args):
   #(to add some math in the future)
   params_of_delta={}
   
-  (qout,qin)=os.pipe()
+  patching_queue=Queue.Queue()
   thread_returns={}
   ######################## thread_do_patch
-  def thread_do_patch(qout,threads,no_delta,returns,exitcodes):
+  def thread_do_patch(que, threads, no_delta, returns, exitcodes):
       if VERBOSE > 1 : print '  Patching thread started. '
       debs_size=0
       debs_time=0
       while 1:
-        s=os.read(qout,1)
-        c=''
-        while s != '\t' :
-          c+=s
-          s=os.read(qout,1)
-        if c == '\t' or c == '': break
-        (name, delta , newdeb, deb_uri) = pickle.loads(c)
+        a = que.get()
+        if a == None:
+          break
+        (name, delta , newdeb, deb_uri) = a
         debs_time -= time.time()
         if not ACT:
           print 'Would create: ',newdeb,'   '
@@ -3515,7 +3512,7 @@ def delta_upgrade_(args):
 
   threads=[]
   threads.append(thread.start_new_thread(thread_do_patch  ,
-                 (qout,threads,no_delta, thread_returns, mainexitcodes) ) )
+                 (patching_queue, threads, no_delta, thread_returns, mainexitcodes) ) )
   
   ## second merry-go-round, try downloading available delta
   for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
@@ -3542,8 +3539,7 @@ def delta_upgrade_(args):
       #queue to apply delta
     if os.path.exists(abs_delta_name):
         #append to queue
-        c=pickle.dumps(  (name, abs_delta_name  ,newdeb, deb_uri ) )
-        os.write(qin, c + '\t' )
+        patching_queue.put( (name, abs_delta_name  ,newdeb, deb_uri ) )
     else:
       if 'u' in DEB_POLICY:
         no_delta.append( (deb_uri, newdeb) )
@@ -3551,7 +3547,7 @@ def delta_upgrade_(args):
   ## end of second merry-go-round
 
   #terminate queue
-  os.write(qin,'\t\t\t')
+  patching_queue.put(None)
   if threads:
     time.sleep(0.2)
   
