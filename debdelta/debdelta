@@ -105,6 +105,18 @@ from types import StringType, FunctionType, TupleType, ListType, DictType
 
 import shutil
 
+def get_termsize():
+  import termios, fcntl, struct
+  s = struct.pack("HHHH", 0, 0, 0, 0)
+  fd_stdout = sys.stdout.fileno()
+  x = fcntl.ioctl(fd_stdout, termios.TIOCGWINSZ, s)
+  return struct.unpack("HHHH", x)[:2]
+
+try:
+  (terminalrows , terminalcolumns) = get_termsize()
+except:
+  (terminalrows , terminalcolumns) =  (None, None) #(24, 80)
+
 ################################################# main program, read options
 
 #target of: maximum memory that bsdiff will use
@@ -133,6 +145,7 @@ AVOID   = None
 ACT     = True
 DO_MD5  = True
 DEB_POLICY = ['b','s','e']
+DO_PROGRESS = terminalcolumns != None
 
 #for debdeltas: test patches internally
 DO_TEST = False
@@ -154,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.218 2009/10/24 12:58:26 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.219 2009/10/24 13:07:43 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1350,8 +1363,24 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
   a=''
   if DEBUG: a='-v'
   script_time = - time.time()
-  temp_name, temp_err_name, ret=  system(SHELL+' -e '+a+' PATCH/patch.sh', TD,
-                                         ignore_output=True, return_output=True)
+
+  temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdelta')
+  temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdelta')
+  F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
+                     stderr=subprocess.PIPE)
+  progresschar=0.0
+  progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
+  for j in F.stderr:
+    progresschar+=len(j)
+    progress=(int(99.9 * progresschar / progresslen))
+    #runtime['patchprogress']=progress
+    if DO_PROGRESS:
+      sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+  F.wait()
+  ret=F.returncode
+  os.close(temp_err_name_fd)
+  os.close(temp_name_fd)
+
   script_time += time.time()
 
   #helper for debugging
