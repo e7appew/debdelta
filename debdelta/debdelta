@@ -154,7 +154,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.217 2009/10/24 12:43:20 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.218 2009/10/24 12:58:26 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3029,7 +3029,7 @@ def delta_upgrade_(args):
   
   original_cwd = os.getcwd()
 
-  import  thread , Queue, pickle, urllib, fcntl, atexit, signal
+  import thread, threading, Queue, pickle, urllib, fcntl, atexit, signal
 
   config=ConfigParser.SafeConfigParser()
   a=config.read(['/etc/debdelta/sources.conf', expanduser('~/.debdelta/sources.conf')  ])
@@ -3109,7 +3109,7 @@ def delta_upgrade_(args):
   patching_queue=Queue.Queue()
   thread_returns={}
   ######################## thread_do_patch
-  def thread_do_patch(que, threads, no_delta, returns, exitcodes):
+  def thread_do_patch(que, no_delta, returns, exitcodes):
       if VERBOSE > 1 : print '  Patching thread started. '
       debs_size=0
       debs_time=0
@@ -3157,7 +3157,6 @@ def delta_upgrade_(args):
       returns['debs_size']=debs_size
       returns['debs_time']=debs_time
       if VERBOSE > 1 : print '  Patching thread ended , bye bye. '
-      threads.pop()
 
   import socket, httplib
   from urlparse import urlparse
@@ -3510,9 +3509,10 @@ def delta_upgrade_(args):
 
   available_deltas.sort()
 
-  threads=[]
-  threads.append(thread.start_new_thread(thread_do_patch  ,
-                 (patching_queue, threads, no_delta, thread_returns, mainexitcodes) ) )
+  patching_thread=threading.Thread(
+    target=thread_do_patch  ,
+    args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
+  patching_thread.start()
   
   ## second merry-go-round, try downloading available delta
   for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
@@ -3548,15 +3548,15 @@ def delta_upgrade_(args):
 
   #terminate queue
   patching_queue.put(None)
-  if threads:
+  if patching_thread.isAlive():
     time.sleep(0.2)
   
   #do something useful in the meantime
   debs_down_size=0
   debs_down_time=0
-  if  threads and no_delta and VERBOSE > 1 :
+  if patching_thread.isAlive() and no_delta and VERBOSE > 1 :
     print '  Downloading deltas done, downloading debs while waiting for patching thread.'
-  while threads or ('a' in DEB_POLICY and no_delta):
+  while patching_thread.isAlive() or ('a' in DEB_POLICY and no_delta):
     if no_delta:
       uri, newdeb  = no_delta.pop()
       r=download_uri(uri , newdeb, debs_down_time, debs_down_size )
