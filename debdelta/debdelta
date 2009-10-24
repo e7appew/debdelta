@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.219 2009/10/24 13:07:43 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.220 2009/10/24 15:03:01 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1087,9 +1087,11 @@ def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
 ############ do_patch
 
 def do_patch(delta,olddeb,newdeb, info=None, diversions=None, do_gpg=DO_GPG):
+  runtime={}
   try:
     T=tempo()
-    r=do_patch_(delta,olddeb,newdeb,TD=T, info=info, diversions=diversions, do_gpg=do_gpg)
+    r=do_patch_(delta,olddeb,newdeb, T, runtime,
+                info=info, diversions=diversions, do_gpg=do_gpg)
   except:
     rmtree(T)
     if newdeb and os.path.exists(newdeb):
@@ -1098,7 +1100,8 @@ def do_patch(delta,olddeb,newdeb, info=None, diversions=None, do_gpg=DO_GPG):
   rmtree(T)
   return r
 
-def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG):
+def do_patch_(delta, olddeb, newdeb, TD, runtime,
+              info=None, diversions=None, do_gpg=DO_GPG, do_progress=DO_PROGRESS):
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -1373,10 +1376,12 @@ def do_patch_(delta,olddeb,newdeb, TD, info=None, diversions=None, do_gpg=DO_GPG
   for j in F.stderr:
     progresschar+=len(j)
     progress=(int(99.9 * progresschar / progresslen))
-    #runtime['patchprogress']=progress
-    if DO_PROGRESS:
+    runtime['patchprogress']=progress
+    if do_progress:
       sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
   F.wait()
+  if do_progress and terminalcolumns: #clean up
+    sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
   ret=F.returncode
   os.close(temp_err_name_fd)
   os.close(temp_name_fd)
@@ -3148,15 +3153,23 @@ def delta_upgrade_(args):
           break
         (name, delta , newdeb, deb_uri) = a
         debs_time -= time.time()
+        TD=tempo()
         if not ACT:
           print 'Would create: ',newdeb,'   '
         else:
           if VERBOSE >= 2 : print '  Now patching for: ',name
           try:
-            ret=do_patch(delta,'/',newdeb , diversions=diversions)
-            if VERBOSE == 0 : print 'Created:',os.path.basename(newdeb),'   '
+            returns['patchname']=os.path.basename(newdeb)
+            ret=do_patch_(delta, '/', newdeb , TD, returns,
+                         diversions=diversions, do_progress=False)
+            del returns['patchname']
+            if VERBOSE == 0 :
+              if DO_PROGRESS and  terminalcolumns:
+                sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
+              print 'Created:', os.path.basename(newdeb),'   '
           except KeyboardInterrupt:
             thread.interrupt_main()
+            rmtree(TD)
             return
           except DebDeltaError,s:
             print ' Error: applying of delta for ',name,'failed: ',str(s)
@@ -3182,10 +3195,41 @@ def delta_upgrade_(args):
             debs_size += os.path.getsize(newdeb)
             if os.path.exists(delta):
               os.unlink(delta)
+        rmtree(TD)
         debs_time += time.time()
       returns['debs_size']=debs_size
       returns['debs_time']=debs_time
       if VERBOSE > 1 : print '  Patching thread ended , bye bye. '
+      
+  #####################################
+  
+  def progress_string(statusdb):
+    download=''
+    if 'downloaduri' in statusdb:
+      download="D %2d%% (%4s/s) %s " % \
+          (statusdb.get('downloadprogress',-1),
+           statusdb.get('downloadspeed','-'),
+           statusdb['downloaduri'])
+    patch=''
+    if 'patchname' in statusdb:
+      patch='P %2d%% %s'% (statusdb.get('patchprogress',-1), statusdb['patchname'])
+    if terminalcolumns == None:
+      return download+' ; '+patch
+    if not patch:
+      return download[:(terminalcolumns-1)]
+    if not download:
+      return patch[:(terminalcolumns-1)]
+    ld=len(download)
+    lp=len(patch)
+    b=ld + lp
+    if b < terminalcolumns - 4 :
+      return download+' ; '+patch
+    a=float(terminalcolumns-4)/float(b)
+    ld=int(ld*a)
+    lp=int(lp*a)
+    return download[:ld] + ' ; ' + patch[:lp]
+  
+  #########################################
 
   import socket, httplib
   from urlparse import urlparse
@@ -3299,7 +3343,7 @@ def delta_upgrade_(args):
       return r, outnametemp
 
   ###################################### download_uri
-  def download_uri(uri,outname,conn_time,len_downloaded):
+  def download_uri(uri, outname, conn_time, len_downloaded, statusdb):
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
       outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
@@ -3318,6 +3362,8 @@ def delta_upgrade_(args):
         ##re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(t))
         ####re["If-Range"] =  time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(t))
         re["Range"] =  "bytes=%li-" % ( (long(l)-1) )
+      #start downloading
+      start_time=time.time()
       try:
         conn=conn_by_url(uri)
         if conn == None : return
@@ -3364,31 +3410,29 @@ def delta_upgrade_(args):
         out=open(outnametemp,'a')
         out.seek(a)
         out.truncate()
-      a=time.time()
-      conn_time-=a
-      j=out.tell()
+      j=0
       s=r.read(1024)
-      while s and j < total_len :
+      while s and out.tell() < total_len :
         j+=len(s)
         out.write(s)
-        if not DEBUG and a + 0.5 < time.time() :
-          a=time.time()
-          sys.stderr.write("%d%% (%4s/s) %s \r" % \
-                           (100*j / total_len,
-                            SizeToStr((j+len_downloaded)/(a+conn_time)),\
-                            os.path.basename(uri)[:50] ))
+        statusdb['downloadprogress']=99.9 * out.tell() / total_len
+        a=time.time() + conn_time - start_time
+        if a  > 0.5 :
+          statusdb['downloadspeed']=SizeToStr(float(j+len_downloaded)/a)
         s=r.read(1024)
       out.close()
       r.close()
-      conn_time+=time.time()
-      if DEBUG:
-        a = time.time() - a
+      #end of download
+      a=time.time() - start_time
+      if not DO_PROGRESS:
         print "Downloaded, time: %.2fsec speed: %4s/sec uri: %s " % (a , SizeToStr(total_len / (a+0.001)) , uri)
       else:
+        if terminalcolumns:
+          sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
         sys.stderr.write("Downloaded:  %s \n" % os.path.basename(uri) )
       os.rename(outnametemp,outname)
       #FIXME this is incorrect by 1024 bytes
-      return  conn_time , (j+len_downloaded)      
+      return  conn_time + a, (j+len_downloaded)
 
   ###################################### end of HTTP stuff
   
@@ -3489,7 +3533,10 @@ def delta_upgrade_(args):
         available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
         continue
       #if not, download its first part
+
+      deltas_down_time-=time.time()
       r = download_1k_uri(uri,abs_delta_name)
+      deltas_down_time+=time.time()
 
       if  r == None or isinstance(r, httplib.HTTPException) or isinstance(r, socket.error) :
         if VERBOSE : print ' You may wish to rerun, to get also: ',uri
@@ -3515,6 +3562,9 @@ def delta_upgrade_(args):
             no_delta.append( (deb_uri, newdeb) )
           elif VERBOSE : print ' No deb-policy "u", no download of ',deb_uri
         continue
+
+      if os.path.isfile(tempname):
+        deltas_down_size+=os.path.getsize(tempname)
       
       #get remote file length
       if r.status == 206:
@@ -3538,10 +3588,26 @@ def delta_upgrade_(args):
 
   available_deltas.sort()
 
+
+  if DEBUG or VERBOSE:
+    print ' So far, downloaded, time: %.2fsec size: %s speed: %4s/sec' % \
+        (deltas_down_time, SizeToStr(deltas_down_size), SizeToStr(deltas_down_size/float(deltas_down_time+0.001)))
+
+  ############# start downloading and progress thread
+
   patching_thread=threading.Thread(
     target=thread_do_patch  ,
     args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
   patching_thread.start()
+  
+  def print_progress(common_db):
+    while True:
+      time.sleep(0.2)
+      sys.stderr.write(progress_string(common_db)+'\r')
+  
+  if DO_PROGRESS and terminalcolumns > 4:
+    progress_thread=threading.Thread(target=print_progress, args=( thread_returns, ) )
+    progress_thread.start()
   
   ## second merry-go-round, try downloading available delta
   for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
@@ -3557,7 +3623,9 @@ def delta_upgrade_(args):
         continue
     
     if not os.path.exists(abs_delta_name):
-      r=download_uri(uri , abs_delta_name , deltas_down_time,deltas_down_size)
+      thread_returns['downloaduri']=os.path.basename(uri)
+      r=download_uri(uri, abs_delta_name, deltas_down_time, deltas_down_size, thread_returns)
+      del thread_returns['downloaduri']
       if r == None or isinstance(r, httplib.HTTPException) :
         if VERBOSE : print ' You may wish to rerun,  to get also: ',uri
         continue
@@ -3588,7 +3656,7 @@ def delta_upgrade_(args):
   while patching_thread.isAlive() or ('a' in DEB_POLICY and no_delta):
     if no_delta:
       uri, newdeb  = no_delta.pop()
-      r=download_uri(uri , newdeb, debs_down_time, debs_down_size )
+      r=download_uri(uri, newdeb, debs_down_time, debs_down_size, thread_returns)
       if isinstance(r, httplib.HTTPException) :
         if VERBOSE : print ' You may wish to rerun, to get also: ',uri
         continue
