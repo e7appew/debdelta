@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.223 2009/10/25 12:37:31 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.224 2009/10/25 13:39:35 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3068,8 +3068,7 @@ def delta_upgrade_(args):
   proxies=urllib2.getproxies()
   if VERBOSE and proxies:
     print ' Proxy settings detected in the environment; using "urllib2" for downloading; but'
-    print '  this disables the downloading of debs when the delta is too big,'
-    print '  (see "--deb-policy" in man page) and is in general slower and buggier.'
+    print '  this disables some features and is in general slower and buggier. See man page.'
   #for example, urllib2 transforms http response "401"  into "404" , and "302" into "200"
   
   config=ConfigParser.SafeConfigParser()
