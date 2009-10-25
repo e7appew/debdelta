@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.225 2009/10/25 13:47:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.226 2009/10/25 13:58:54 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3165,14 +3165,21 @@ def delta_upgrade_(args):
         else:
           if VERBOSE >= 2 : print '  Now patching for: ',name
           try:
+            start_time=time.time()
             returns['patchname']=os.path.basename(newdeb)
             ret=do_patch_(delta, '/', newdeb , TD, returns,
                          diversions=diversions, do_progress=False)
             del returns['patchname']
-            if VERBOSE == 0 :
-              if DO_PROGRESS and  terminalcolumns:
+            l = os.path.getsize(newdeb)
+            a=time.time() - start_time
+            if DO_PROGRESS:
+              if  terminalcolumns:
                 sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
-              print 'Created:', os.path.basename(newdeb),'   '
+              sys.stderr.write("Created,    time: %.2fsec speed: %4s/sec : %s\n" % \
+                  (a , SizeToStr(l / (a+0.001)) , os.path.basename(newdeb)))
+            else:
+              print  "Created,    time: %.2fsec speed: %4s/sec : %s " % \
+                  (a , SizeToStr(l / (a+0.001)) , os.path.basename(newdeb))
           except KeyboardInterrupt:
             thread.interrupt_main()
             rmtree(TD)
