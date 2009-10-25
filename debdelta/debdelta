@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.221 2009/10/25 11:27:34 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.222 2009/10/25 11:29:54 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3693,7 +3693,9 @@ def delta_upgrade_(args):
   while patching_thread.isAlive() or ('a' in DEB_POLICY and no_delta):
     if no_delta:
       uri, newdeb  = no_delta.pop()
+      thread_returns['downloaduri']=os.path.basename(uri)
       r=download_uri(uri, newdeb, debs_down_time, debs_down_size, thread_returns)
+      del thread_returns['downloaduri']
       if r == None or isinstance(r, httplib.HTTPException) :
         if VERBOSE : print ' You may wish to rerun, to get also: ',uri
         continue
