@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.224 2009/10/25 13:39:35 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.225 2009/10/25 13:47:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3451,16 +3451,16 @@ def delta_upgrade_(args):
       r.close()
       #end of download
       a=time.time() - start_time
-      if total_len == None:
-        total_len = os.path.getsize(outnametemp)
+      #if total_len == None:
+      #  total_len = os.path.getsize(outnametemp)
       if not DO_PROGRESS:
         print "Downloaded, time: %.2fsec speed: %4s/sec : %s " % \
-              (a , SizeToStr(total_len / (a+0.001)) , os.path.basename(uri))
+              (a , SizeToStr(j / (a+0.001)) , os.path.basename(uri))
       else:
         if terminalcolumns:
           sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
         sys.stderr.write("Downloaded, time: %.2fsec speed: %4s/sec : %s\n" % \
-                         (a , SizeToStr(total_len / (a+0.001)) , os.path.basename(uri)))
+                         (a , SizeToStr(j / (a+0.001)) , os.path.basename(uri)))
       
       os.rename(outnametemp,outname)
       #FIXME this is incorrect by 1024 bytes
