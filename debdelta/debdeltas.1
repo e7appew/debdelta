@@ -1,20 +1,45 @@
 .TH DEBDELTAS "1" "aug 2009" "debdeltas" "User Commands"
 .SH NAME 
 
-debdeltas \- compute changes between Debian packages
+debdeltas \- compute deltas between Debian packages
 
 .SH SYNOPSIS
 
 .B debdeltas 
-[\fIOPTION\fR]... \fIFILES\fR ....
+[\fIOPTION\fR]... \fIFILE\fR ... \fIDIR\fR ... \fIPackages\fR....
 
 .SH DESCRIPTION
 
-This program computes changes between many Debian packages FILES;
-FILES are grouped by package name and architecture; 
-for each group, N deltas are computed (see "-n" option);
-these are stored in many delta file; the location of
-the delta files is specified by the "--dir" option.
+This program computes deltas between many Debian packages.
+The explanation of what a delta is is in 
+.BR debdelta (1).
+
+.SH COMMAND ARGUMENTS
+
+Non-option arguments are accepted in 3 forms, and all contribute in
+creating the internal list of Debian packages.  If the argument is a Debian
+package, \fIdebdeltas\fR adds it to the list; if the argument is a directory,
+\fIdebdeltas\fR scans it for Debian packages to be added to the list; if
+the argument is \fIPackages\fR files (that is, an index file such as
+those found in Debian mirrors - even the zipped ones - see
+.BR apt-ftparchive (1)
+) then \fIdebdeltas\fR  parses it and adds all Debian packages to the list.
+
+Then debdelta groups all found Debian packages by name and
+architecture. For each group, N deltas are computed (see "-n" option);
+to this end, the newest version is isolated, and then
+deltas are computed from the N nearest version to the newest version.
+These deltas are stored in many delta files with appropriate names of
+the form \fIname_oldversion_newversion_architecture.debdelta\fR ; the
+location of the delta files is specified by the "--dir" option.
+
+Note that the location of files in a \fIPackages\fR index
+is specified relative to the base of the mirror, e.g.
+
+.I Filename: pool/main/i/ibm/ibm_3_i386.deb
+
+For this reason, any \fIPackages\fR argument must presented
+with a long path (that contains at least the \fIdists\fR directory).
 
 .SH OPTIONS
 .TP
@@ -22,13 +47,20 @@ the delta files is specified by the "--dir" option.
 force saving of deltas in this DIR
 (otherwise they go in the dir of the newer deb_file)
 .TP
-\fB\-\-alt \fIDIR
-for any cmdline argument, search for debs also in this dir
+\fB\-\-alt \fIFILE\fR, \fIDIR\fR or \fIPackages
+this is parsed as the non-option command line,
+but the found packages are never considered as the newest version.
 .TP
 In the above two options, if DIR ends in // , then the dirname
 of the cmdline argument will be appended to DIR, as well; this is
 useful when creating archives, since it can recreate the
 directory tree.
+.TP
+\fB\-\-before \fIPackages
+this is parsed as the non-option command line,
+but the found packages are never considered as the newest version,
+and moreover they may be non-existent, but moved in a --alt
+directory.
 .TP
 .B --signing-key \fI KEY
 key used to sign the deltas (using GnuPG)
@@ -93,6 +125,11 @@ See
 
 See 
 .BR debdelta (1)
+
+.SH EXAMPLE
+
+See the example script
+.I /usr/share/debdelta/debmirror-delta-security
 
 .SH "REPORTING BUGS"
 

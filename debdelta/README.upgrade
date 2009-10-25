@@ -3,7 +3,7 @@ may upgrade their Debian box using 'debdelta-upgrade' (that download
 package 'deltas' -- see README).
 
 This document is an introduction to the framework that is behind
-'debdelta-upgrade'.
+'debdelta-upgrade', and is also used by 'cupt'.
 
 In the following, I will simplify (in places, quite a lot).
 

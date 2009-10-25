@@ -1,3 +1,22 @@
+debdelta (0.34) unstable; urgency=low
+
+  * FAQ, README , man pages , control :
+    the file created by 'debdelta' is always called a 'delta'
+    (before it was also called a 'debdelta' or a 'patch')
+  * add references to CUPT in debian/control and man 
+    page (Closes: #551009).
+  * debpatch.sh needs bash (Closes: #547744).
+  * debpatch , debdelta-upgrade : report patching progress
+  * debdelta-upgrade :
+    - provide proxy support (see  man page) (Closes: #551478).
+    - download debs also from ftp debian archives (Closes: #472766)
+    - better computation of download speeds (Closes: #463671).
+    - properly print when a delta is too big
+       and when it is not present, or other download error
+       (but this does not work with http proxies)
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 25 Oct 2009 14:43:54 +0100
+
 debdelta (0.33) unstable; urgency=low
 
   * debdelta-upgrade: add checks and bails out if  localepurge

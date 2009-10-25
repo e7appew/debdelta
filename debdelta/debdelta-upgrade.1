@@ -42,7 +42,7 @@ verbose (can be added multiple times).
 .TP
 \fB\-d
 print full traceback on Python errors; save useful info in temporary files 
-in case that a delta fails; do not print download progress in stderr.
+in case that a delta fails.
 .TP
 \fB\-k
 keep temporary files (use for debugging).
@@ -70,10 +70,14 @@ slow Internet connection is available, the above procedure may
 be significantly faster than "apt-get update && apt-get upgrade".
 (Use -v to see how much faster.)
 
+The package manager 
+.I cupt
+uses deltas as well when upgrading.
+
 .SH SECURITY
 
 A Debian package that is recreated using
-.I debbdelta-upgrade
+.I debdelta-upgrade
 is byte-by-byte
 identical to the original one; when  "apt-get upgrade"
 is subsequently invoked, the cryptographic
@@ -88,6 +92,45 @@ MD5 and SHA1 (using the same method as
 will refuse to apply corrupted or unsigned deltas (but, see option
 .B -A
 ).
+
+.SH DOWNLOAD AND PROXIES
+
+.I debdelta-upgrade
+downloads deltas in two passes: in the first pass, it downloads the
+first kB of each delta, to extract the delta parameters and
+to examine them. If the delta does not exist, it checks
+if the 
+.I debdelta-too-big
+timestamp file exists, and then it examines the
+.I \-\-deb\-policy
+to decide if to download the deb instead.
+In the second pass, it downloads (the rest of) the 
+deltas and queues them in a patching queue.
+
+For plain direct http downloads,
+.I debdelta-upgrade
+uses the Python library 'httplib'
+directly; in particular, it uses keep-alive
+features, and this speeds up a lot the first pass.
+
+If  variables such as
+.I http_proxy
+are set in the environment,  then instead 
+.I debdelta-upgrade
+will use the 'urllib2' module: this 
+though slows down sensibly the first pass above
+(since 'urllib2' opens a different connection for
+each download); moreover 'urllib2' seems
+to be buggy in some places
+(for example, it transforms http response 
+"401"  into "404" , and "302" into "200")
+so the output explanation printed by
+.I debdelta-upgrade
+in case of download error may be wrong; and the
+.I \-\-deb\-policy
+.I "big"
+is currently disabled (until the author understands 'urllib2'
+better).
 
 .SH EXIT STATUS
 

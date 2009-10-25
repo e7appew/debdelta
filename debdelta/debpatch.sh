@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/bash -e
 
 # Copyright (C) 2008 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later

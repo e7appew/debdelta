@@ -64,7 +64,7 @@ Q: What about backward compatibility? If I create a delta with the
    most recent version of 'debdelta' will another user be able to
    apply it with an older version of 'debpatch' ?
 
-A: It depends. A debdelta contains some keywords in the form
+A: It depends. A delta contains some keywords in the form
   'need-xxxx' that express the requirements for applying it, so that
   'debpatch' will graciously fail if it sees that it cannot satisfy
   the requirements, and ask to be upgraded.

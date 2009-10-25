@@ -9,13 +9,17 @@ Package: debdelta
 Architecture: any
 Depends: python, bzip2, binutils, ${shlibs:Depends}
 Recommends: python-apt, xdelta3, xdelta, lzma, xdelta, bsdiff
+Enhances: cupt
 Description: diff and patch utilities which work with Debian packages
  debdelta is a program suite designed to compute changes between
- Debian packages. These changes (debdeltas) are similar to the output of the
+ Debian packages. These changes (deltas) are similar to the output of the
  "diff" program in that they may be used to store and transmit only the
  changes between Debian packages.
  .
- This suite contains 'debdelta-upgrade', that downloads debdeltas and use them
+ This suite contains 'debdelta-upgrade', that downloads deltas and use them
  to create all Debian packages needed for an 'apt-get upgrade'.
  It may be used in a Debian/unstable host (to speed up download of new
  packages), or in a Debian/stable host (for security updates).
+ .
+ Similarly, when this package is installed, the 'cupt' package manager will
+ use deltas to upgrade the host.
