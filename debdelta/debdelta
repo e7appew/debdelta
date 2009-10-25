@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.222 2009/10/25 11:29:54 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.223 2009/10/25 12:37:31 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3638,13 +3638,15 @@ def delta_upgrade_(args):
   patching_thread.start()
   
   def print_progress(common_db):
-    while True:
+    while 'STOP' not in common_db:
       time.sleep(0.2)
       sys.stderr.write(progress_string(common_db)+'\r')
   
   if DO_PROGRESS and terminalcolumns > 4:
     progress_thread=threading.Thread(target=print_progress, args=( thread_returns, ) )
     progress_thread.start()
+  else:
+    progress_thread=None
   
   ## second merry-go-round, try downloading available delta
   for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
@@ -3682,8 +3684,6 @@ def delta_upgrade_(args):
 
   #terminate queue
   patching_queue.put(None)
-  if patching_thread.isAlive():
-    time.sleep(0.2)
   
   #do something useful in the meantime
   debs_down_size=0
@@ -3708,6 +3708,14 @@ def delta_upgrade_(args):
   for i in http_conns:
     if http_conns[i] != None :
       http_conns[i].close()
+  
+  while patching_thread.isAlive():
+    time.sleep(0.1)
+  
+  #terminate progress report
+  thread_returns['STOP']=True
+  while progress_thread != None and progress_thread.isAlive():
+    time.sleep(0.1)
   
   elaps =  time.time() - start_sec
   print 'Delta-upgrade statistics:'
