@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.230 2009/10/28 18:31:28 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.231 2009/10/28 19:11:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1190,7 +1190,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   ar_list_delta=[a[4:] for a in open(temp_name).read().split('\n') if a]
   os.unlink(temp_name)
   os.unlink(temp_err_name)
-  
+
+  runtime['patchprogress']=1
+
   is_signed=False
   for a in ar_list_delta:
     if a[:4] == '_gpg':
@@ -1204,7 +1206,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       die("Delta is not signed: "+delta)
     elif do_gpg != None:
       print "WARNING, delta is not signed: "+delta
-  
+
+  runtime['patchprogress']=2
+
   _info_patch_unzip_(TD)
 
   if not os.path.isfile(TD+'PATCH/patch.sh'):
@@ -1218,6 +1222,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       info=_scan_delta_info_(TD)
   params=info_2_db(info)
   
+  runtime['patchprogress']=3
+
   #this is not needed in preparing the patch, but may help in forensic
   conf_files=[]
   a='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
@@ -1243,6 +1249,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     if olddebsize != int(params['OLD/Size']):
       raise DebDeltaError('Old deb size is '+str(olddebsize)+' instead of '+params['OLD/Size'])
   
+  runtime['patchprogress']=4
+
   if DEBUG > 1 :
       #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
       dpkg_params={}
@@ -1266,6 +1274,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           elif  params[a] != dpkg_params[a] :
             die( 'Error : in debdelta , '+a+' = ' +params[a] +\
                  '\nin old/installed deb, '+a+' = ' +dpkg_params[a])
+
+  runtime['patchprogress']=5
 
   ### some auxiliary routines, separated to make code more readable
 
@@ -1323,7 +1333,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     progresslen=float(len(s))
     for orig,divert in s:
       progressline+=1
-      progress=(int(10.0 * float(progressline) / progresslen))
+      progress=(int(6.0 + 6.0 * float(progressline) / progresslen))
       runtime['patchprogress']=progress
       if do_progress:
         sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
@@ -1385,6 +1395,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   linked_file_pairs,diverted=[],[]
   
   ###see into parameters: the patch may need extra info and data
+
+  runtime['patchprogress']=6
+
   for a in params:
     if 'needs-old' == a:
       if olddeb == '/':
@@ -1439,6 +1452,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     #actually we cannot be 100% sure that the delta really needs those files, but it is quite plausible
     raise DebDeltaError('localepurge removed '+str(len(localepurged))+' files.')
 
+  runtime['patchprogress']=12
+
   a=''
   if DEBUG: a='-v'
   script_time = - time.time()
@@ -1451,7 +1466,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
   for j in F.stderr:
     progresschar+=len(j)
-    progress=(int(10.0 + 89.9 * progresschar / progresslen))
+    progress=(int(12.0 + 84.0 * progresschar / progresslen))
     runtime['patchprogress']=progress
     if do_progress:
       sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
@@ -1463,6 +1478,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   os.close(temp_name_fd)
 
   script_time += time.time()
+  runtime['patchprogress']=97
 
   #helper for debugging
   if DEBUG == 0:
@@ -1526,6 +1542,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   os.unlink(temp_name)
   os.unlink(temp_err_name)
+
+  runtime['patchprogress']=99
 
   if newdeb:
       shutil.move(TD+'NEW.file',newdeb)
