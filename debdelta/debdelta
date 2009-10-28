@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.228 2009/10/28 18:24:56 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.229 2009/10/28 18:25:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1177,6 +1177,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   
   
   start_sec = time.time()
+  runtime['patchprogress']=0
   
   check_is_delta(delta)
 
