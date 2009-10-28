@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.233 2009/10/28 20:13:43 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.234 2009/10/28 20:15:06 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1482,14 +1482,14 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   #helper for debugging
   if DEBUG == 0:
-    def fore(ret=None):
+    def fore():
       sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
   elif olddeb != '/':
-    def fore(ret=None):
+    def fore():
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
                        delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
   else:
-    def fore(ret=None):
+    def fore():
       temp_fore_name=''
       try:
         (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
@@ -1516,7 +1516,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif localepurged:
       raise DebDeltaError('"debdelta" is incompatible with "localepurge".')
     else:
-      fore(ret)
+      fore()
       raise DebDeltaError('error in patch.sh.')
 
   #then we check for the conformance
