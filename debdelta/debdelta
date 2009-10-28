@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.232 2009/10/28 20:00:33 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.233 2009/10/28 20:13:43 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1483,13 +1483,11 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   #helper for debugging
   if DEBUG == 0:
     def fore(ret=None):
-      if ret != 2:
-        sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
+      sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
   elif olddeb != '/':
     def fore(ret=None):
-      if ret != 2:
-        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                         delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
   else:
     def fore(ret=None):
       temp_fore_name=''
@@ -1506,10 +1504,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.close()
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
-      if ret != 2:
-        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                         #delta+'\n!! '+
-                         temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                       #delta+'\n!! '+
+                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
 
   ##then , really execute the patch
 
