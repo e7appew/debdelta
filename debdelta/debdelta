@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.227 2009/10/28 18:23:13 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.228 2009/10/28 18:24:56 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1120,6 +1120,28 @@ def elf_info(f):
   #, e_machine, e_version
   else:
     return False, 0, 0, 0, 0
+
+def parse_prelink_conf():
+    " fixme , currently unused and incomplete " 
+    prelinked_dirs=[]
+    prelinked_blacklist=[]
+    prelinked_blacklist_glob=[]
+    for a in open('/etc/prelink.conf'):
+      if a[0] == '#':
+        continue
+      a=a.strip()
+      b=a.split()
+      if len(b) != 2:
+        print '  (sorry this line of /etc/prelink.conf cannot be parsed currently: "'+a+'")'
+        continue
+      if '-b' == b[0]:
+        if '/' in b[1]:
+          prelinked_blacklist.append(b[1])
+        else:
+          prelinked_blacklist_glob.append(b[1])
+      elif '-l' == b[0]:
+        prelinked_dirs.append(b[1])
+  
 
 ############ do_patch
 
