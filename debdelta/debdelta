@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.229 2009/10/28 18:25:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.230 2009/10/28 18:31:28 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1314,12 +1314,20 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     return s, diverted
 
   localepurged=[]
-  def _symlink_data_tree(pa,TD,diversions):
+  def _symlink_data_tree(pa,TD,diversions,runtime):
     if diversions:
       s,diverted=dpkg_L_faster(pa,diversions)
     else:
       s,diverted=dpkg_L(pa)
+    progressline=0
+    progresslen=float(len(s))
     for orig,divert in s:
+      progressline+=1
+      progress=(int(10.0 * float(progressline) / progresslen))
+      runtime['patchprogress']=progress
+      if do_progress:
+        sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+      runtime['patchprogress']=float(progress)/float(len(s))*10.0
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
         d=os.path.dirname(a)
@@ -1384,7 +1392,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
-        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions)
+        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
@@ -1443,7 +1451,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
   for j in F.stderr:
     progresschar+=len(j)
-    progress=(int(99.9 * progresschar / progresslen))
+    progress=(int(10.0 + 89.9 * progresschar / progresslen))
     runtime['patchprogress']=progress
     if do_progress:
       sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
