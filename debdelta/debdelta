@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.226 2009/10/25 13:58:54 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.227 2009/10/28 18:23:13 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1083,6 +1083,43 @@ def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
       else:
         o.write(" \n")
 
+def elf_info(f):
+  "returns (is_elf, ei_class, ei_data, ei_osabi, e_type)"
+  import struct
+  elfheader=open(f).read(32)
+  if len(elfheader) == 32:
+    #parse as specified in /usr/include/elf.h from libelf-dev
+    EI_CLASS={1:'ELFCLASS32',
+              2:'ELFCLASS64'}
+    EI_DATA={1:'ELFDATA2LSB', #  2's complement, little endian 
+             2:'ELFDATA2MSB'} #  2's complement, big endian
+    EI_OSABI={0:'ELFOSABI_SYSV',# UNIX System V ABI
+              1:'ELFOSABI_HPUX',
+              2:'ELFOSABI_NETBSD',
+              3:'ELFOSABI_LINUX',
+              #fixme insert other values
+              9:'ELFOSABI_FREEBSD',
+              12:'ELFOSABI_OPENBSD',
+              97:'ELFOSABI_ARM'}
+    #fixme what is ET_LOOS , ET_HIOS  , ET_LOPROC, ET_HIPROC ??
+    ET_TYPE={1:'ET_REL', #Relocatable file
+             2:'ET_EXEC', #Executable file
+             3:'ET_DYN',  #Shared object file
+             4:'ET_CORE'} #Core file
+    
+    ei_magic, ei_class, ei_data, ei_version, ei_osabi, ei_abiversion = \
+        struct.unpack_from('4sBBBBB',elfheader)
+    e_type, e_machine, e_version = struct.unpack_from('HHI',elfheader,16)
+    #FIXME I think I am getting ei_osabi wrong.. it is always 0
+    is_elf = '\x7fELF' == ei_magic 
+    #and ei_class in (1,2) and \
+    #    ei_version == 1 and \
+    #    ei_data in (1,2) and e_type>0 and e_machine>0 and e_version>0
+    return is_elf, EI_CLASS.get(ei_class), \
+        EI_DATA.get(ei_data), EI_OSABI.get(ei_osabi), ET_TYPE.get(e_type)
+  #, e_machine, e_version
+  else:
+    return False, 0, 0, 0, 0
 
 ############ do_patch
 
@@ -1266,13 +1303,21 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         if not os.path.exists(d):
           os.makedirs(d)
         #the following code idea was provided by roman@khimov.ru
-        if HAVE_PRELINK and '\x7fELF' == open(divert).read(4):
+        unprelink=False
+        if HAVE_PRELINK :
+          is_elf, ei_class, ei_data, ei_osabi, e_type = elf_info(divert)
+          #according to prelink-0.0.20090925/src/main.c
+          unprelink = is_elf and e_type in ('ET_DYN','ET_EXEC')
+        if unprelink:
           shutil.copyfile(divert, a)
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
-            os.system('/usr/sbin/prelink -u '+a)
+          if DEBUG or VERBOSE:
+            ret=os.system('/usr/sbin/prelink -u '+a)
           else:
-            os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+            ret=os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+          if ret==2:
+            raise KeyboardInterrupt
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
