@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.234 2009/10/28 20:15:06 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.235 2009/10/29 07:12:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1333,11 +1333,10 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     progresslen=float(len(s))
     for orig,divert in s:
       progressline+=1
-      progress=(int(6.0 + 6.0 * float(progressline) / progresslen))
+      progress=6.0 + 6.0 * float(progressline) / progresslen
       runtime['patchprogress']=progress
       if do_progress:
         sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
-      runtime['patchprogress']=float(progress)/float(len(s))*10.0
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
         d=os.path.dirname(a)
