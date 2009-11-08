@@ -1,3 +1,14 @@
+debdelta (0.35) unstable; urgency=low
+
+  * do not try to unprelink kernel modules
+    (big speedup for kernel updates)
+  * some adjustments to patching progress reports
+  * Bug fix: HTTPResponse instance has no attribute 'message',
+    thanks to Ritesh Raj Sarraf (Closes: #555038)
+  * correct buglet when 'localepurge' is detected and a patch fails
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 08 Nov 2009 21:20:51 +0100
+
 debdelta (0.34) unstable; urgency=low
 
   * FAQ, README , man pages , control :
@@ -8,7 +19,7 @@ debdelta (0.34) unstable; urgency=low
   * debpatch.sh needs bash (Closes: #547744).
   * debpatch , debdelta-upgrade : report patching progress
   * debdelta-upgrade :
-    - provide proxy support (see  man page) (Closes: #551478).
+    - provide proxy support (see  man page) (Closes: #551748).
     - download debs also from ftp debian archives (Closes: #472766)
     - better computation of download speeds (Closes: #463671).
     - properly print when a delta is too big

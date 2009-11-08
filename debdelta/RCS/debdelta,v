@@ -1,9 +1,59 @@
-head	1.226;
+head	1.236;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.236
+date	2009.11.08.20.18.54;	author debdev;	state Exp;
+branches;
+next	1.235;
+
+1.235
+date	2009.10.29.07.12.46;	author debdev;	state Exp;
+branches;
+next	1.234;
+
+1.234
+date	2009.10.28.20.15.06;	author debdev;	state Exp;
+branches;
+next	1.233;
+
+1.233
+date	2009.10.28.20.13.43;	author debdev;	state Exp;
+branches;
+next	1.232;
+
+1.232
+date	2009.10.28.20.00.33;	author debdev;	state Exp;
+branches;
+next	1.231;
+
+1.231
+date	2009.10.28.19.11.46;	author debdev;	state Exp;
+branches;
+next	1.230;
+
+1.230
+date	2009.10.28.18.31.28;	author debdev;	state Exp;
+branches;
+next	1.229;
+
+1.229
+date	2009.10.28.18.25.36;	author debdev;	state Exp;
+branches;
+next	1.228;
+
+1.228
+date	2009.10.28.18.24.56;	author debdev;	state Exp;
+branches;
+next	1.227;
+
+1.227
+date	2009.10.28.18.23.13;	author debdev;	state Exp;
+branches;
+next	1.226;
 
 1.226
 date	2009.10.25.13.58.54;	author debdev;	state Exp;
@@ -1140,9 +1190,9 @@ desc
 @@
 
 
-1.226
+1.236
 log
-@debdelta-upgrade : print "Created..." string similar to download
+@HTTPResponse instance has  no attribute 'message'
 @
 text
 @#!/usr/bin/python
@@ -1314,7 +1364,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.225 2009/10/25 13:47:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.235 2009/10/29 07:12:46 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2230,6 +2280,65 @@ def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
       else:
         o.write(" \n")
 
+def elf_info(f):
+  "returns (is_elf, ei_class, ei_data, ei_osabi, e_type)"
+  import struct
+  elfheader=open(f).read(32)
+  if len(elfheader) == 32:
+    #parse as specified in /usr/include/elf.h from libelf-dev
+    EI_CLASS={1:'ELFCLASS32',
+              2:'ELFCLASS64'}
+    EI_DATA={1:'ELFDATA2LSB', #  2's complement, little endian 
+             2:'ELFDATA2MSB'} #  2's complement, big endian
+    EI_OSABI={0:'ELFOSABI_SYSV',# UNIX System V ABI
+              1:'ELFOSABI_HPUX',
+              2:'ELFOSABI_NETBSD',
+              3:'ELFOSABI_LINUX',
+              #fixme insert other values
+              9:'ELFOSABI_FREEBSD',
+              12:'ELFOSABI_OPENBSD',
+              97:'ELFOSABI_ARM'}
+    #fixme what is ET_LOOS , ET_HIOS  , ET_LOPROC, ET_HIPROC ??
+    ET_TYPE={1:'ET_REL', #Relocatable file
+             2:'ET_EXEC', #Executable file
+             3:'ET_DYN',  #Shared object file
+             4:'ET_CORE'} #Core file
+    
+    ei_magic, ei_class, ei_data, ei_version, ei_osabi, ei_abiversion = \
+        struct.unpack_from('4sBBBBB',elfheader)
+    e_type, e_machine, e_version = struct.unpack_from('HHI',elfheader,16)
+    #FIXME I think I am getting ei_osabi wrong.. it is always 0
+    is_elf = '\x7fELF' == ei_magic 
+    #and ei_class in (1,2) and \
+    #    ei_version == 1 and \
+    #    ei_data in (1,2) and e_type>0 and e_machine>0 and e_version>0
+    return is_elf, EI_CLASS.get(ei_class), \
+        EI_DATA.get(ei_data), EI_OSABI.get(ei_osabi), ET_TYPE.get(e_type)
+  #, e_machine, e_version
+  else:
+    return False, 0, 0, 0, 0
+
+def parse_prelink_conf():
+    " fixme , currently unused and incomplete " 
+    prelinked_dirs=[]
+    prelinked_blacklist=[]
+    prelinked_blacklist_glob=[]
+    for a in open('/etc/prelink.conf'):
+      if a[0] == '#':
+        continue
+      a=a.strip()
+      b=a.split()
+      if len(b) != 2:
+        print '  (sorry this line of /etc/prelink.conf cannot be parsed currently: "'+a+'")'
+        continue
+      if '-b' == b[0]:
+        if '/' in b[1]:
+          prelinked_blacklist.append(b[1])
+        else:
+          prelinked_blacklist_glob.append(b[1])
+      elif '-l' == b[0]:
+        prelinked_dirs.append(b[1])
+  
 
 ############ do_patch
 
@@ -2265,6 +2374,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   
   
   start_sec = time.time()
+  runtime['patchprogress']=0
   
   check_is_delta(delta)
 
@@ -2277,7 +2387,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   ar_list_delta=[a[4:] for a in open(temp_name).read().split('\n') if a]
   os.unlink(temp_name)
   os.unlink(temp_err_name)
-  
+
+  runtime['patchprogress']=1
+
   is_signed=False
   for a in ar_list_delta:
     if a[:4] == '_gpg':
@@ -2291,7 +2403,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       die("Delta is not signed: "+delta)
     elif do_gpg != None:
       print "WARNING, delta is not signed: "+delta
-  
+
+  runtime['patchprogress']=2
+
   _info_patch_unzip_(TD)
 
   if not os.path.isfile(TD+'PATCH/patch.sh'):
@@ -2305,6 +2419,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       info=_scan_delta_info_(TD)
   params=info_2_db(info)
   
+  runtime['patchprogress']=3
+
   #this is not needed in preparing the patch, but may help in forensic
   conf_files=[]
   a='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
@@ -2330,6 +2446,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     if olddebsize != int(params['OLD/Size']):
       raise DebDeltaError('Old deb size is '+str(olddebsize)+' instead of '+params['OLD/Size'])
   
+  runtime['patchprogress']=4
+
   if DEBUG > 1 :
       #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
       dpkg_params={}
@@ -2353,6 +2471,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           elif  params[a] != dpkg_params[a] :
             die( 'Error : in debdelta , '+a+' = ' +params[a] +\
                  '\nin old/installed deb, '+a+' = ' +dpkg_params[a])
+
+  runtime['patchprogress']=5
 
   ### some auxiliary routines, separated to make code more readable
 
@@ -2401,25 +2521,40 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     return s, diverted
 
   localepurged=[]
-  def _symlink_data_tree(pa,TD,diversions):
+  def _symlink_data_tree(pa,TD,diversions,runtime):
     if diversions:
       s,diverted=dpkg_L_faster(pa,diversions)
     else:
       s,diverted=dpkg_L(pa)
+    progressline=0
+    progresslen=float(len(s))
     for orig,divert in s:
+      progressline+=1
+      progress=6.0 + 6.0 * float(progressline) / progresslen
+      runtime['patchprogress']=progress
+      if do_progress:
+        sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
         d=os.path.dirname(a)
         if not os.path.exists(d):
           os.makedirs(d)
         #the following code idea was provided by roman@@khimov.ru
-        if HAVE_PRELINK and '\x7fELF' == open(divert).read(4):
+        unprelink=False
+        if HAVE_PRELINK :
+          is_elf, ei_class, ei_data, ei_osabi, e_type = elf_info(divert)
+          #according to prelink-0.0.20090925/src/main.c
+          unprelink = is_elf and e_type in ('ET_DYN','ET_EXEC')
+        if unprelink:
           shutil.copyfile(divert, a)
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
-            os.system('/usr/sbin/prelink -u '+a)
+          if DEBUG or VERBOSE:
+            ret=os.system('/usr/sbin/prelink -u '+a)
           else:
-            os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+            ret=os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+          if ret==2:
+            raise KeyboardInterrupt
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
@@ -2456,6 +2591,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   linked_file_pairs,diverted=[],[]
   
   ###see into parameters: the patch may need extra info and data
+
+  runtime['patchprogress']=6
+
   for a in params:
     if 'needs-old' == a:
       if olddeb == '/':
@@ -2463,7 +2601,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
-        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions)
+        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
@@ -2510,6 +2648,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     #actually we cannot be 100% sure that the delta really needs those files, but it is quite plausible
     raise DebDeltaError('localepurge removed '+str(len(localepurged))+' files.')
 
+  runtime['patchprogress']=12
+
   a=''
   if DEBUG: a='-v'
   script_time = - time.time()
@@ -2522,7 +2662,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
   for j in F.stderr:
     progresschar+=len(j)
-    progress=(int(99.9 * progresschar / progresslen))
+    progress=(int(12.0 + 84.0 * progresschar / progresslen))
     runtime['patchprogress']=progress
     if do_progress:
       sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
@@ -2534,19 +2674,18 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   os.close(temp_name_fd)
 
   script_time += time.time()
+  runtime['patchprogress']=97
 
   #helper for debugging
   if DEBUG == 0:
-    def fore(ret=None):
-      if ret != 2:
-        sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
+    def fore():
+      sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
   elif olddeb != '/':
-    def fore(ret=None):
-      if ret != 2:
-        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                         delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+    def fore():
+      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
   else:
-    def fore(ret=None):
+    def fore():
       temp_fore_name=''
       try:
         (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
@@ -2561,20 +2700,19 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.close()
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
-      if ret != 2 and not localepurged and not HAVE_LOCALEPURGE:
-        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                         #delta+'\n!! '+
-                         temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+      sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                       #delta+'\n!! '+
+                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
 
   ##then , really execute the patch
 
   if ret:
-    fore(ret)
     if ret == 2:
       raise KeyboardInterrupt
     elif localepurged:
       raise DebDeltaError('"debdelta" is incompatible with "localepurge".')
     else:
+      fore()
       raise DebDeltaError('error in patch.sh.')
 
   #then we check for the conformance
@@ -2597,6 +2735,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   os.unlink(temp_name)
   os.unlink(temp_err_name)
+
+  runtime['patchprogress']=99
 
   if newdeb:
       shutil.move(TD+'NEW.file',newdeb)
@@ -4437,7 +4577,7 @@ def delta_upgrade_(args):
           conn=conn_by_url(uri)
           conn.request("GET", urllib2.quote(uri_p[2]),headers=headers)
           r = conn.getresponse()
-          return r, r.status, r.message, r.msg
+          return r, r.status, r.reason, r.msg
         except (httplib.HTTPException, socket.error),e:
           puke( 'Connection error (fatal): ',uri_p[1])
           mainexitcodes.append(1)
@@ -5163,6 +5303,203 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.235
+log
+@patch : eliminate useless wrong line to compute progress
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.234 2009/10/28 20:15:06 debdev Exp $"
+d3383 1
+a3383 1
+          return r, r.status, r.message, r.msg
+@
+
+
+1.234
+log
+@patch :  fore() : delete unused argument
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.233 2009/10/28 20:13:43 debdev Exp $"
+d1336 1
+a1336 1
+      progress=(int(6.0 + 6.0 * float(progressline) / progresslen))
+a1339 1
+      runtime['patchprogress']=float(progress)/float(len(s))*10.0
+@
+
+
+1.233
+log
+@patch : delete useless 'if'
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.232 2009/10/28 20:00:33 debdev Exp $"
+d1485 1
+a1485 1
+    def fore(ret=None):
+d1488 1
+a1488 1
+    def fore(ret=None):
+d1492 1
+a1492 1
+    def fore(ret=None):
+d1519 1
+a1519 1
+      fore(ret)
+@
+
+
+1.232
+log
+@patch : correct logic in generating forensic when '-d' and localepurge
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.231 2009/10/28 19:11:46 debdev Exp $"
+d1486 1
+a1486 2
+      if ret != 2:
+        sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
+d1489 2
+a1490 3
+      if ret != 2:
+        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                         delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+d1507 3
+a1509 4
+      if ret != 2:
+        sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
+                         #delta+'\n!! '+
+                         temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+@
+
+
+1.231
+log
+@patch : introduce some intermediate progress numbers
+ (though usually they run away quite fast)
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.230 2009/10/28 18:31:28 debdev Exp $"
+d1509 1
+a1509 1
+      if ret != 2 and not localepurged and not HAVE_LOCALEPURGE:
+a1516 1
+    fore(ret)
+d1522 1
+@
+
+
+1.230
+log
+@patch : report progress of symlink tree creation
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.229 2009/10/28 18:25:36 debdev Exp $"
+d1193 3
+a1195 1
+  
+d1209 3
+a1211 1
+  
+d1225 2
+d1252 2
+d1278 2
+d1336 1
+a1336 1
+      progress=(int(10.0 * float(progressline) / progresslen))
+d1398 3
+d1455 2
+d1469 1
+a1469 1
+    progress=(int(10.0 + 89.9 * progresschar / progresslen))
+d1481 1
+d1546 2
+@
+
+
+1.229
+log
+@do_patch : reset patch progress at start
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.228 2009/10/28 18:24:56 debdev Exp $"
+d1317 1
+a1317 1
+  def _symlink_data_tree(pa,TD,diversions):
+d1322 2
+d1325 6
+d1395 1
+a1395 1
+        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions)
+d1454 1
+a1454 1
+    progress=(int(99.9 * progresschar / progresslen))
+@
+
+
+1.228
+log
+@def parse_prelink_conf(): just a draft
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.227 2009/10/28 18:23:13 debdev Exp $"
+d1180 1
+@
+
+
+1.227
+log
+@patch :
+  call prelink only on e_type in ('ET_DYN','ET_EXEC')  (speeds
+    up kernel patching quite a lot)
+  and if prelink is ctrl-c interrupted, exit
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.226 2009/10/25 13:58:54 debdev Exp $"
+d1124 22
+@
+
+
+1.226
+log
+@debdelta-upgrade : print "Created..." string similar to download
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.225 2009/10/25 13:47:46 debdev Exp $"
+d1086 37
+d1306 6
+a1311 1
+        if HAVE_PRELINK and '\x7fELF' == open(divert).read(4):
+d1315 2
+a1316 1
+            os.system('/usr/sbin/prelink -u '+a)
+d1318 3
+a1320 1
+            os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
 @
 
 
