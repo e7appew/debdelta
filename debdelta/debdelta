@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.235 2009/10/29 07:12:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.236 2009/11/08 20:18:54 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3380,7 +3380,7 @@ def delta_upgrade_(args):
           conn=conn_by_url(uri)
           conn.request("GET", urllib2.quote(uri_p[2]),headers=headers)
           r = conn.getresponse()
-          return r, r.status, r.message, r.msg
+          return r, r.status, r.reason, r.msg
         except (httplib.HTTPException, socket.error),e:
           puke( 'Connection error (fatal): ',uri_p[1])
           mainexitcodes.append(1)
