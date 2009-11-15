@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.237 2009/11/15 17:33:03 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.238 2009/11/15 17:38:38 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1168,7 +1168,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   HAVE_LOCALEPURGE=os.path.exists('/etc/locale.nopurge') or os.path.exists('/usr/sbin/localepurge')
   
   delta=abspath(delta)
+  newdebshortname='-'
   if newdeb:
+    newdebshortname=newdeb
     newdeb=abspath(newdeb)
   if olddeb != '/':
     olddeb=abspath(olddeb)
@@ -1336,7 +1338,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       progress=6.0 + 6.0 * float(progressline) / progresslen
       runtime['patchprogress']=progress
       if do_progress:
-        sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+        sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
         d=os.path.dirname(a)
@@ -1468,7 +1470,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     progress=(int(12.0 + 84.0 * progresschar / progresslen))
     runtime['patchprogress']=progress
     if do_progress:
-      sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+      sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
   F.wait()
   if do_progress and terminalcolumns: #clean up
     sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
