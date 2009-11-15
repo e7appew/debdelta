@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.236 2009/11/08 20:18:54 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.237 2009/11/15 17:33:03 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1770,44 +1770,45 @@ def do_delta_(olddeb,newdeb,delta,TD):
     patch_append(pp)
     return p
       
-  def unzip(f, in_script_as_well = None):
+  def unzip(f):
     c=''
     if f[-3:] == '.gz' :
       system('gunzip '+f,TD)
-      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('gunzip '+f+'\n')
       f=f[:-3]
       c='.gz'
     elif  f[-4:] == '.bz2' :
       system('bunzip2 '+f,TD)
-      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('bzip2 '+f+'\n')
       f=f[:-4]
       c='.bz2'
     elif f[-5:] == '.lzma' :
       info_append('needs-lzma')
       system('unlzma '+f,TD)
-      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('lzma '+f+'\n')
       f=f[:-5]
       c='.lzma'
-    else: assert(0)
+    else: raise NotImplementedError(' dont know how to decompress '+repr(f))
     return (f,c)
 
-  def script_zip(n,cn,newhead=None):
-    "inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)"
+  def script_zip(n, cn,newhead=None):
+    """inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)
+    This is obsolete, not efficient, left as a compatibility layer."""
+    script.write('cat "'+n+'" | ')
+    script_zip_piped(cn, newhead)
+    script.write(" > '"+n+cn+"' && rm '"+n+"'\n")
+
+  def script_zip_piped(cn,newhead=None):
+    "inverts the unzip() function, with piped.behaviour"
     if cn == '.gz' :
       if newhead:
         s=prepare_for_echo(newhead)
-        script.write("$E '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
+        script.write("($E '"+ s +"' && ./minigzip -9 | tail -c +"+str(len(newhead)+1)+')')
       else:
-        script.write('./minigzip -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+        script.write('./minigzip -9')
     elif  cn == '.bz2' :
       info_append('needs-minibzip2')
-      script.write('./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+      script.write('./minibzip2 -9')
     elif cn == '.lzma' :
       info_append('needs-lzma')
-      script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+      script.write('lzma -9')
     else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
@@ -2153,7 +2154,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
     #### scan once for regular files
     if type(old_filename) == StringType :
-      (old_filename,old_filename_ext) = unzip(old_filename,False)
+      (old_filename,old_filename_ext) = unzip(old_filename)
       oldtar = tarfile.open(TD+old_filename, "r")
     else:
       old_filename_ext=None
