@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.238 2009/11/15 17:38:38 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.239 2009/12/06 19:02:26 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1814,55 +1814,56 @@ def do_delta_(olddeb,newdeb,delta,TD):
     else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
+    "delta of file 'o' to 'n' using/producing patch 'p' "
     #bdiff
     #http://www.webalice.it/g_pochini/bdiff/
     if algo == 'bdiff':
       system('~/debdelta/bdiff-1.0.5/bdiff -q -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+' ; rm '+p+'\n')    
+      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+'\n')    
     #zdelta
     #http://cis.poly.edu/zdelta/
     elif algo == 'zdelta':
       system('~/debdelta/zdelta-2.1/zdc  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+'\n')
     #bdelta 
     #http://deltup.sf.net
     elif algo == 'bdelta':
       system('~/debdelta/bdelta-0.1.0/bdelta  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+' ; rm '+p+'\n')
+      script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+'\n')
     #diffball
     #http://developer.berlios.de/projects/diffball/
     elif algo == 'diffball':
       system('~/debdelta/diffball-0.7.2/differ  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+'\n')
     #rdiff
     elif algo == 'rdiff':
       system('rdiff signature '+o+' sign_file.tmp  ',TD)
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
-      script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('rdiff patch '+o+' '+p+' '+n+'\n')
     #xdelta3
     elif algo == 'xdelta3' :
       system('xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD,(o,n))
-      script.write('xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('xdelta3 -d -s '+o+' '+p+' '+n+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
     ##But bsdiff is sooooo slow!
     elif algo == 'bsdiff' : # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
       system('bsdiff  '+o+' '+n+' '+p,TD,(o,n))
-      script.write('bspatch '+o+' '+n+' '+p+'; rm '+p+'\n')
+      script.write('bspatch '+o+' '+n+' '+p+'\n')
     #seems that 'xdelta' is buggy on 64bit and different-endian machines
     #xdelta does not deal with different endianness!
     elif algo == 'xdelta-bzip' :
       system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
       system('bzip2 -9 '+p,TD,(p,))
-      script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+      script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+'\n')
       p  += '.bz2'
     elif algo == 'xdelta' :
       system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
-      script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+      script.write('xdelta patch '+p+' '+o+' '+n+'\n')
     elif algo == 'jojodiff' :
       system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+'\n')
     else: raise AssertionError(' unsupported delta algo ')
     return p
 
@@ -1892,7 +1893,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     bsdiff_time += tim
     bsdiff_datasize += nsize
     #
-    script.write('rm '+o+'\n')
+    script.write('rm '+o+' '+p+'\n')
     ## how did we fare ?
     deltasize = os.path.getsize(TD+p)
     if VERBOSE > 1 :
