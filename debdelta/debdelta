@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.239 2009/12/06 19:02:26 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.240 2009/12/06 21:46:18 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1462,10 +1462,11 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdelta')
   temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdelta')
   F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
-                     stderr=subprocess.PIPE)
+                     stderr=subprocess.PIPE, stdout=temp_name_fd)
   progresschar=0.0
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
   for j in F.stderr:
+    os.write(temp_err_name_fd, j)
     progresschar+=len(j)
     progress=(int(12.0 + 84.0 * progresschar / progresslen))
     runtime['patchprogress']=progress
@@ -1482,13 +1483,20 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   runtime['patchprogress']=97
 
   #helper for debugging
+  def tempos():
+    if os.path.getsize(temp_name):
+      sys.stderr.write('!! '+temp_name+'\n')
+    if os.path.getsize(temp_err_name):
+      sys.stderr.write('!! '+temp_err_name+'\n')
+
   if DEBUG == 0:
     def fore():
       sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
   elif olddeb != '/':
     def fore():
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+                       delta+'\n!! '+ olddeb+'\n')
+      tempos()
   else:
     def fore():
       temp_fore_name=''
@@ -1508,6 +1516,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
                        #delta+'\n!! '+
                        temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+      tempos()
 
   ##then , really execute the patch
 
