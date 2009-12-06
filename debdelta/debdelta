@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.240 2009/12/06 21:46:18 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.241 2009/12/06 22:05:32 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1459,8 +1459,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if DEBUG: a='-v'
   script_time = - time.time()
 
-  temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdelta')
-  temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdelta')
+  temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
+  temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
   F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
                      stderr=subprocess.PIPE, stdout=temp_name_fd)
   progresschar=0.0
@@ -1514,8 +1514,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       #delta+'\n!! '+
-                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+                       temp_fore_name+'\n')
       tempos()
 
   ##then , really execute the patch
