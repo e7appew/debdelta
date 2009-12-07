@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.242 2009/12/07 15:51:16 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.243 2009/12/07 16:00:11 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3681,14 +3681,21 @@ def delta_upgrade_(args):
       
       #download first part of delta
       abs_delta_name= DEB_DIR+'/'+delta_name
+
       #maybe it is already here
       if os.path.exists(abs_delta_name):
-        l=os.path.getsize(abs_delta_name)
+        a = abs_delta_name
+      else:
+        a = DEB_DIR+'/partial/'+delta_name
+        if not os.path.exists(a):
+          a = None
+      if a:
+        l=os.path.getsize(a)
         if VERBOSE > 1 : print '  Already here: ',abs_delta_name
-        s=get_info_fast(abs_delta_name)
+        s=get_info_fast(a)
         if s:
           params_of_delta[p.name]=info_2_db(s)
-        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, a )  )
         continue
       #if not, download its first part
 
