@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.241 2009/12/06 22:05:32 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.242 2009/12/07 15:51:16 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3181,6 +3181,9 @@ def delta_upgrade_(args):
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
   
+  if DO_PROGRESS:
+    sys.stderr.write('Initializing APT cache...\r')
+  
   try:
     import  apt_pkg
   except ImportError:
@@ -3195,8 +3198,14 @@ def delta_upgrade_(args):
 
   from apt import SizeToStr
 
+  if DO_PROGRESS:
+    sys.stderr.write('Upgrading APT cache...\r')
+
   cache=apt.Cache()
   cache.upgrade(True)
+
+  if DO_PROGRESS:
+    sys.stderr.write('Upgraded APT cache.   \r')
 
   diversions=scan_diversions()
 
@@ -3236,9 +3245,7 @@ def delta_upgrade_(args):
   #these are the packages that do not have a delta
   no_delta = []
 
-  start_sec = time.time()
-  len_deltas=0
-
+  total_time = -time.time()
 
   ##### predictor for patching time
   if DO_PREDICTOR:
@@ -3583,11 +3590,21 @@ def delta_upgrade_(args):
   #this is a list of tuples of .....
   available_deltas=[]
 
+  not_available_deltas=[]
+
   #distinguish python-apt version 0.7.7 from 0.7.10
   newer_python_apt = hasattr(apt.package,'Version')
-
+  
+  progress_count=0
+  
   ## first merry-go-round, use package cache to fill available_deltas
   for p in cache :
+    #print progress
+    if DO_PROGRESS :
+      progress_count+=1
+      if 0 == (progress_count & 63):
+        sys.stderr.write('%2.1f%% %s\r' % ((float(progress_count) * 100.0 / len(cache)), ' '*max(1,terminalcolumns-7)))
+
     if p.isInstalled and p.markedUpgrade :
       if args and p.name not in args:
         continue
@@ -3675,6 +3692,10 @@ def delta_upgrade_(args):
         continue
       #if not, download its first part
 
+      if DO_PROGRESS:
+        sys.stderr.write('%2.1f%% Downloading head of %s...   \r' % \
+                           ((float(progress_count) * 100.0 / len(cache)),
+                         p.name))
       deltas_down_time-=time.time()
       status, tempname, l = download_1k_uri(uri,abs_delta_name)
       deltas_down_time+=time.time()
@@ -3687,6 +3708,7 @@ def delta_upgrade_(args):
         continue
 
       if status == 404: 
+        not_available_deltas.append(p.name)
         if uri[:7] == 'http://' and not proxies: # FIXME support ftp or proxies
           bigrstatus = test_uri(uri+'-too-big')
         else:
@@ -3702,6 +3724,13 @@ def delta_upgrade_(args):
             no_delta.append( (deb_uri, newdeb) )
           elif VERBOSE : print ' No deb-policy "u", no download of ',deb_uri
         continue
+
+      if VERBOSE:
+          print 'Debdelta is present:', delta_name, tempname,'    '
+      elif DO_PROGRESS:
+        sys.stderr.write('%2.1f%% Downloaded head of %s.      \r' % \
+                           ((float(progress_count) * 100.0 / len(cache)),
+                         p.name))
 
       if os.path.isfile(tempname):
         deltas_down_size+=os.path.getsize(tempname)
@@ -3733,10 +3762,18 @@ def delta_upgrade_(args):
 
   available_deltas.sort()
 
+  if not available_deltas:
+    print 'No deltas available to be downloaded/applied.'
+    return
+
 
   if DEBUG or VERBOSE:
     print ' So far, downloaded, time: %.2fsec size: %s speed: %4s/sec' % \
         (deltas_down_time, SizeToStr(deltas_down_size), SizeToStr(deltas_down_size/float(deltas_down_time+0.001)))
+
+  if DEBUG or VERBOSE:
+    print 'Deltas: %d present and %d not.' % (len(available_deltas), len(not_available_deltas))
+    print 'Need to get %s of deltas.' %  SizeToStr(sum([a[0] for a in available_deltas]))
 
   ############# start downloading and progress thread
 
@@ -3825,7 +3862,7 @@ def delta_upgrade_(args):
   while progress_thread != None and progress_thread.isAlive():
     time.sleep(0.1)
   
-  elaps =  time.time() - start_sec
+  total_time += time.time()
   print 'Delta-upgrade statistics:'
   if VERBOSE:
     if deltas_down_time :
@@ -3843,10 +3880,10 @@ def delta_upgrade_(args):
       t=debs_down_time
       print ' download debs size %s time %dsec speed %s/sec' %\
             ( SizeToStr(a) , int(t), SizeToStr(a / t ))
-  if elaps:
+  if total_time:
     a=float(debs_down_size  + thread_returns['debs_size'])
     print ' total resulting debs size %s time %dsec virtual speed: %s/sec' %  \
-          ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
+          ( SizeToStr(a ), int(total_time), SizeToStr(a / total_time))
     
   return max(mainexitcodes)
 
