@@ -1,3 +1,15 @@
+debdelta (0.36) unstable; urgency=low
+
+  * switch license of man pages to 
+     GNU Library General Public License (version 2)
+    (same as the code), with permission of the author
+  * patching : fix forensic report
+  * debdelta-upgrade 
+    - better progress reporting
+    - if '-v' , report info as apt-get does (Closes: #557780).
+
+ -- A Mennucc1 <mennucc1@debian.org>  Tue, 08 Dec 2009 10:17:11 +0100
+
 debdelta (0.35) unstable; urgency=low
 
   * do not try to unprelink kernel modules

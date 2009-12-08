@@ -1,9 +1,44 @@
-head	1.236;
+head	1.243;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.243
+date	2009.12.07.16.00.11;	author debdev;	state Exp;
+branches;
+next	1.242;
+
+1.242
+date	2009.12.07.15.51.16;	author debdev;	state Exp;
+branches;
+next	1.241;
+
+1.241
+date	2009.12.06.22.05.32;	author debdev;	state Exp;
+branches;
+next	1.240;
+
+1.240
+date	2009.12.06.21.46.18;	author debdev;	state Exp;
+branches;
+next	1.239;
+
+1.239
+date	2009.12.06.19.02.26;	author debdev;	state Exp;
+branches;
+next	1.238;
+
+1.238
+date	2009.11.15.17.38.38;	author debdev;	state Exp;
+branches;
+next	1.237;
+
+1.237
+date	2009.11.15.17.33.03;	author debdev;	state Exp;
+branches;
+next	1.236;
 
 1.236
 date	2009.11.08.20.18.54;	author debdev;	state Exp;
@@ -1190,9 +1225,9 @@ desc
 @@
 
 
-1.236
+1.243
 log
-@HTTPResponse instance has  no attribute 'message'
+@debdelta_upgrade : do not redownload partial downloads of deltas
 @
 text
 @#!/usr/bin/python
@@ -1364,7 +1399,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.235 2009/10/29 07:12:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.242 2009/12/07 15:51:16 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2365,7 +2400,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   HAVE_LOCALEPURGE=os.path.exists('/etc/locale.nopurge') or os.path.exists('/usr/sbin/localepurge')
   
   delta=abspath(delta)
+  newdebshortname='-'
   if newdeb:
+    newdebshortname=newdeb
     newdeb=abspath(newdeb)
   if olddeb != '/':
     olddeb=abspath(olddeb)
@@ -2533,7 +2570,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       progress=6.0 + 6.0 * float(progressline) / progresslen
       runtime['patchprogress']=progress
       if do_progress:
-        sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+        sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
       if os.path.isfile(divert) and not os.path.islink(divert) :
         a=TD+'OLD/DATA'+orig
         d=os.path.dirname(a)
@@ -2654,18 +2691,19 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if DEBUG: a='-v'
   script_time = - time.time()
 
-  temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdelta')
-  temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdelta')
+  temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
+  temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
   F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
-                     stderr=subprocess.PIPE)
+                     stderr=subprocess.PIPE, stdout=temp_name_fd)
   progresschar=0.0
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
   for j in F.stderr:
+    os.write(temp_err_name_fd, j)
     progresschar+=len(j)
     progress=(int(12.0 + 84.0 * progresschar / progresslen))
     runtime['patchprogress']=progress
     if do_progress:
-      sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+      sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
   F.wait()
   if do_progress and terminalcolumns: #clean up
     sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
@@ -2677,13 +2715,20 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   runtime['patchprogress']=97
 
   #helper for debugging
+  def tempos():
+    if os.path.getsize(temp_name):
+      sys.stderr.write('!! '+temp_name+'\n')
+    if os.path.getsize(temp_err_name):
+      sys.stderr.write('!! '+temp_err_name+'\n')
+
   if DEBUG == 0:
     def fore():
       sys.stderr.write('(Faulty delta. Please consider retrying with the option "-d" ).\n')
   elif olddeb != '/':
     def fore():
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+                       delta+'\n!! '+ olddeb+'\n')
+      tempos()
   else:
     def fore():
       temp_fore_name=''
@@ -2701,8 +2746,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
       sys.stderr.write('!!Faulty delta. Please send by email to '+EMAIL+' the files:\n!! '+
-                       #delta+'\n!! '+
-                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+                       temp_fore_name+'\n')
+      tempos()
 
   ##then , really execute the patch
 
@@ -2967,96 +3012,98 @@ def do_delta_(olddeb,newdeb,delta,TD):
     patch_append(pp)
     return p
       
-  def unzip(f, in_script_as_well = None):
+  def unzip(f):
     c=''
     if f[-3:] == '.gz' :
       system('gunzip '+f,TD)
-      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('gunzip '+f+'\n')
       f=f[:-3]
       c='.gz'
     elif  f[-4:] == '.bz2' :
       system('bunzip2 '+f,TD)
-      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('bzip2 '+f+'\n')
       f=f[:-4]
       c='.bz2'
     elif f[-5:] == '.lzma' :
       info_append('needs-lzma')
       system('unlzma '+f,TD)
-      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
-        script.write('lzma '+f+'\n')
       f=f[:-5]
       c='.lzma'
-    else: assert(0)
+    else: raise NotImplementedError(' dont know how to decompress '+repr(f))
     return (f,c)
 
-  def script_zip(n,cn,newhead=None):
-    "inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)"
+  def script_zip(n, cn,newhead=None):
+    """inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)
+    This is obsolete, not efficient, left as a compatibility layer."""
+    script.write('cat "'+n+'" | ')
+    script_zip_piped(cn, newhead)
+    script.write(" > '"+n+cn+"' && rm '"+n+"'\n")
+
+  def script_zip_piped(cn,newhead=None):
+    "inverts the unzip() function, with piped.behaviour"
     if cn == '.gz' :
       if newhead:
         s=prepare_for_echo(newhead)
-        script.write("$E '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
+        script.write("($E '"+ s +"' && ./minigzip -9 | tail -c +"+str(len(newhead)+1)+')')
       else:
-        script.write('./minigzip -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+        script.write('./minigzip -9')
     elif  cn == '.bz2' :
       info_append('needs-minibzip2')
-      script.write('./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+      script.write('./minibzip2 -9')
     elif cn == '.lzma' :
       info_append('needs-lzma')
-      script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+      script.write('lzma -9')
     else: assert(0)
 
   def delta_files__(o,n,p,algo='bsdiff'):
+    "delta of file 'o' to 'n' using/producing patch 'p' "
     #bdiff
     #http://www.webalice.it/g_pochini/bdiff/
     if algo == 'bdiff':
       system('~/debdelta/bdiff-1.0.5/bdiff -q -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+' ; rm '+p+'\n')    
+      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+'\n')    
     #zdelta
     #http://cis.poly.edu/zdelta/
     elif algo == 'zdelta':
       system('~/debdelta/zdelta-2.1/zdc  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+'\n')
     #bdelta 
     #http://deltup.sf.net
     elif algo == 'bdelta':
       system('~/debdelta/bdelta-0.1.0/bdelta  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+' ; rm '+p+'\n')
+      script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+'\n')
     #diffball
     #http://developer.berlios.de/projects/diffball/
     elif algo == 'diffball':
       system('~/debdelta/diffball-0.7.2/differ  '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+'\n')
     #rdiff
     elif algo == 'rdiff':
       system('rdiff signature '+o+' sign_file.tmp  ',TD)
       system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
-      script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('rdiff patch '+o+' '+p+' '+n+'\n')
     #xdelta3
     elif algo == 'xdelta3' :
       system('xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD,(o,n))
-      script.write('xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('xdelta3 -d -s '+o+' '+p+' '+n+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
     ##But bsdiff is sooooo slow!
     elif algo == 'bsdiff' : # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
       system('bsdiff  '+o+' '+n+' '+p,TD,(o,n))
-      script.write('bspatch '+o+' '+n+' '+p+'; rm '+p+'\n')
+      script.write('bspatch '+o+' '+n+' '+p+'\n')
     #seems that 'xdelta' is buggy on 64bit and different-endian machines
     #xdelta does not deal with different endianness!
     elif algo == 'xdelta-bzip' :
       system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
       system('bzip2 -9 '+p,TD,(p,))
-      script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+      script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+'\n')
       p  += '.bz2'
     elif algo == 'xdelta' :
       system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
-      script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+      script.write('xdelta patch '+p+' '+o+' '+n+'\n')
     elif algo == 'jojodiff' :
       system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
-      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+'\n')
     else: raise AssertionError(' unsupported delta algo ')
     return p
 
@@ -3086,7 +3133,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     bsdiff_time += tim
     bsdiff_datasize += nsize
     #
-    script.write('rm '+o+'\n')
+    script.write('rm '+o+' '+p+'\n')
     ## how did we fare ?
     deltasize = os.path.getsize(TD+p)
     if VERBOSE > 1 :
@@ -3350,7 +3397,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
     #### scan once for regular files
     if type(old_filename) == StringType :
-      (old_filename,old_filename_ext) = unzip(old_filename,False)
+      (old_filename,old_filename_ext) = unzip(old_filename)
       oldtar = tarfile.open(TD+old_filename, "r")
     else:
       old_filename_ext=None
@@ -4366,6 +4413,9 @@ def delta_upgrade_(args):
   import warnings
   warnings.simplefilter("ignore",FutureWarning)
   
+  if DO_PROGRESS:
+    sys.stderr.write('Initializing APT cache...\r')
+  
   try:
     import  apt_pkg
   except ImportError:
@@ -4380,8 +4430,14 @@ def delta_upgrade_(args):
 
   from apt import SizeToStr
 
+  if DO_PROGRESS:
+    sys.stderr.write('Upgrading APT cache...\r')
+
   cache=apt.Cache()
   cache.upgrade(True)
+
+  if DO_PROGRESS:
+    sys.stderr.write('Upgraded APT cache.   \r')
 
   diversions=scan_diversions()
 
@@ -4421,9 +4477,7 @@ def delta_upgrade_(args):
   #these are the packages that do not have a delta
   no_delta = []
 
-  start_sec = time.time()
-  len_deltas=0
-
+  total_time = -time.time()
 
   ##### predictor for patching time
   if DO_PREDICTOR:
@@ -4768,11 +4822,21 @@ def delta_upgrade_(args):
   #this is a list of tuples of .....
   available_deltas=[]
 
+  not_available_deltas=[]
+
   #distinguish python-apt version 0.7.7 from 0.7.10
   newer_python_apt = hasattr(apt.package,'Version')
-
+  
+  progress_count=0
+  
   ## first merry-go-round, use package cache to fill available_deltas
   for p in cache :
+    #print progress
+    if DO_PROGRESS :
+      progress_count+=1
+      if 0 == (progress_count & 63):
+        sys.stderr.write('%2.1f%% %s\r' % ((float(progress_count) * 100.0 / len(cache)), ' '*max(1,terminalcolumns-7)))
+
     if p.isInstalled and p.markedUpgrade :
       if args and p.name not in args:
         continue
@@ -4849,17 +4913,28 @@ def delta_upgrade_(args):
       
       #download first part of delta
       abs_delta_name= DEB_DIR+'/'+delta_name
+
       #maybe it is already here
       if os.path.exists(abs_delta_name):
-        l=os.path.getsize(abs_delta_name)
+        a = abs_delta_name
+      else:
+        a = DEB_DIR+'/partial/'+delta_name
+        if not os.path.exists(a):
+          a = None
+      if a:
+        l=os.path.getsize(a)
         if VERBOSE > 1 : print '  Already here: ',abs_delta_name
-        s=get_info_fast(abs_delta_name)
+        s=get_info_fast(a)
         if s:
           params_of_delta[p.name]=info_2_db(s)
-        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, a )  )
         continue
       #if not, download its first part
 
+      if DO_PROGRESS:
+        sys.stderr.write('%2.1f%% Downloading head of %s...   \r' % \
+                           ((float(progress_count) * 100.0 / len(cache)),
+                         p.name))
       deltas_down_time-=time.time()
       status, tempname, l = download_1k_uri(uri,abs_delta_name)
       deltas_down_time+=time.time()
@@ -4872,6 +4947,7 @@ def delta_upgrade_(args):
         continue
 
       if status == 404: 
+        not_available_deltas.append(p.name)
         if uri[:7] == 'http://' and not proxies: # FIXME support ftp or proxies
           bigrstatus = test_uri(uri+'-too-big')
         else:
@@ -4887,6 +4963,13 @@ def delta_upgrade_(args):
             no_delta.append( (deb_uri, newdeb) )
           elif VERBOSE : print ' No deb-policy "u", no download of ',deb_uri
         continue
+
+      if VERBOSE:
+          print 'Debdelta is present:', delta_name, tempname,'    '
+      elif DO_PROGRESS:
+        sys.stderr.write('%2.1f%% Downloaded head of %s.      \r' % \
+                           ((float(progress_count) * 100.0 / len(cache)),
+                         p.name))
 
       if os.path.isfile(tempname):
         deltas_down_size+=os.path.getsize(tempname)
@@ -4918,10 +5001,18 @@ def delta_upgrade_(args):
 
   available_deltas.sort()
 
+  if not available_deltas:
+    print 'No deltas available to be downloaded/applied.'
+    return
+
 
   if DEBUG or VERBOSE:
     print ' So far, downloaded, time: %.2fsec size: %s speed: %4s/sec' % \
         (deltas_down_time, SizeToStr(deltas_down_size), SizeToStr(deltas_down_size/float(deltas_down_time+0.001)))
+
+  if DEBUG or VERBOSE:
+    print 'Deltas: %d present and %d not.' % (len(available_deltas), len(not_available_deltas))
+    print 'Need to get %s of deltas.' %  SizeToStr(sum([a[0] for a in available_deltas]))
 
   ############# start downloading and progress thread
 
@@ -5010,7 +5101,7 @@ def delta_upgrade_(args):
   while progress_thread != None and progress_thread.isAlive():
     time.sleep(0.1)
   
-  elaps =  time.time() - start_sec
+  total_time += time.time()
   print 'Delta-upgrade statistics:'
   if VERBOSE:
     if deltas_down_time :
@@ -5028,10 +5119,10 @@ def delta_upgrade_(args):
       t=debs_down_time
       print ' download debs size %s time %dsec speed %s/sec' %\
             ( SizeToStr(a) , int(t), SizeToStr(a / t ))
-  if elaps:
+  if total_time:
     a=float(debs_down_size  + thread_returns['debs_size'])
     print ' total resulting debs size %s time %dsec virtual speed: %s/sec' %  \
-          ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
+          ( SizeToStr(a ), int(total_time), SizeToStr(a / total_time))
     
   return max(mainexitcodes)
 
@@ -5303,6 +5394,213 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.242
+log
+@debdelta_upgrade : progress report in first round of head downloading
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.241 2009/12/06 22:05:32 debdev Exp $"
+d3684 1
+d3687 7
+a3693 1
+        l=os.path.getsize(abs_delta_name)
+d3695 1
+a3695 1
+        s=get_info_fast(abs_delta_name)
+d3698 1
+a3698 1
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, abs_delta_name )  )
+@
+
+
+1.241
+log
+@do_patch : other adjustments to forensic
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.240 2009/12/06 21:46:18 debdev Exp $"
+d3184 3
+d3201 3
+d3207 3
+d3248 1
+a3248 3
+  start_sec = time.time()
+  len_deltas=0
+
+d3593 2
+d3597 3
+a3599 1
+
+d3602 6
+d3695 4
+d3711 1
+d3728 7
+d3765 4
+d3774 4
+d3865 1
+a3865 1
+  elaps =  time.time() - start_sec
+d3883 1
+a3883 1
+  if elaps:
+d3886 1
+a3886 1
+          ( SizeToStr(a ), int(elaps), SizeToStr(a / elaps))
+@
+
+
+1.240
+log
+@do_patch : really write forensic
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.239 2009/12/06 19:02:26 debdev Exp $"
+d1462 2
+a1463 2
+  temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdelta')
+  temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdelta')
+d1517 1
+a1517 2
+                       #delta+'\n!! '+
+                       temp_fore_name+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+@
+
+
+1.239
+log
+@mv removal of old file from delta_files__ to delta_files
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.238 2009/11/15 17:38:38 debdev Exp $"
+d1465 1
+a1465 1
+                     stderr=subprocess.PIPE)
+d1469 1
+d1486 6
+d1498 2
+a1499 1
+                       delta+'\n!! '+ olddeb+'\n!! '+temp_name+'\n!! '+temp_err_name+'\n')
+d1519 1
+@
+
+
+1.238
+log
+@patch: correct bug when progress reporting but no debname
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.237 2009/11/15 17:33:03 debdev Exp debdev $"
+d1817 1
+d1822 1
+a1822 1
+      script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+' ; rm '+p+'\n')    
+d1827 1
+a1827 1
+      script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+' ; rm '+p+'\n')
+d1832 1
+a1832 1
+      script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+' ; rm '+p+'\n')
+d1837 1
+a1837 1
+      script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+' ; rm '+p+'\n')
+d1842 1
+a1842 1
+      script.write('rdiff patch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+d1846 1
+a1846 1
+      script.write('xdelta3 -d -s '+o+' '+p+' '+n+' ; rm '+p+'\n')
+d1853 1
+a1853 1
+      script.write('bspatch '+o+' '+n+' '+p+'; rm '+p+'\n')
+d1859 1
+a1859 1
+      script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+d1863 1
+a1863 1
+      script.write('xdelta patch '+p+' '+o+' '+n+' ; rm '+p+'\n')
+d1866 1
+a1866 1
+      script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+' ; rm '+p+'\n')
+d1896 1
+a1896 1
+    script.write('rm '+o+'\n')
+@
+
+
+1.237
+log
+@unzip, script_zip : piped version
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.236 2009/11/08 20:18:54 debdev Exp $"
+d1171 1
+d1173 1
+d1341 1
+a1341 1
+        sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+d1473 1
+a1473 1
+      sys.stderr.write('P %2d%% %s\r' % (progress, os.path.basename(newdeb)))
+@
+
+
+1.236
+log
+@HTTPResponse instance has  no attribute 'message'
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.235 2009/10/29 07:12:46 debdev Exp $"
+d1773 1
+a1773 1
+  def unzip(f, in_script_as_well = None):
+a1776 2
+      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
+        script.write('gunzip '+f+'\n')
+a1780 2
+      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
+        script.write('bzip2 '+f+'\n')
+a1785 2
+      if in_script_as_well or ( in_script_as_well == None and f[:3] != 'NEW' ):
+        script.write('lzma '+f+'\n')
+d1788 1
+a1788 1
+    else: assert(0)
+d1791 9
+a1799 2
+  def script_zip(n,cn,newhead=None):
+    "inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)"
+d1803 1
+a1803 1
+        script.write("$E '"+ s +"' >> "+n+cn +' && ./minigzip -9 < '+n+' | tail -c +'+str(len(newhead)+1)+' >> '+n+cn+' && rm '+n+' \n')
+d1805 1
+a1805 1
+        script.write('./minigzip -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+d1808 1
+a1808 1
+      script.write('./minibzip2 -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+d1811 1
+a1811 1
+      script.write('lzma -9 < '+n+' >> '+n+cn+' && rm '+n+'\n')
+d2157 1
+a2157 1
+      (old_filename,old_filename_ext) = unzip(old_filename,False)
 @
 
 
