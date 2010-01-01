@@ -1,0 +1,73 @@
+--- debdelta/debmirror-2.3.1/debmirror	2009-10-08 19:30:56.000000000 +0200
++++ /home/debdev/bin/debmirror_2.3.1_mine	2009-12-08 21:36:27.000000000 +0100
+@@ -61,8 +61,9 @@
+           [--adddir=directory] [--rsync-extra=foo[,bar,..] ...]
+           [--di-dist=foo[,bar,..] ...] [--di-arch=foo[,bar,..] ...]
+           [--source|--nosource] [--i18n] [--getcontents] [--md5sums]
+           [--ignore-missing-release] [--ignore-release-gpg]
++          [--trash=dir]
+           [--ignore=regex] [--exclude=regex] [--include=regex]
+           [--exclude-deb-section=regex] [--limit-priority=regex]
+           [--timeout=seconds] [--max-batch=number]
+           [--rsync-batch=number] [--rsync-options=options]
+@@ -269,8 +270,12 @@
+ =item --ignore-release-gpg
+ 
+ Don't fail if the F<Release.gpg> file is missing.
+ 
++=item --trash=dir
++
++When cleaning up, instead of deleting, move files in this directory.
++
+ =item --ignore=regex
+ 
+ Never delete any files whose filenames match the regex. May be used multiple times.
+ 
+@@ -500,8 +505,10 @@
+ use Compress::Zlib;
+ use Digest::MD5;
+ use Digest::SHA1;
+ use LWP::UserAgent;
++use File::Basename;
++use File::Copy;
+ 
+ # Yeah, I use too many global variables in this program.
+ our ($debug, $progress, $verbose, $passive, $skippackages, $getcontents, $i18n);
+ our ($ua, $proxy);
+@@ -513,8 +520,9 @@
+ our $check_downloads = 0;
+ our $cleanup=0;
+ our $post_cleanup=1;
+ our $no_cleanup=0;
++our $trash_dir=0;
+ our $do_source=1;
+ our $host="ftp.debian.org";
+ our $user="anonymous";
+ our $passwd="anonymous@";
+@@ -608,8 +616,9 @@
+ 	   'di-arch=s'              => \@di_arches,
+ 	   'rsync-extra=s'          => \@rsync_extra,
+ 	   'cleanup'                => \$cleanup,
+ 	   'postcleanup'            => \$post_cleanup,
++  	   'trash=s'                => \$trash_dir,
+ 	   'nocleanup'              => \$no_cleanup,
+ 	   'ignore=s'               => \@ignores,
+ 	   'exclude=s'              => \@excludes,
+ 	   'exclude-deb-section=s'  => \@excludes_deb_section,
+@@ -2221,9 +2230,16 @@
+       next if (@di_dists && $file =~ m:installer-\w+/current/images/:);
+       if ($files{$file} == 2 && -f $file) {
+ 	say("deleting $file") if ($verbose);
+ 	if (! $dry_run) {
++         if ( ! $trash_dir ) { 
+ 	  unlink $file or die "unlink $file: $!";
++	 } else {
++             rename ($file, ($trash_dir . "/" . basename($file) )) or
++	     { copy ($file, ($trash_dir . "/" . basename($file) )) and
++                   unlink $file
++             }  or  die "cannot move or copy $file to trash: $!";
++	 }
+ 	}
+       }
+     }
+   } else {

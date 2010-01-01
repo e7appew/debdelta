@@ -1,9 +1,19 @@
-head	1.243;
+head	1.245;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.245
+date	2010.01.01.20.17.56;	author debdev;	state Exp;
+branches;
+next	1.244;
+
+1.244
+date	2010.01.01.20.02.32;	author debdev;	state Exp;
+branches;
+next	1.243;
 
 1.243
 date	2009.12.07.16.00.11;	author debdev;	state Exp;
@@ -1225,9 +1235,10 @@ desc
 @@
 
 
-1.243
+1.245
 log
-@debdelta_upgrade : do not redownload partial downloads of deltas
+@when <50MB of disk,  'prelink -u'  asks if to proceed:
+to avoid this, redirect stdin from /dev/null and report failures
 @
 text
 @#!/usr/bin/python
@@ -1399,7 +1410,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.242 2009/12/07 15:51:16 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.244 2010/01/01 20:02:32 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2230,6 +2241,7 @@ def stat_to_tar(name):
     if uid in base_passwd_anti_db :
         uname = base_passwd_anti_db[uid]
     else:
+        import pwd
         try:
             uname = pwd.getpwuid(uid)[0]
         except KeyError:
@@ -2237,7 +2249,8 @@ def stat_to_tar(name):
 
     if gid in base_group_anti_db :
         gname = base_group_anti_db[gid]
-    else:    
+    else:
+        import grp
         try:
             gname = grp.getgrgid(gid)[0]
         except KeyError:
@@ -2587,11 +2600,13 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
           if DEBUG or VERBOSE:
-            ret=os.system('/usr/sbin/prelink -u '+a)
+            ret=os.system("/usr/sbin/prelink -u '"+a+"' < /dev/null")
           else:
-            ret=os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+            ret=os.system("/usr/sbin/prelink -u '"+a+"' < /dev/null >/dev/null 2>&1")
           if ret==2:
             raise KeyboardInterrupt
+          elif ret:
+            sys.stderr.write('!!Prelink failed, rerun with -d\n')
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
@@ -5394,6 +5409,39 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.244
+log
+@stat_to_tar : import pwd grp (!!)
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.243 2009/12/07 16:00:11 debdev Exp $"
+d1360 1
+a1360 1
+            ret=os.system('/usr/sbin/prelink -u '+a)
+d1362 1
+a1362 1
+            ret=os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+d1365 2
+@
+
+
+1.243
+log
+@debdelta_upgrade : do not redownload partial downloads of deltas
+@
+text
+@d170 1
+a170 1
+RCS_VERSION="$Id: debdelta,v 1.242 2009/12/07 15:51:16 debdev Exp $"
+d1001 1
+d1009 2
+a1010 1
+    else:    
 @
 
 

@@ -1,3 +1,10 @@
+debdelta (0.37) unstable; urgency=low
+
+  * debdelta-upgrade
+    * when < 50MB disk space, 'prelink -u' fails  : report it
+
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 01 Jan 2010 21:15:08 +0100
+
 debdelta (0.36) unstable; urgency=low
 
   * switch license of man pages to 
