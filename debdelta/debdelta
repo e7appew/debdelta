@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.244 2010/01/01 20:02:32 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.245 2010/01/01 20:17:56 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1357,11 +1357,13 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
           if DEBUG or VERBOSE:
-            ret=os.system('/usr/sbin/prelink -u '+a)
+            ret=os.system("/usr/sbin/prelink -u '"+a+"' < /dev/null")
           else:
-            ret=os.system('/usr/sbin/prelink -u '+a+' >/dev/null 2>&1')
+            ret=os.system("/usr/sbin/prelink -u '"+a+"' < /dev/null >/dev/null 2>&1")
           if ret==2:
             raise KeyboardInterrupt
+          elif ret:
+            sys.stderr.write('!!Prelink failed, rerun with -d\n')
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
