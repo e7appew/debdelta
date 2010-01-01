@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.243 2009/12/07 16:00:11 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.244 2010/01/01 20:02:32 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -998,6 +998,7 @@ def stat_to_tar(name):
     if uid in base_passwd_anti_db :
         uname = base_passwd_anti_db[uid]
     else:
+        import pwd
         try:
             uname = pwd.getpwuid(uid)[0]
         except KeyError:
@@ -1005,7 +1006,8 @@ def stat_to_tar(name):
 
     if gid in base_group_anti_db :
         gname = base_group_anti_db[gid]
-    else:    
+    else:
+        import grp
         try:
             gname = grp.getgrgid(gid)[0]
         except KeyError:
