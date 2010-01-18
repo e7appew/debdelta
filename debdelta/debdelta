@@ -167,7 +167,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.245 2010/01/01 20:17:56 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.246 2010/01/18 12:53:50 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1328,6 +1328,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     return s, diverted
 
   localepurged=[]
+  prelink_u_failed=[]
   def _symlink_data_tree(pa,TD,diversions,runtime):
     if diversions:
       s,diverted=dpkg_L_faster(pa,diversions)
@@ -1356,14 +1357,23 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           shutil.copyfile(divert, a)
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
-          if DEBUG or VERBOSE:
-            ret=os.system("/usr/sbin/prelink -u '"+a+"' < /dev/null")
-          else:
-            ret=os.system("/usr/sbin/prelink -u '"+a+"' < /dev/null >/dev/null 2>&1")
-          if ret==2:
+          proc=subprocess.Popen(["/usr/sbin/prelink","-u",a],stdin=open(os.devnull),\
+              stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+          out=proc.stdout.read().strip()
+          proc.wait()
+          if proc.returncode==2:
             raise KeyboardInterrupt
-          elif ret:
-            sys.stderr.write('!!Prelink failed, rerun with -d\n')
+          elif proc.returncode:
+            thestat = os.statvfs(a)
+            if out[-39:] == 'does not have .gnu.prelink_undo section':
+              if DEBUG:
+                sys.stderr.write('!!'+repr(out)+'\n')
+            elif (thestat.f_bsize * thestat.f_bavail / 1024) < 50000 : 
+              sys.stderr.write('!!Prelink -u failed, it needs at least 50000KB of free disk space\n')
+              prelink_u_failed.append(a)
+            else:
+              sys.stderr.write('!!Prelink -u failed on %s : %s\n' % (a,out))
+              prelink_u_failed.append(a)
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
@@ -1510,6 +1520,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.write('Delta: '+delta+'\n')
         temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
         temp_file.write('LocalePurgedFilesN: '+str(len(localepurged))+'\n')
+        temp_file.write('PrelinkUFailedN: '+str(len(prelink_u_failed))+'\n')
         if ret:
           temp_file.write('PatchExitCode: '+str(ret)+'\n')
         forensics_rfc(temp_file,params,control_file_pairs,
