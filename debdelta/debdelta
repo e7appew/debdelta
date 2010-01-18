@@ -141,7 +141,6 @@ INFO    = False
 NEEDSOLD= False
 DIR     = None
 ALT     = []
-AVOID   = None
 ACT     = True
 DO_MD5  = True
 DEB_POLICY = ['b','s','e']
@@ -167,7 +166,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.246 2010/01/18 12:53:50 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.247 2010/01/18 13:12:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -190,7 +189,7 @@ else:
   
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
-                 ('help','info','needsold','dir=','no-act','alt=','avoid=','delta-algo=',
+                 ('help','info','needsold','dir=','no-act','alt=','delta-algo=',
                     'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug',
                     'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test") )
   except getopt.GetoptError,a:
@@ -223,11 +222,6 @@ else:
         raise SystemExit(3) 
     elif o == '--test' and action == 'deltas' : DO_TEST = True
     elif o == '--info' and action == 'patch' : INFO = True
-    elif o == '--avoid'  :
-      AVOID = v
-      if not os.path.isfile(AVOID):
-        print 'Error: --avoid ',AVOID,' does not exist.'
-        raise SystemExit(3)
     elif o == '--dir'  :
       DIR = abspath(expanduser(v))
       if v[-2:] == '//':
@@ -2638,13 +2632,6 @@ def do_deltas(debs):
     HOSTID=md5.new( f.read() ).hexdigest()
   f.close()
     
-  if AVOID and type(AVOID) == StringType:
-    import shelve
-    if VERBOSE : print ' Using avoid dict ',AVOID
-    avoid_pack = shelve.open(AVOID,'r')
-  else:
-    avoid_pack = {}
-  
   info_by_pack_arch={}
   info_by_file={}
   
@@ -2652,10 +2639,6 @@ def do_deltas(debs):
     pack = info_by_file[f]['Package']
     arch = info_by_file[f]['Architecture']
     vers = info_by_file[f]['Version']
-    if pack in avoid_pack and ( avoid_pack[pack]['Version'] == vers ):
-      #note that 'f' is in  info_by_file and not in info_by_pack_arch
-      if VERBOSE > 1 :     print '  Avoid: ', f
-      return
     if  (pack,arch) not in  info_by_pack_arch :
       info_by_pack_arch[ (pack,arch) ]=[]
     info_by_pack_arch[ (pack,arch) ].append( info_by_file[f] )
