@@ -160,6 +160,7 @@ else:
 GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
 
 CLEAN_DELTAS = False
+CLEAN_DELTAS_MTIME = 2 # two days grace period
 CLEAN_ALT    = False
 
 DO_PREDICTOR = False
@@ -168,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.248 2010/01/29 13:43:07 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.249 2010/01/29 13:50:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -2929,12 +2930,15 @@ def do_deltas(debs):
     if CLEAN_DELTAS :
       if (pa,ar) in old_deltas_by_pack_arch :
         versions=[(o['Version']) for o in info_pack if (o['Label'] == 'CMDLINE')]
+        timegrace=time.time() - CLEAN_DELTAS_MTIME * 24 * 3600
         #DEBUG print pa,ar,versions
         for f_d,o_d,n_d in old_deltas_by_pack_arch[ (pa,ar) ] :
           if n_d not in versions :
             if os.path.exists(f_d):
-              if VERBOSE: print ' Removing: ',f_d
-              if ACT: os.unlink(f_d)
+              if os.stat(f_d)[ST_MTIME] < timegrace:
+                if VERBOSE: print ' Removing: ',f_d
+                if ACT: os.unlink(f_d)
+              elif VERBOSE > 1 : print '  Obsolete but still young, graced: ',f_d
             else:
               print 'bellandata',f_d
         del versions
