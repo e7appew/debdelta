@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.249 2010/01/29 13:50:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.250 2010/02/03 19:19:35 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3559,14 +3559,14 @@ def delta_upgrade_(args):
       r.close()
       return r.status
 
-  ###################################### download_1k_uri
-  def download_1k_uri(uri,outname):
+  ###################################### download_10k_uri
+  def download_10k_uri(uri,outname):
       "in case of connection error, returns the (error, None, None) ; otherwise returns (status,len,outname)"
       #download
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
       re=copy(HTTP_USER_AGENT)
-      re["Range"] =  "bytes=0-1023"
+      re["Range"] =  "bytes=0-10239"
       r, status, msg, responseheaders=_connect(uri, re)
       if not hasattr(r,'read') and responseheaders==None:
         return r, None, None
@@ -3586,7 +3586,7 @@ def delta_upgrade_(args):
         r.read()
         r.close()
         return status, None, None
-      if os.path.exists(outnametemp) and os.path.getsize(outnametemp) >= 1023 :
+      if os.path.exists(outnametemp) and os.path.getsize(outnametemp) >= 10239 :
         #do not truncate preexisting file
         r.read()
         r.close()
@@ -3814,7 +3814,7 @@ def delta_upgrade_(args):
                            ((float(progress_count) * 100.0 / len(cache)),
                          p.name))
       deltas_down_time-=time.time()
-      status, tempname, l = download_1k_uri(uri,abs_delta_name)
+      status, tempname, l = download_10k_uri(uri,abs_delta_name)
       deltas_down_time+=time.time()
 
       #some strange error in remote server?
