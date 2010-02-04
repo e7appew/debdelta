@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.250 2010/02/03 19:19:35 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.251 2010/02/04 08:55:18 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3561,15 +3561,16 @@ def delta_upgrade_(args):
 
   ###################################### download_10k_uri
   def download_10k_uri(uri,outname):
-      "in case of connection error, returns the (error, None, None) ; otherwise returns (status,len,outname)"
+      "in case of connection error, returns the (error, None, None, None) ; otherwise returns (status,len,outname,complete)"
       #download
       uri_p=urlparse(uri)
       assert(uri_p[0] == 'http')
       re=copy(HTTP_USER_AGENT)
       re["Range"] =  "bytes=0-10239"
+      complete=False
       r, status, msg, responseheaders=_connect(uri, re)
       if not hasattr(r,'read') and responseheaders==None:
-        return r, None, None
+        return r, None, None, None
       if status == 206:
         outnametemp=os.path.join(os.path.dirname(outname),'partial',os.path.basename(outname))
         try:
@@ -3578,6 +3579,7 @@ def delta_upgrade_(args):
           l = None
       elif status == 200:
         outnametemp=outname
+        complete=True
         try:
           l=long(responseheaders.get('Content-Length'))
         except:
@@ -3585,17 +3587,21 @@ def delta_upgrade_(args):
       else: #FIXME how do we deal with a FTP mirror of deltas ?
         r.read()
         r.close()
-        return status, None, None
-      if os.path.exists(outnametemp) and os.path.getsize(outnametemp) >= 10239 :
-        #do not truncate preexisting file
-        r.read()
-        r.close()
-        return status, outnametemp, l
-      out=open(outnametemp,'w')
-      out.write(r.read())
-      out.close()
+        return status, None, None, None
+      s=r.read()
       r.close()
-      return status, outnametemp, l
+      #(maybe I did not understand the status 206 ?)
+      if not complete and l != None and len(s) >= l:
+        outnametemp=outname
+        complete=True
+      if os.path.exists(outnametemp) and os.path.getsize(outnametemp) >= len(s) :
+        #do not truncate preexisting file
+        complete=(os.path.getsize(outnametemp) >= l)
+        return status, outnametemp, l, complete
+      out=open(outnametemp,'w')
+      out.write(s)
+      out.close()
+      return status, outnametemp, l, complete
 
   ###################################### download_uri
   def download_uri(uri, outname, conn_time, len_downloaded, statusdb):
@@ -3805,7 +3811,7 @@ def delta_upgrade_(args):
         s=get_info_fast(a)
         if s:
           params_of_delta[p.name]=info_2_db(s)
-        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, a )  )
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, a, True) )
         continue
       #if not, download its first part
 
@@ -3814,7 +3820,7 @@ def delta_upgrade_(args):
                            ((float(progress_count) * 100.0 / len(cache)),
                          p.name))
       deltas_down_time-=time.time()
-      status, tempname, l = download_10k_uri(uri,abs_delta_name)
+      status, tempname, l, complete = download_10k_uri(uri,abs_delta_name)
       deltas_down_time+=time.time()
 
       #some strange error in remote server?
@@ -3874,7 +3880,7 @@ def delta_upgrade_(args):
           continue
       #FIXME may check that parameters are conformant to what we expect
 
-      available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname  ) )
+      available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname, complete) )
   ## end of first merry-go-round
 
   available_deltas.sort()
@@ -3911,10 +3917,12 @@ def delta_upgrade_(args):
     progress_thread=None
   
   ## second merry-go-round, try downloading available delta
-  for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname  in available_deltas :
-    if  not os.path.exists(abs_delta_name) and os.path.exists(tempname) and os.path.getsize(tempname) == delta_len:
-      print 'just Rename ',name
-      os.rename(tempname,abs_delta_name)
+  for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname, complete  in available_deltas :
+    ## this seems to create problems....
+    #if not os.path.exists(abs_delta_name) and os.path.exists(tempname) and os.path.getsize(tempname) == delta_len:
+    #  print 'Just rename:',name #this actually should never happen, but , who knows...
+    #  os.rename(tempname,abs_delta_name)
+    #  tempname=abs_delta_name
 
     if name in params_of_delta:
       s=patch_check_tmp_space(params_of_delta[name],  '/')
