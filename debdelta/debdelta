@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.251 2010/02/04 08:55:18 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.252 2010/02/04 08:56:03 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3404,7 +3404,7 @@ def delta_upgrade_(args):
             rmtree(TD)
             return
           except DebDeltaError,s:
-            print ' Error: applying of delta for ',name,'failed: ',str(s)
+            puke(' Error: applying of delta for '+name+'failed: ',s)
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
             elif VERBOSE : print ' No deb-policy "e", no download of ',deb_uri
