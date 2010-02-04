@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.254 2010/02/04 21:26:29 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.255 2010/02/04 21:40:47 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3699,6 +3699,13 @@ def delta_upgrade_(args):
       return  conn_time + a, (j+len_downloaded)
 
   ###################################### end of HTTP stuff
+
+  patching_thread=threading.Thread(
+    target=thread_do_patch  ,
+    args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
+  patching_thread.start()
+
+  ###################################### start patching thread
   
   deltas_down_size=0
   deltas_down_time=0
@@ -3895,7 +3902,10 @@ def delta_upgrade_(args):
           continue
       #FIXME may check that parameters are conformant to what we expect
 
-      available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname, complete) )
+      if complete:
+        patching_queue.put( (p.name, abs_delta_name  ,newdeb, deb_uri ) )
+      else:
+        available_deltas.append( (l, p.name, uri, abs_delta_name , newdeb, deb_uri, tempname, complete) )
   ## end of first merry-go-round
 
   available_deltas.sort()
@@ -3914,11 +3924,6 @@ def delta_upgrade_(args):
     print 'Need to get %s of deltas.' %  SizeToStr(sum([a[0] for a in available_deltas]))
 
   ############# start downloading and progress thread
-
-  patching_thread=threading.Thread(
-    target=thread_do_patch  ,
-    args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
-  patching_thread.start()
   
   def print_progress(common_db):
     while 'STOP' not in common_db:
