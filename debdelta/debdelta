@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.252 2010/02/04 08:56:03 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.253 2010/02/04 09:08:54 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3710,7 +3710,19 @@ def delta_upgrade_(args):
 
   #distinguish python-apt version 0.7.7 from 0.7.10
   newer_python_apt = hasattr(apt.package,'Version')
-  
+
+  if hasattr(apt.package.Package,'is_installed'):
+    is_installed=lambda p : p.is_installed
+  elif hasattr(apt.package.Package,'isInstalled'):
+    is_installed=lambda p : p.isInstalled
+  else: assert 0
+
+  if hasattr(apt.package.Package,'marked_upgrade'):
+    marked_upgrade=lambda p : p.marked_upgrade
+  elif hasattr(apt.package.Package,'markedUpgrade'):
+    marked_upgrade=lambda p : p.markedUpgrade
+  else: assert 0
+
   progress_count=0
   
   ## first merry-go-round, use package cache to fill available_deltas
@@ -3721,7 +3733,7 @@ def delta_upgrade_(args):
       if 0 == (progress_count & 63):
         sys.stderr.write('%2.1f%% %s\r' % ((float(progress_count) * 100.0 / len(cache)), ' '*max(1,terminalcolumns-7)))
 
-    if p.isInstalled and p.markedUpgrade :
+    if is_installed(p) and marked_upgrade(p) :
       if args and p.name not in args:
         continue
       if newer_python_apt:
