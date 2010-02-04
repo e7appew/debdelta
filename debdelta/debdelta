@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.253 2010/02/04 09:08:54 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.254 2010/02/04 21:26:29 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3854,13 +3854,16 @@ def delta_upgrade_(args):
             no_delta.append( (deb_uri, newdeb) )
           elif VERBOSE : print ' No deb-policy "b", no download of ',deb_uri
         else:
-          print 'Debdelta is not present:', delta_name
+          if DEBUG and VERBOSE:
+            print 'Debdelta is not present:', uri
+          else:
+            print 'Debdelta is not present:', delta_name
           if 'u' in DEB_POLICY:
             no_delta.append( (deb_uri, newdeb) )
           elif VERBOSE : print ' No deb-policy "u", no download of ',deb_uri
         continue
 
-      if VERBOSE:
+      if VERBOSE > 1:
           print 'Debdelta is present:', delta_name, tempname,'    '
       elif DO_PROGRESS:
         sys.stderr.write('%2.1f%% Downloaded head of %s.      \r' % \
