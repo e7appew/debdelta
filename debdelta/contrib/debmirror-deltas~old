@@ -1,0 +1,60 @@
+#!/bin/sh
+
+#renice 5 $$
+
+day=`date +%u`
+
+DEBUG=''
+[ "$1"   ] && { DEBUG=$1 ; }
+
+unpack ()
+{
+  cd $1 || return
+  shift
+  for i in "$@" ; do
+   if [ -d $i/binary-i386/ ] ; then
+    pushd $i/binary-i386/ > /dev/null
+    if [ -r Packages.gz ] ; then
+     if [ ! -s Packages.gz ] || !  zcat Packages.gz > Packages ; then
+        echo Broken: `pwd`/Packages.gz || true 
+        rm -v Packages || true
+     fi
+    else
+     echo Unexistent :  `pwd`/Packages.gz || true
+    fi
+    popd > /dev/null
+   else
+     echo Unexistent : $i/binary-i386/ || true
+   fi
+  done ;
+  [ "$DEBUG" ] &&  echo || true
+}
+
+state ()
+{ 
+ if [ "$DEBUG" ] ; then  echo ; echo  MIRRORING FOR $@ $DEBUG ; echo ; fi
+}
+
+
+
+m=/data/mirror/debian
+d=/data/mirror/debian-deltas
+debdeltas=/home/debdev/bin/debdeltas 
+
+state $m
+
+
+{  debmirror $m  "$@" --nosource --passive --nocleanup  $DEBUG -h ftp.debian.org -d sarge,etch,sid } &&  {
+echo ------------------ ; date ; }  >> $d/log 
+ cd $m ;  find pool -type d -mtime -4  \
+ |  xargs -r   $debdeltas -n 2 --clean --avoid $d/sarge.python.dict -M200 $DEBUG -vd --dir $d// \
+ 2>&1 | tee -a $d/log  ; 
+} && { unpack /data/mirror/debian/dists/sarge main contrib non-free ; \
+} && {
+if test $day = 5 -o $day = 2 ; then \
+ debmirror $m  "$@" --nosource --passive --postcleanup \
+ -h ftp.it.debian.org -d sarge,etch,sid ; \
+ find $d/pool -mtime +15 -type f \
+ \( -name '*debdelta-fails' -or -name '*debdelta-too-big' -or -name '*debdelta-too-big' \) |\
+     xargs -r -n 4 rm -v ;
+fi ; }

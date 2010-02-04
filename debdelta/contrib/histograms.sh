@@ -15,20 +15,19 @@ shift
 
 t=`tempfile`
 
-echo ===== working towards $PREFIX
+#echo ===== working towards $PREFIX
 
 dir=`dirname $0`
 
-zless "$@" | awk -f $dir/sizes_histogram.awk  > ${PREFIX}sizes 
+zcat "$@" | awk -f $dir/sizes_histogram.awk  > ${PREFIX}sizes.txt
 
-
-if test -s ${PREFIX}sizes ; then
+if test -s ${PREFIX}sizes.txt ; then
 cat > $t <<EOF
 set term png
 set out "${PREFIX}sizes.png"
 set xlabel "% of patchsize / new deb size"
 set ylabel "% of deltas"
-plot "${PREFIX}sizes" w steps
+plot "${PREFIX}sizes.txt" w steps
 EOF
 gnuplot < $t
 fi
@@ -36,15 +35,16 @@ fi
 
 sizes_by_instsize=`tempfile`
 
-zless "$@" | awk '/^NEW/{P=$3 ; SI=$9 * 1 ; SZ = $16 * 1 ;};
+zcat "$@" | awk '/NEW/{P=$3 ; SI=$9 * 1 ; SZ = $16 * 1 ; N = N + 1 ; };
 /^ deb delta is/{if (SI > 1 ) { SZ = $16 * 1; TOTDEBSZ = TOTDEBSZ + SZ ; PC = $4 * 1 ; \
   TOTDELTASZ = TOTDELTASZ + ( SZ * PC   ) ;   print SI, " ",  PC,SZ }} ;
-END{if(TOTDEBSZ>0){printf("#size average=%d\n", TOTDELTASZ / TOTDEBSZ );};}'  >  $sizes_by_instsize
+END{printf("# total %d new debs processed, %d KB installed size\n",N,TOTDEBSZ); 
+if(TOTDEBSZ>0){printf("#size average=%d\n", TOTDELTASZ / TOTDEBSZ );};}'  >  $sizes_by_instsize
 
 sizes_by_instsize_avg=`tail -1 $sizes_by_instsize | cut -d= -f2 `
 
 
-if grep average  $sizes_by_instsize ; then
+if grep -q average  $sizes_by_instsize ; then
 cat > $t <<EOF
 set term png
 set out "${PREFIX}sizes_by_size.png"
@@ -62,24 +62,24 @@ fi
 
 delta_speeds_by_instsize=`tempfile`
 
-zless "$@" | awk '/^NEW/{P=$3 ; SI=$9 * 1};
+zcat "$@" | awk '/NEW/{P=$3 ; SI=$9 * 1};
 /^ deb delta is/{SZ = $16 * 1 ; }
-/^ delta time/{ if( SI > 1) { N = N+1 ;  TOTSZ = TOTSZ + SZ ; TOTTIM = TOTTIM + $3 ; SP= $6 * 1 ; TSP=TSP+SP ; print SI, " ", SP }};
+/^ delta time/{ if( SI > 1) { N = N+1 ;  TOTSZ = TOTSZ + SZ ; TOTTIM = TOTTIM + $3 ; SP= $6 * 1 ; TSP=TSP+SP ;  print SI, " ", SP }};
 #/^Total running time:/{TOTTIM = $4 * 1 }
-END{if(TOTTIM>0){printf("#create average=%d\n", TOTSZ / TOTTIM )};}'  >  $delta_speeds_by_instsize 
+END{if(TOTTIM>0){printf("#create average=%d\n", TOTSZ / TOTTIM )};}'    >  $delta_speeds_by_instsize 
 
 delta_speeds_by_instsize_avg=`tail -1 $delta_speeds_by_instsize | cut -d= -f2`
 
 patch_speeds_by_instsize=`tempfile`
 
-zless "$@" | awk '/^NEW/{P=$3 ; SI=$9 * 1};
+zcat "$@" | awk '/NEW/{P=$3 ; SI=$9 * 1};
 /^ deb delta is/{SZ = $16 * 1 ;}
 / Patching done/{ if( SI > 1) {N = N+1 ; TOTSZ = TOTSZ + SZ ;  TOTTIM = TOTTIM + ($4 * 1 ); SP= $6 * 1 ; TSP=TSP+SP ; print SI, " ", SP }};
-END{if(TOTTIM>0){printf("#patch average=%d\n", TOTSZ / TOTTIM )} ; }'  >  $patch_speeds_by_instsize
+END{if(TOTTIM>0){printf("#patch average=%d\n", TOTSZ / TOTTIM )} ; }'    >  $patch_speeds_by_instsize
 
 patch_speeds_by_instsize_avg=`tail -1 $patch_speeds_by_instsize | cut -d= -f2`
 
-if grep average  $delta_speeds_by_instsize && grep average  $patch_speeds_by_instsize ; then
+if grep -q average  $delta_speeds_by_instsize && grep -q average  $patch_speeds_by_instsize ; then
 cat > $t <<EOF
 set term png
 set out "${PREFIX}speeds_by_size.png"
@@ -101,5 +101,7 @@ EOF
 
 gnuplot < $t
 fi
+
+grep -h '#'  $sizes_by_instsize $delta_speeds_by_instsize $patch_speeds_by_instsize >  "${PREFIX}.txt"
 
 rm $t $sizes_by_instsize $delta_speeds_by_instsize $patch_speeds_by_instsize

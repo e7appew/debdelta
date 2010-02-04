@@ -1,3 +1,25 @@
+debdelta (0.38) unstable; urgency=low
+
+  * debdelta-upgrade : 
+    - properly distinguish when prelink fails due to low disk space,
+      or simply because the file did not need to be unprelinked, or else
+    - small changes to progress reporting
+    - -v -d , prints the URI of missing deltas
+  * debdeltas : huge rewrite 
+    - big speedup in scanning repositories, less disk access
+    - remove option --clean-alt
+    - add option --old   (note that, if no '--old' arg is  specified, 
+       then no deltas will be generated; this is different from
+       previous versions of debdeltas)
+    - different meaning of --alt option
+    - rewrote man page, with many examples
+  * add new script /usr/share/debdelta/debmirror-deltas (a complex script
+    that creates a repository of deltas, that can be used by
+    debdelta-upgrade for upgrading packages in
+    lenny,squeeze,sid,experimental )
+
+ -- A Mennucc1 <mennucc1@debian.org>  Thu, 04 Feb 2010 22:27:24 +0100
+
 debdelta (0.37) unstable; urgency=low
 
   * debdelta-upgrade

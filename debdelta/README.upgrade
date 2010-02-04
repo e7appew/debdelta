@@ -15,9 +15,11 @@ client 'debdelta-upgrade' to download the deltas and apply them to
 produce the debs needed to upgrade their boxes.
 
 In my server, I mirror some repositories, and then I invoke
-'debdeltas' to make the deltas between them: e.g. I produce deltas to
-upgrade any package from its version in "stable" to the version in
-"security updates"; or to upgrade a package from testing to unstable.
+'debdeltas' to make the deltas between them. I use the
+scripts /usr/share/debdelta/debmirror-delta-security
+and  /usr/share/debdelta/debmirror-deltas for this.
+This generates any delta that may be needed for upgrades
+in lenny,lenny-security,squeeze,sid,experimental (as of Jan 2010).
 
 --- The goals
 

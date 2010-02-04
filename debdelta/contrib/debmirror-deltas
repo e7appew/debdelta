@@ -1,60 +1,292 @@
-#!/bin/sh
+#!/bin/bash -e
 
-#renice 5 $$
+# A complex script that creates a repository of deltas, that can be
+# used by debdelta-upgrade for upgrading packages in.
+# See also --help below.
 
-day=`date +%u`
+# Copyright (C) 2006-10 Andrea Mennucci.
+# License: GNU Library General Public License, version 2 or later
+
+
+########### customize under here  vvvvvvvvvvvvv
+
+#where is the full mirror of debian
+debmir=/mirror/debian
+
+#where to mirror from
+host=ftp.debian.org
+
+#where to store deltas
+deltamir=/mirror/debian-deltas
+#delete old debs from trash if the space here drops below kB :
+freespace=200000
+#delete deltas and old_debs that are older than days (regardless of space)
+old_delete_days=60
+
+#where is the debdeltas program
+debdeltas=/usr/bin/debdeltas
+#options to your taste
+debdelta_opt="-v -d --test --delta-algo xdelta3 --gpg-home ~/debdelta/gnupg --sign 0xXXXXXXX "
+
+##if you apply the 'trash patch' in contrib to debmirror, then you may use this:
+debmirror_opt="--trash $deltamir/old_debs --method=http"
+trash=$deltamir/old_debs
+debmirror=/usr/local/bin/debmirror_2.4_mine
+
+##otherwise this should work as well
+#debmirror_opt='--method=http'
+#trash=''
+#debmirror=/usr/bin/debmirror
+
+#note: files in $trash will be deleted by this script! use a dedicated dir!
+
+#this should be in the same partition as the debian mirror $debmir
+# (must be, if the trash is not used)
+TMPDIR=/mirror/tmp
+export TMPDIR
+
+
+ARCHc='i386,amd64'
+ARCHs='i386 amd64'
+
+DISTc='lenny,squeeze,sid,experimental'
+DISTs='lenny squeeze sid experimental'
+
+########### customize over here ^^^^^^^^^^^^^^
+
+
 
 DEBUG=''
-[ "$1"   ] && { DEBUG=$1 ; }
+VERBOSE=''
+RM='rm'
+DO_MIRROR=true
+DO_CLEAN_DELTAS=''
+while [ "$1" ] ; do
+ case "$1" in
+  -h|--help)
+  cat <<EOF
+Usage: debmirror-deltas [options]
 
-unpack ()
-{
-  cd $1 || return
-  shift
-  for i in "$@" ; do
-   if [ -d $i/binary-i386/ ] ; then
-    pushd $i/binary-i386/ > /dev/null
-    if [ -r Packages.gz ] ; then
-     if [ ! -s Packages.gz ] || !  zcat Packages.gz > Packages ; then
-        echo Broken: `pwd`/Packages.gz || true 
-        rm -v Packages || true
-     fi
-    else
-     echo Unexistent :  `pwd`/Packages.gz || true
-    fi
-    popd > /dev/null
-   else
-     echo Unexistent : $i/binary-i386/ || true
+This script (that contains many variables that must be customized!)
+keeps a full mirror of the Debian repository (using 'debmirror'),
+and it uses it to build a repository of deltas (using 'debdeltas').
+
+Note that this script assumes that the current Debian
+distributions are $DISTs .
+It will generate deltas for the upgrades in those,
+on arches $ARCHs .
+
+Options:
+
+-v   verbose  (passed to debmirror and debdeltas)
+-d   debug    (passed to debmirror and debdeltas),
+              also, do not 'rm' stuff, just tell
+--no-mirror  if it crashed, resume the unfinished jobs
+--clean-deltas , clean useless deltas (see debdeltas man page)
+
+EOF
+  exit ;;
+  -v)  VERBOSE="$VERBOSE -v"  ;;
+  -d)  DEBUG=--debug ;  RM='echo -- rm ' ;;
+  #used to finish interrupted runs
+  --no-mirror) DO_MIRROR='' ;;
+  --clean-deltas) DO_CLEAN_DELTAS=true ;;
+  *) echo "Unknown option $1 , try --help" ;  exit 1 ;;
+ esac
+ shift
+done
+
+
+###################### some useful variables
+
+#the lock used by debmirror
+debmirlock=$debmir/Archive-Update-in-Progress-`hostname  -f`
+
+b=`basename $0`
+
+lockfile -r 10  /tmp/$b.lock || exit 1
+trap "rm $VERBOSE -f /tmp/$b.lock" 0
+
+olddists=""
+log=/nonexistant
+
+## profile debdeltas
+#debdeltas="python -m cProfile -o /tmp/debdelta-profile-$(dirname $p | tr / _ ) $debdeltas"
+
+yyyymm=`date +'%Y-%m'`
+
+################## routines
+
+freetrash () {
+ test "$trash" || return
+ age=${old_delete_days}
+ blocksize=`stat -f  -c "%s" "$trash"`
+ newsize=0 #trick to run at least once
+ while test $age -ge 1 -a $newsize -le $freespace ; do
+  find "$trash"  -name '*.deb' -type f -mtime +$age  |  xargs -r $RM $VERBOSE || true
+  freeblocks=`stat -f  -c "%a" "$trash"`
+  newsize=`expr $freeblocks \* $blocksize / 1024 `
+  age=`expr $age - 5 `
+ done
+}
+
+cleanuppool () {
+ find $deltamir/pool \
+   \( -name '*debdelta-fails' -or -name '*debdelta-too-big' \
+      -or -name  '*debdelta' \) -mtime +${old_delete_days} -type f |\
+       xargs -r  $RM   $VERBOSE || true
+ 
+ find $deltamir/pool/ -type d -empty | xargs -r rmdir $VERBOSE || true
+
+ if test "$trash" ; then 
+  find $trash -type f -not -name '*.deb' | xargs -r  $RM  $VERBOSE || true
+ fi
+}
+
+
+
+run_debmirror () {
+ if test -e $debmirlock ; then 
+  echo Archive $debmir is locked 
+  exit 1
+ fi
+
+ olddists=${TMPDIR:-/tmp}/olddists$$
+ mkdir $olddists
+
+ tm=$olddists/debmirror-stdout
+ tme=$olddists/debmirror-stderr
+
+ cp -a $debmir/dists $olddists
+
+ ## if using trash, this is not needed : debdeltas will
+ ##go fishing in the trash dir to find all deleted deltas
+ if ! test "trash"  ; then
+  cp -al $debmir/pool $olddists
+ fi
+
+ $debmirror  $debmir --nosource \
+  $debmirror_opt  --arch=$ARCHc \
+  --section=main,contrib,non-free \
+  -v $DEBUG -h $host -d $DISTc \
+     > $tm 2> $tme ; dme=$? 
+
+ if test "$dme" != 0  ; then
+   echo debmirror failed , exit code $dme , stdout  $tm 
+   awk '{ print "> " $0 }' $tm 
+   echo debmirror failed stderr $tme 
+   awk '{ print "> " $0 }' $tme
+   $RM $VERBOSE $tm $tme
+   $RM -f $debmirlock || true
+   #rm -r $debmir/.temp
+   cleanuppool
+   freetrash
+   exit 1
+ fi
+ $RM $VERBOSE $tm $tme
+}
+
+
+
+findmelog () {
+ date=`date +'%F-%H'`
+ test -d $deltamir/log/$yyyymm || mkdir $deltamir/log/$yyyymm
+ log=$deltamir/log/$yyyymm/${date}.log
+ if test -r $log -o -r $log.gz ; then 
+  for i in 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z ; do 
+   if test -r $log -o -r $log.gz ; then 
+     log=$deltamir/log/$yyyymm/${date}.$i.log
    fi
-  done ;
-  [ "$DEBUG" ] &&  echo || true
-}
-
-state ()
-{ 
- if [ "$DEBUG" ] ; then  echo ; echo  MIRRORING FOR $@ $DEBUG ; echo ; fi
+  done
+ fi
 }
 
 
 
-m=/data/mirror/debian
-d=/data/mirror/debian-deltas
-debdeltas=/home/debdev/bin/debdeltas 
 
-state $m
+run_debdeltas  () {
+ if ! test "$olddists" -a -r "$olddists/dists" ; then
+  echo "run_debdelta : bad $olddists"
+  return
+ fi
+ findmelog
+ (
+  exec >> $log
+  exec 2>> $log
+  echo -n --------------oldnew pass----   ; date   ;
+  echo "------ tmpdir was in $olddists"
+  echo -n ---- options to debdelta ;  echo -- $debdelta_opt
+
+  for dist in $DISTs ; do
+   echo -------------- $dist ----
+   #lenny contains debdelta 0.27, that does not understand lzma
+   if test "$dist" = lenny ; then x="--disable-feature lzma"
+   else x="" ; fi
+   for p in $( cd $debmir ; find dists/$dist/ -name Packages.gz) ; do
+    echo ------ debdelta $p
+    $debdeltas $VERBOSE $debdelta_opt  \
+       --alt $trash  \
+       --old $olddists/$p \
+       --dir $deltamir//  $debmir/$p
+   done
+  done
+ )
+
+ egrep -3 -i 'error|warning' $log || true
+ if grep -q -i 'error' $log ; then
+  echo "------ full log is in $log"
+ else
+  if test "$olddists" ; then
+   if test -r "$olddists/dists" ; then
+    $RM -r  "$olddists/dists"
+   fi
+   if test -r "$olddists/pool" ; then
+    $RM -r  "$olddists/pool"
+   fi
+   #this is a bit exotic , but unfortunately 'test' does not test empty dirs
+   if find "$olddists" -maxdepth 0 -type d -empty | grep -q "$olddists" ; then
+    rmdir "$olddists" ; else echo Not empty "$olddists" ; 
+   fi
+  fi
+ fi
+ test "$log" -a -r "$log" -a ! -r "$log".gz && gzip -9 $log
+}
 
 
-{  debmirror $m  "$@" --nosource --passive --nocleanup  $DEBUG -h ftp.debian.org -d sarge,etch,sid } &&  {
-echo ------------------ ; date ; }  >> $d/log 
- cd $m ;  find pool -type d -mtime -4  \
- |  xargs -r   $debdeltas -n 2 --clean --avoid $d/sarge.python.dict -M200 $DEBUG -vd --dir $d// \
- 2>&1 | tee -a $d/log  ; 
-} && { unpack /data/mirror/debian/dists/sarge main contrib non-free ; \
-} && {
-if test $day = 5 -o $day = 2 ; then \
- debmirror $m  "$@" --nosource --passive --postcleanup \
- -h ftp.it.debian.org -d sarge,etch,sid ; \
- find $d/pool -mtime +15 -type f \
- \( -name '*debdelta-fails' -or -name '*debdelta-too-big' -or -name '*debdelta-too-big' \) |\
-     xargs -r -n 4 rm -v ;
-fi ; }
+run_debdeltas_clean () {
+   echo -------------- cleanup delta pool
+   $debdeltas --clean-deltas -n 0 \
+     --dir $deltamir// \
+       $(  for arch in $ARCHs ; do
+            for sec in main contrib non-free ; do
+              for dist in $DISTs ; do
+                echo $debmir/dists/$dist/$sec/binary-$arch/Packages.gz 
+           done ; done ; done )
+}
+
+
+########################################### code
+
+
+if test "${DO_CLEAN_DELTAS}" ; then
+ run_debdeltas_clean
+ cleanuppool
+ freetrash
+fi
+
+if [ "${DO_MIRROR}" ] ; then
+ run_debmirror
+else
+ echo skipped mirror step
+fi
+
+if [ "$olddists"  -a -r "$olddists" ] ; then 
+ run_debdeltas
+else
+  for olddists  in ${TMPDIR:-/tmp}/olddists* ; do
+   if [ "$olddists"  -a -r "$olddists" ] ; then
+     echo ----------- $olddists
+     run_debdeltas
+   fi
+  done
+fi

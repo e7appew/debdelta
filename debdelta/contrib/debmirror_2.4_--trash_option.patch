@@ -1,0 +1,107 @@
+--- debmirror-2.4/debmirror	2009-12-19 22:21:28.000000000 +0100
++++ /home/debdev/bin/debmirror_2.4_mine	2010-01-19 11:29:40.000000000 +0100
+@@ -62,6 +62,7 @@
+           [--di-dist=foo[,bar,..] ...] [--di-arch=foo[,bar,..] ...]
+           [--source|--nosource] [--i18n] [--getcontents] [--md5sums]
+           [--ignore-missing-release] [--ignore-release-gpg]
++          [--trash=dir]
+           [--ignore=regex] [--exclude=regex] [--include=regex]
+           [--exclude-deb-section=regex] [--limit-priority=regex]
+           [--timeout=seconds] [--max-batch=number]
+@@ -272,6 +273,10 @@
+ Don't fail if the F<Release.gpg> file is missing. If the file does exist, it
+ is mirrored and verified, but any errors are ignored.
+ 
++=item --trash=dir
++
++When cleaning up, instead of deleting, move files in this directory.
++
+ =item --ignore=regex
+ 
+ Never delete any files whose filenames match the regex. May be used multiple times.
+@@ -520,6 +525,8 @@
+ use Digest::MD5;
+ use Digest::SHA1;
+ use LWP::UserAgent;
++use File::Basename;
++use File::Copy;
+ 
+ # Yeah, I use too many global variables in this program.
+ our $mirrordir;
+@@ -534,6 +541,7 @@
+ our $cleanup=0;
+ our $post_cleanup=1;
+ our $no_cleanup=0;
++our $trash_dir=0;
+ our $do_source=1;
+ our $host="ftp.debian.org";
+ our $user="anonymous";
+@@ -630,6 +638,7 @@
+ 	   'rsync-extra=s'          => \@rsync_extra,
+ 	   'cleanup'                => \$cleanup,
+ 	   'postcleanup'            => \$post_cleanup,
++  	   'trash=s'                => \$trash_dir,
+ 	   'nocleanup'              => \$no_cleanup,
+ 	   'ignore=s'               => \@ignores,
+ 	   'exclude=s'              => \@excludes,
+@@ -1402,6 +1411,24 @@
+ 
+ exit;
+ 
++sub delete_or_trash {
++  my $file = shift;
++  if ( ! $trash_dir ) { 
++      say("deleting $file") if ($verbose);
++      if (! $dry_run) {
++	  unlink $file or die "unlink $file: $!";
++      }
++  } else {
++      say("trashing $file") if ($verbose);
++      if (! $dry_run) {
++	  rename ($file, ($trash_dir . "/" . basename($file) )) or
++	  { copy ($file, ($trash_dir . "/" . basename($file) )) and
++		unlink $file
++	  }  or  die "cannot move or copy $file to trash: $!";
++      }
++  }
++}
++
+ sub print_dl_size {
+   my $size=shift;
+   my $unit;
+@@ -2255,10 +2282,7 @@
+     foreach my $file (sort keys %files) {
+       next if (@di_dists && $file =~ m:installer-\w+/current/images/:);
+       if ($files{$file} == 2 && -f $file) {
+-	say("deleting $file") if ($verbose);
+-	if (! $dry_run) {
+-	  unlink $file or die "unlink $file: $!";
+-	}
++	delete_or_trash($file)
+       }
+     }
+   } else {
+@@ -2273,10 +2297,7 @@
+       next if (@di_dists && $file =~ m:installer-\w+/current/images/:);
+       unless ((exists $files{$file} && $files{$file} != 2) or
+ 	      (defined($ignore) && $file=~/$ignore/o)) {
+-	say("deleting $file") if ($verbose);
+-	if (! $dry_run) {
+-	  unlink $file or die "unlink $file: $!";
+-	}
++	delete_or_trash($file)
+       }
+     }
+   }
+@@ -2419,10 +2440,7 @@
+       $file=~s:^\./::;
+       if (! exists $di_files{$image_dir} || ! exists $di_files{$image_dir}{$file}) {
+ 	next if (exists $di_files{$image_dir} && $file eq "MD5SUMS");
+-	say("deleting $image_dir/$file") if ($verbose);
+-	if (! $dry_run) {
+-	  unlink "$file" or die "unlink $image_dir/$file: $!\n";
+-	}
++	delete_or_trash($file);
+       }
+     }
+     chdir("$mirrordir") or die "unable to chdir($tempdir): $!\n";

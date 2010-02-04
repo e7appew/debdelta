@@ -6,73 +6,107 @@ debdeltas \- compute deltas between Debian packages
 .SH SYNOPSIS
 
 .B debdeltas 
-[\fIOPTION\fR]... \fIFILE\fR ... \fIDIR\fR ... \fIPackages\fR....
+[\fIOPTION\fR]... \fIARGS\fR ...
 
 .SH DESCRIPTION
 
-This program computes deltas between many Debian packages.
+.B debdeltas
+computes deltas between the old and new versions
+of Debian packages.
+
 The explanation of what a delta is is in 
 .BR debdelta (1).
 
 .SH COMMAND ARGUMENTS
 
-Non-option arguments are accepted in 3 forms, and all contribute in
-creating the internal list of Debian packages.  If the argument is a Debian
-package, \fIdebdeltas\fR adds it to the list; if the argument is a directory,
-\fIdebdeltas\fR scans it for Debian packages to be added to the list; if
-the argument is \fIPackages\fR files (that is, an index file such as
-those found in Debian mirrors - even the zipped ones - see
+In all of the following, \fIARGS\fR can
+be, a Debian binary file (usually, a file ending in \fI.deb\fR),
+or a directory containing such files,
+or a  \fIPackages\fR file (that is, an index
+file such as those found in Debian mirrors - even the zipped ones -
+see
 .BR apt-ftparchive (1)
-) then \fIdebdeltas\fR  parses it and adds all Debian packages to the list.
+).
+We will call \fIcmdline\fR
+all such args that are not related to an option.
 
-Then debdelta groups all found Debian packages by name and
-architecture. For each group, N deltas are computed (see "-n" option);
-to this end, the newest version is isolated, and then
-deltas are computed from the N nearest version to the newest version.
+As a first step, \fIdebdeltas\fR builds an internal list
+of Debian packages.
+To this end, it parses all  \fIARGS\fR of the options
+\fB\-\-alt\fR  , \fB\-\-old \fR, and those 
+\fIARGS\fR given as non-option arguments (the aforementioned cmdline
+args). If the argument is a Debian package, \fIdebdeltas\fR adds it to the
+list; if the argument is a directory, \fIdebdeltas\fR scans it for
+Debian packages to be added to the list; if the argument is
+\fIPackages\fR files, \fIdebdeltas\fR parses it and adds all Debian
+packages to the list.
+
+Then debdeltas groups all found Debian packages by name and
+architecture. 
+
+For each group, the newest cmdline version is isolated, and then
+deltas are computed from all --old versions to that version.
+
 These deltas are stored in many delta files with appropriate names of
 the form \fIname_oldversion_newversion_architecture.debdelta\fR ; the
 location of the delta files is specified by the "--dir" option.
 
 Note that the location of files in a \fIPackages\fR index
 is specified relative to the base of the mirror, e.g.
-
-.I Filename: pool/main/i/ibm/ibm_3_i386.deb
-
+.I Filename: pool/main/x/xxx/xxx_3_i386.deb
 For this reason, any \fIPackages\fR argument must presented
 with a long path (that contains at least the \fIdists\fR directory).
 
-.SH OPTIONS
+Note also that the same directory or index can be provided many times,
+as --old, as --alt, and as cmdline argument.
+
+Note also that debdeltas will skip all packages
+that are smaller than 10KB.
+
+.SH MAIN OPTIONS
 .TP
 \fB\-\-dir \fIDIR
 force saving of deltas in this DIR
-(otherwise they go in the dir of the newer deb_file)
+(otherwise they go in the dir of the newer deb_file).
 .TP
-\fB\-\-alt \fIFILE\fR, \fIDIR\fR or \fIPackages
+\fB\-\-alt \fIARGS\fR
 this is parsed as the non-option command line,
-but the found packages are never considered as the newest version.
+but the found packages are never considered for a delta.
+They are considered though when --clean-deltas is used, to
+decide if to delete a delta; and are useful
+to find debs that are deleted from indexes
+and moved elsewhere. Multiple --alt can be specified.
 .TP
-In the above two options, if DIR ends in // , then the dirname
-of the cmdline argument will be appended to DIR, as well; this is
-useful when creating archives, since it can recreate the
-directory tree.
 .TP
-\fB\-\-before \fIPackages
+\fB\-\-old \fIARGS\fR 
 this is parsed as the non-option command line,
-but the found packages are never considered as the newest version,
-and moreover they may be non-existent, but moved in a --alt
-directory.
+and the found packages are considered as the older versions.  Multiple
+--old can be specified.  Moreover, when scanning a \fIPackages\fR
+index, it is not an error if files do not exist, as long as they have
+been moved in a --alt directory. Note that, if no --old
+is specified, then no deltas will be generated.
+
+.SH The double slash
+If a directory path is provided as argument to --dir, and it ends in // ,
+then this triggers a specific behaviour related to files found
+in \fIPackages\fR indexes (as presented in the commandline). If a
+package in a index is stored in
+\fIpool/main/x/xxx/xxx_3_i386.deb\fR , and --dir is
+\fI/tmp/foobar//\fR , then the delta will be saved in
+\fI/tmp/foobar/pool/main/x/xxx/xxx_2_3_i386.deb\fR.  The same is
+true for --alt (and is useful to find old versions of a package).
+
+.SH OTHER OPTIONS
 .TP
 .B --signing-key \fI KEY
 key used to sign the deltas (using GnuPG)
 .TP
 \fB\-n \fIN
-how many deltas to produce for each unique package name (default 1)
+how many deltas to produce at maximum for each unique package/arch (default unlimited)
 .TP
 .B --clean-deltas
-delete deltas if newer deb is not in archive
-.TP
-.B --clean-alt
-delete debs in --alt if too old (see -n )
+delete deltas that upgrade to packages versions that are not found in the 
+cmdline ARGS, and are at least two days old (according to mtime).
 .TP
 \fB\-\-no\-md5
 do not include MD5 info in debdelta.
@@ -115,6 +149,9 @@ for details.
 .TP
 .BI \--disable-feature  \ FEATURE
 disable an internal feature. See the documentation in README.features.
+.TP 
+.BI --no-act
+Just list the deltas that would be created.
 
 .SH SECURITY
 
@@ -126,10 +163,21 @@ See
 See 
 .BR debdelta (1)
 
-.SH EXAMPLE
+.SH EXAMPLES
 
-See the example script
+.I debdeltas --dir /tmp/ --old ~/mydebs ~/mydebs
+will generate all deltas to upgrade from the old
+versions in ~/mydebs to the newest version
+in ~/mydebs , and store the deltas in /tmp/
+
+.I debdeltas --dir /tmp// --old  /mirror/debian/dists/lenny/main/binary-i386/Packages.gz /mirror/debian/dists/squeeze/main/binary-i386/Packages.gz
+will generate all deltas to upgrade main/i386 from lenny to squeeze,
+and store the deltas in a pool structure under /tmp/
+
+See also the example scripts
 .I /usr/share/debdelta/debmirror-delta-security
+and
+.I /usr/share/debdelta/debmirror-deltas
 
 .SH "REPORTING BUGS"
 

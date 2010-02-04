@@ -62,31 +62,21 @@ and leave a stamp of the form
 
 Example usage:
 
-$ debdeltas /var/cache/apt/archives/*deb
+$ debdeltas --dir /tmp --old /var/cache/apt/archives/ /var/cache/apt/archives/
 
 'debdeltas' can also scan 'Packages' file on its own.
-See the script /usr/share/debdelta/debmirror-delta-security
-for an usage example.
+See the scripts /usr/share/debdelta/debmirror-delta-security
+and  /usr/share/debdelta/debmirror-deltas
+for usage examples.
 
 With the --dir argument, it will put the deltas in a different tree
 (this is necessary if you use 'debmirror' , since 'debmirror' will
  destroy any file that it does not recognize)
 
-Example:
-
-$ m=where_your_mirror_is
-$ d=where_to_put_deltas
-$ cd $m
-$ find pool -type d -mtime -1   |  xargs -r  debdeltas --dir $d// 
-
-The // means that the pool directory tree will be mimicked in the deltas
-directory tree.
-
 ----------- debdelta-upgrade
 
 This command will download necessary deltas
 and apply them to create debs for an 'apt-get upgrade'
-
 
 Example usage:
 # apt-get update && debdelta-upgrade && apt-get upgrade
@@ -99,14 +89,6 @@ available (this is done in parallel to patching, to maximize
 speed). See the explanation of "debdelta-upgrade --deb-policy" in the
 man page for more info and customization on which debs get downloaded.
 
-Work is in progress so that debdelta-upgrade will actually choose if
-- download a delta and use it to create the .deb
-- download the deb
-depending on which one would be faster.
-Unfortunately, this decision must depend on a good model
-to predict the speed of patching... and this I still cannot
-achieve.
-
 More info are in README.upgrade
 
 ------------- TODO
@@ -115,15 +97,28 @@ Prepare an APT method so that
 'apt-get upgrade' would actually use deltas.
 Some code is already written.
 
--------------- Statistics and tests
 
-I am currently running 'debdeltas' in a mirror that mirrors
-'stable' , 'stable-security' , 'testing' and 'unstable', for i386 and amd64.
+It would be nice if debdelta-upgrade would actually choose if
+- download a delta and use it to create the .deb
+- download the deb
+depending on which one would be faster.
+Unfortunately, this decision must depend on a good model
+to predict the speed of patching... and this I still cannot
+achieve.
+
+-------------- Statistics and tests
 
 Tests and comparisons on backend binary delta difference compressors
 are available in 
 http://tonelli.sns.it/pub/mennucc1/debdelta/run/tests
 see README.txt
+
+
+I am currently running 'debdeltas' in a mirror that mirrors
+'stable' , 'stable-security' , 'testing', 'unstable' and
+'experimental', for i386 and amd64.
+Logs are in 
+http://tonelli.sns.it/pub/mennucc1/debdelta/run/log
 
 
 ------------ exact patching and exact recompression

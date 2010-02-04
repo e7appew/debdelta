@@ -46,14 +46,14 @@ binary-arch:	checkroot build
 	# dirs
 	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta $(D)/usr/share/debdelta $(D)/usr/share/keyrings
 	# control
-	install contrib/debmirror-delta-security $(D)/usr/share/debdelta
 	install -m 755 debian/postrm $(D)/DEBIAN/
 	install -m 755 debian/postinst $(D)/DEBIAN/
 	# /usr/share
 	install debpatch.sh $(D)/usr/share/debdelta
 	install contrib/debmirror-delta-security $(D)/usr/share/debdelta
+	install contrib/debmirror-deltas $(D)/usr/share/debdelta
 	install contrib/dpkg-sig $(D)/usr/share/debdelta
-	cp contrib/debmirror_2007_--trash_option.patch  $(D)/usr/share/debdelta
+	cp contrib/debmirror*trash_option.patch  $(D)/usr/share/debdelta
 	ln -s ../../bin/debdelta  $(D)/usr/share/debdelta/debpatch-url
 	cp keyrings/pub.gpg $(D)/usr/share/keyrings/debian-debdelta-archive-keyring.gpg
 	chmod 0644 $(D)/usr/share/keyrings/debian-debdelta-archive-keyring.gpg
