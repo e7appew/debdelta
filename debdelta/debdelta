@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.258 2010/02/23 21:10:22 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.259 2010/02/23 21:35:23 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1208,7 +1208,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       if True != r:
         die(delta+": the signature file "+a+" fails as follows: "+repr(r))
       is_signed=True
-      if VERBOSE : print ' The signature by "'+a[4:]+'" is correctly verified for ',delta
+      if VERBOSE > 1 : print '  The signature by "'+a[4:]+'" is correctly verified for ',delta
   if not is_signed:
     if do_gpg:
       die("Delta is not signed: "+delta)
@@ -3401,8 +3401,9 @@ def delta_upgrade_(args):
     if DEB_DIR == '/var/cache/apt/archives' :
       a=a+' (is APT running?)'
     raise DebDeltaError('could not lock dir: '+DEB_DIR+' '+a, retriable=True)
-    
-  print 'Recreated debs are saved in ',DEB_DIR
+
+  if VERBOSE or DEB_DIR != '/var/cache/apt/archives' :
+    print 'Recreated debs are saved in ',DEB_DIR
 
   #these are the packages that do not have a delta
   no_delta = []
@@ -3459,13 +3460,13 @@ def delta_upgrade_(args):
             puke(' Error: applying of delta for '+name+'failed: ',s)
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
-            elif VERBOSE : print ' No deb-policy "e", no download of ',deb_uri
+            elif VERBOSE > 1 : print '  No deb-policy "e", no download of ',deb_uri
             exitcodes.append(s.exitcode)
           except:
             puke( " *** Error while applying delta for "+name+": ")
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
-            elif VERBOSE : print ' No deb-policy "e", no download of ',deb_uri
+            elif VERBOSE > 1 : print '  No deb-policy "e", no download of ',deb_uri
             exitcodes.append(4)
           else:
             if name in params_of_delta :
@@ -3911,7 +3912,7 @@ def delta_upgrade_(args):
           print 'Debdelta is too big:', delta_name
           if 'b' in DEB_POLICY:
             no_delta.append( (deb_uri, newdeb) )
-          elif VERBOSE : print ' No deb-policy "b", no download of ',deb_uri
+          elif VERBOSE > 1 : print '  No deb-policy "b", no download of ',deb_uri
         else:
           if DEBUG and VERBOSE:
             print 'Debdelta is not present:', uri
@@ -3919,7 +3920,7 @@ def delta_upgrade_(args):
             print 'Debdelta is not present:', delta_name
           if 'u' in DEB_POLICY:
             no_delta.append( (deb_uri, newdeb) )
-          elif VERBOSE : print ' No deb-policy "u", no download of ',deb_uri
+          elif VERBOSE > 1 : print '  No deb-policy "u", no download of ',deb_uri
         continue
 
       if VERBOSE > 1:
@@ -4021,7 +4022,7 @@ def delta_upgrade_(args):
     else:
       if 'u' in DEB_POLICY:
         no_delta.append( (deb_uri, newdeb) )
-      elif VERBOSE : print ' No deb-policy "u", no download of ',deb_uri
+      elif VERBOSE > 1 : print '  No deb-policy "u", no download of ',deb_uri
   ## end of second merry-go-round
 
   #terminate queue
