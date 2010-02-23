@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.259 2010/02/23 21:35:23 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.260 2010/02/23 21:40:38 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3963,18 +3963,14 @@ def delta_upgrade_(args):
 
   available_deltas.sort()
 
-  if not available_deltas:
-    print 'No deltas available to be downloaded/applied.'
-    return
-
-
   if DEBUG or VERBOSE:
     print ' So far, downloaded, time: %.2fsec size: %s speed: %4s/sec' % \
         (deltas_down_time, SizeToStr(deltas_down_size), SizeToStr(deltas_down_size/float(deltas_down_time+0.001)))
 
   if DEBUG or VERBOSE:
-    print 'Deltas: %d present and %d not.' % (len(available_deltas), len(not_available_deltas))
-    print 'Need to get %s of deltas.' %  SizeToStr(sum([a[0] for a in available_deltas]))
+    print ' Deltas: %d present and %d not.' % (len(available_deltas), len(not_available_deltas))
+    if available_deltas:
+      print ' Need to get %s of deltas.' %  SizeToStr(sum([a[0] for a in available_deltas]))
 
   ############# start downloading and progress thread
   
