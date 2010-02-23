@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.257 2010/02/13 14:25:46 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.258 2010/02/23 21:10:22 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3978,9 +3978,9 @@ def delta_upgrade_(args):
   ############# start downloading and progress thread
   
   def print_progress(common_db):
-    while 'STOP' not in common_db:
-      time.sleep(0.2)
+    while sys and 'STOP' not in common_db:
       sys.stderr.write(progress_string(common_db)+'\r')
+      time.sleep(0.2)
   
   if DO_PROGRESS and terminalcolumns > 4:
     progress_thread=threading.Thread(target=print_progress, args=( thread_returns, ) )
