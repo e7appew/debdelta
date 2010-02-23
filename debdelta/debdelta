@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.260 2010/02/23 21:40:38 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.261 2010/02/23 21:43:57 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3753,12 +3753,14 @@ def delta_upgrade_(args):
 
   ###################################### end of HTTP stuff
 
+  ################### start patching thread
+
   patching_thread=threading.Thread(
     target=thread_do_patch  ,
     args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
   patching_thread.start()
 
-  ###################################### start patching thread
+  ################### first merry-go-round
   
   deltas_down_size=0
   deltas_down_time=0
@@ -3785,7 +3787,7 @@ def delta_upgrade_(args):
 
   progress_count=0
   
-  ## first merry-go-round, use package cache to fill available_deltas
+  ## first merry-go-round, use package cache to fill available_deltas, download 10kB of each delta
   for p in cache :
     #print progress
     if DO_PROGRESS :
@@ -3972,7 +3974,7 @@ def delta_upgrade_(args):
     if available_deltas:
       print ' Need to get %s of deltas.' %  SizeToStr(sum([a[0] for a in available_deltas]))
 
-  ############# start downloading and progress thread
+  ###################### start  progress thread
   
   def print_progress(common_db):
     while sys and 'STOP' not in common_db:
@@ -3985,7 +3987,7 @@ def delta_upgrade_(args):
   else:
     progress_thread=None
   
-  ## second merry-go-round, try downloading available delta
+  ################ second merry-go-round, download rest of available deltas , queue them
   for delta_len, name, uri, abs_delta_name , newdeb, deb_uri, tempname, complete  in available_deltas :
     ## this seems to create problems....
     #if not os.path.exists(abs_delta_name) and os.path.exists(tempname) and os.path.getsize(tempname) == delta_len:
@@ -4054,7 +4056,7 @@ def delta_upgrade_(args):
   #terminate progress report
   thread_returns['STOP']=True
   while progress_thread != None and progress_thread.isAlive():
-    time.sleep(0.1)
+xs    time.sleep(0.1)
   
   total_time += time.time()
   print 'Delta-upgrade statistics:'
