@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.261 2010/02/23 21:43:57 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.262 2010/02/24 20:59:50 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -4056,7 +4056,7 @@ def delta_upgrade_(args):
   #terminate progress report
   thread_returns['STOP']=True
   while progress_thread != None and progress_thread.isAlive():
-xs    time.sleep(0.1)
+    time.sleep(0.1)
   
   total_time += time.time()
   print 'Delta-upgrade statistics:'
