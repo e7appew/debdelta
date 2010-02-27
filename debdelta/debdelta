@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.264 2010/02/27 12:08:27 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.265 2010/02/27 12:42:00 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1334,6 +1334,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   localepurged=[]
   prelink_u_failed=[]
   def _symlink_data_tree(pa,TD,diversions,runtime):
+    prelink_time = 0
+    prelink_datasize = 0
     if diversions:
       s,diverted=dpkg_L_faster(pa,diversions)
     else:
@@ -1354,10 +1356,14 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         #the following code idea was provided by roman@khimov.ru
         unprelink=False
         if HAVE_PRELINK :
+          prelink_time -=  time.time()
           is_elf, ei_class, ei_data, ei_osabi, e_type = elf_info(divert)
           #according to prelink-0.0.20090925/src/main.c
           unprelink = is_elf and e_type in ('ET_DYN','ET_EXEC')
+          prelink_time +=  time.time()
         if unprelink:
+          prelink_time -=  time.time()
+          prelink_datasize += os.path.getsize(divert)
           shutil.copyfile(divert, a)
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
@@ -1378,6 +1384,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
             else:
               sys.stderr.write('!!Prelink -u failed on %s : %s\n' % (a,out))
               prelink_u_failed.append(a)
+          prelink_time +=  time.time()
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
           os.symlink(divert, a)
@@ -1388,8 +1395,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           if orig[:len(w)] == w:
             localepurged.append(orig)
       elif VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
-    return s,diverted
-
+    return s,diverted, prelink_time, prelink_datasize
 
   def chmod_add(n,m):
     "same as 'chmod ...+...  n '"
@@ -1417,6 +1423,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   runtime['patchprogress']=6
 
+  prelink_time=None
+  
   for a in params:
     if 'needs-old' == a:
       if olddeb == '/':
@@ -1424,7 +1432,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
-        linked_file_pairs,diverted=_symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
+        linked_file_pairs,diverted,prelink_time,prelink_datasize=_symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
@@ -1581,11 +1589,21 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         debsize = os.stat(newdeb)[ST_SIZE]
       else:
         debsize = os.stat(olddeb)[ST_SIZE]
-      a=''
-      if newdeb != None:
-        a='result: '+os.path.basename(newdeb)
-      print ' Patching done, time: %.2fsec, speed: %dk/sec %s (script time %.2fsec ) ' % \
-            (elaps,(debsize / 1024 /  (elaps+.001)),a , script_time)
+      print ' Patching done, time: %.2fsec, speed: %dk/sec' % \
+            (elaps,(debsize / 1024 /  (elaps+.001))),
+      print '(script %.2fsec %dk/sec)' % (script_time,(debsize / 1024 / (script_time+.001))),
+      if prelink_time != None and prelink_time > 0 :
+        prelink_datasize=prelink_datasize/1024
+        print '(prelink %.2fsec, %dk, %dk/s)' % \
+              (prelink_time, prelink_datasize, prelink_datasize /  (prelink_time + .001)),
+        print '(unaccounted %.2fsec)' % (elaps-prelink_time-script_time),
+      else:
+        print '(unaccounted %.2fsec)' % (elaps-script_time),
+      ## this is useless, if 'debpatch' it is in the command line, if 'debdelta-upgrade'
+      ## it is printed elsewhere
+      #if newdeb != None:
+      #  print 'result: '+os.path.basename(newdeb),
+      print
   return (newdeb,elaps)
 
 ##################################################### compute delta
