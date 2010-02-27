@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.262 2010/02/24 20:59:50 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.263 2010/02/27 11:57:26 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3463,6 +3463,7 @@ def delta_upgrade_(args):
             elif VERBOSE > 1 : print '  No deb-policy "e", no download of ',deb_uri
             exitcodes.append(s.exitcode)
           except:
+            if puke == None: return
             puke( " *** Error while applying delta for "+name+": ")
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
