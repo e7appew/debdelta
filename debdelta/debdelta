@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.263 2010/02/27 11:57:26 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.264 2010/02/27 12:08:27 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1584,7 +1584,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       a=''
       if newdeb != None:
         a='result: '+os.path.basename(newdeb)
-      print ' Patching done, time: %.2fsec, speed: %dkB/sec %s (script time %.2fsec ) ' % \
+      print ' Patching done, time: %.2fsec, speed: %dk/sec %s (script time %.2fsec ) ' % \
             (elaps,(debsize / 1024 /  (elaps+.001)),a , script_time)
   return (newdeb,elaps)
 
