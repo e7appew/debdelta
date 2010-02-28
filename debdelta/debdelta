@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.265 2010/02/27 12:42:00 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.266 2010/02/28 17:24:59 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1364,16 +1364,19 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         if unprelink:
           prelink_time -=  time.time()
           prelink_datasize += os.path.getsize(divert)
-          shutil.copyfile(divert, a)
           if VERBOSE > 3 :
             print '    copying/unprelinking ',divert,' to ',a
-          proc=subprocess.Popen(["/usr/sbin/prelink","-u",a],stdin=open(os.devnull),\
+          proc=subprocess.Popen(["/usr/sbin/prelink","-u",'-o',a,divert],stdin=open(os.devnull),\
               stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
           out=proc.stdout.read().strip()
           proc.wait()
           if proc.returncode==2:
             raise KeyboardInterrupt
           elif proc.returncode:
+            if not os.path.exists(a):
+              if VERBOSE > 4 : print '     (prelink failed, symlinking ',divert,' to ',a,')'
+              os.symlink(divert, a)
+            elif VERBOSE > 4 : print '     (prelink failed, but file was copied)'
             thestat = os.statvfs(a)
             if out[-39:] == 'does not have .gnu.prelink_undo section':
               if DEBUG:
