@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.268 2010/04/02 11:50:47 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.269 2010/04/02 12:15:36 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1617,15 +1617,22 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 def do_delta(olddeb,newdeb,delta):
   try:
     T=tempo()
-    r=do_delta_(olddeb,newdeb,delta,TD=T)
-    (delta, percent, elaps, info, gpg_hashes) = r
-    info_hashes=append_info(delta,info)
+    if os.path.exists(delta+'_tmp_') :
+      os.unlink(delta+'_tmp_')
+    r=do_delta_(olddeb,newdeb,delta+'_tmp_',TD=T)
+    (deltatmp, percent, elaps, info, gpg_hashes) = r
+    info_hashes=append_info(deltatmp,info)
     if DO_GPG:
       gpg_hashes['info']=info_hashes
-      sign_delta(delta,gpg_hashes)
+      sign_delta(deltatmp,gpg_hashes)
+    if  os.path.exists(delta) :
+      os.rename(delta,delta+'~')
+    os.rename(deltatmp,delta)
   except:
     if delta and os.path.exists(delta):
       os.unlink(delta)
+    if delta and os.path.exists(delta+'_tmp_'):
+      os.unlink(delta+'_tmp_')
     rmtree(T)
     raise
   else:
@@ -1660,8 +1667,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
     raise DebDeltaError('Error: not enough disk space in '+TD, True)
 
   delta=abspath(delta)
-  if  os.path.exists(delta) :
-    os.rename(delta,delta+'~')
   
   #generater for numbered files
   def a_numb_file_gen():    
