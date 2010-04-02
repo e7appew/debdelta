@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.269 2010/04/02 12:15:36 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.270 2010/04/02 12:41:54 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3166,31 +3166,30 @@ def do_deltas(debs):
           continue
         
         if VERBOSE : print 'Creating:',delta
+        deltatmp=delta+'_tmp_'
         ret= None
         tdir=tempo()
         try:
-          ret=do_delta_(old['File'],new['File'], delta, TD=tdir)
-          (delta_, percent, elaps, info_delta, gpg_hashes) = ret
-          #insert a first time, it is needed for the testing
-          append_info(delta,info_delta)
+          ret=do_delta_(old['File'],new['File'], deltatmp, TD=tdir)
+          (deltatmp_, percent, elaps, info_delta, gpg_hashes) = ret
         except KeyboardInterrupt:
-          if os.path.exists(delta):
-            os.unlink(delta)
+          if os.path.exists(deltatmp):
+            os.unlink(deltatmp)
           rmtree(tdir)
           raise
         except DebDeltaError,s:
           if not VERBOSE : print 'Creating:',delta
           print ' Creation of delta failed, reason: ',str(s)
-          if os.path.exists(delta):
-            os.unlink(delta)
+          if os.path.exists(deltatmp):
+            os.unlink(deltatmp)
           if not s.retriable :
             open(delta+'-fails','w').close()
           exitstatus=max(exitstatus, s.exitcode)
           ret = None
         except:
           exitstatus=4
-          if os.path.exists(delta):
-            os.unlink(delta)
+          if os.path.exists(deltatmp):
+            os.unlink(deltatmp)
           puke( " *** Error while creating delta  "+delta)
           open(delta+'-fails','w').close()
           ret = None
@@ -3204,32 +3203,32 @@ def do_deltas(debs):
         info_delta.append('ServerBogomips: '+str(BOGOMIPS))
         
         if MAX_DELTA_PERCENT and  percent > MAX_DELTA_PERCENT:
-            os.unlink(delta)
+            os.unlink(deltatmp)
             if VERBOSE : print ' Warning, too big!'
             open(delta+'-too-big','w').close()
             continue
-
+        
         if DO_TEST :
           ##patch test
           pret=None
           try:
             #test, ignoring gpg, that is added later on
-            pret=do_patch(delta,old['File'],None , info=info_delta, do_gpg=None)
+            pret=do_patch(deltatmp,old['File'],None , info=info_delta, do_gpg=None)
           except DebDeltaError,s:
             print ' Error: testing of delta failed: ',str(s)
-            if os.path.exists(delta):
-              os.unlink(delta)
+            if os.path.exists(deltatmp):
+              os.unlink(deltatmp)
             if not  s.retriable :
               open(delta+'-fails','w').close()
           except KeyboardInterrupt:
-            if os.path.exists(delta):
-              os.unlink(delta)
+            if os.path.exists(deltatmp):
+              os.unlink(deltatmp)
             raise
           except Exception,s:
             exitstatus=max(exitstatus,4)
             puke(" *** Error while testing delta  "+delta,s)
-            if os.path.exists(delta):
-              os.unlink(delta)
+            if os.path.exists(deltatmp):
+              os.unlink(deltatmp)
             open(delta+'-fails','w').close()
           if pret == None:
             continue
@@ -3237,17 +3236,20 @@ def do_deltas(debs):
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
           ##end patch test
-        #complete the delta file prepending to it the info (a 2nd time)
+        #complete the delta file prepending to it the info
         try:
-          hashes_info=append_info(delta,info_delta)
-          # sign ghe delta
+          hashes_info=append_info(deltatmp,info_delta)
+          # sign the delta
           if DO_GPG:
             gpg_hashes['info']=hashes_info
-            sign_delta(delta,gpg_hashes)
+            sign_delta(deltatmp,gpg_hashes)
         except:
           puke('debdeltas')
-          if os.path.exists(delta):
-            os.unlink(delta)
+          if os.path.exists(deltatmp):
+            os.unlink(deltatmp)
+        
+        #eventually, put in its place
+        os.rename(deltatmp,delta)
 
     #delete debs in --alt that are too old
     #if CLEAN_ALT:
