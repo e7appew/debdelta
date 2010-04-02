@@ -166,10 +166,10 @@ CLEAN_ALT    = False
 DO_PREDICTOR = False
 
 #see README.features
-DISABLEABLE_FEATURES=['lzma']
+DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.267 2010/04/01 17:25:43 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.268 2010/04/02 11:50:47 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1462,7 +1462,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif 'needs-xdelta3' == a:
       if not os.path.exists('/usr/bin/xdelta3'):
         raise DebDeltaError('This patch needs xdelta3. Please install the Debian package "xdelta3".',retriable=True)
-    elif 'needs-xdelta3-piped' == a:
+    elif 'needs-xdelta3-fifo' == a:
       # not doing a specific check, I am using debian/control Conflicts
       if not os.path.exists('/usr/bin/xdelta3'):
         raise DebDeltaError('This patch needs xdelta3, at least version 3.0y. Please install the Debian package "xdelta3".',retriable=True)
@@ -1733,12 +1733,18 @@ def do_delta_(olddeb,newdeb,delta,TD):
     info.append('old-data-tree')
     info.append('old-control-tree')
 
+  #do we use a fifo as input for xdelta3
+  delta_uses_infifo = ('xdelta3-fifo' not in DISABLED_FEATURES) and (USE_DELTA_ALGO == 'xdelta3')
+
   a=USE_DELTA_ALGO
   if a == 'xdelta-bzip':
     a='xdelta'
   if not os.path.exists('/usr/bin/'+a):
     raise DebDeltaError('please install the package "'+a+'".', retriable=True)
-  info.append('needs-'+a)
+  if delta_uses_infifo:
+    info.append('needs-xdelta3-fifo')
+  else:
+    info.append('needs-'+a)
   del a
 
   #### check for disk space
@@ -1866,9 +1872,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
       script.write('lzma -9')
     else: assert(0)
 
-  def delta_files__(o, n, p, algo, piped):
+  def delta_files__(o, n, p, algo, outpiped, infifo):
     "delta of file 'o' to 'n' using/producing patch 'p' ; xdelta3 can also pipe"
-    this_delta_piped=False
+    this_delta_outpiped=False
     #bdiff
     #http://www.webalice.it/g_pochini/bdiff/
     if algo == 'bdiff':
@@ -1897,8 +1903,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     #xdelta3
     elif algo == 'xdelta3' :
       system('xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD,(o,n))
-      if piped:
-        this_delta_piped=True
+      if infifo : o = infifo #use fifo as input
+      if outpiped:
+        this_delta_outpiped=True
         script.write('xdelta3 -d -c -s '+o+' '+p+'\n')
       else:
         script.write('xdelta3 -d -s '+o+' '+p+' '+n+'\n')
@@ -1923,9 +1930,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
       system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
       script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+'\n')
     else: raise AssertionError(' unsupported delta algo ')
-    return p, this_delta_piped
+    return p, this_delta_outpiped
 
-  def delta_files(o, n, piped=False):
+  def delta_files(o, n, outpiped=None, infifo=None):
     " compute delta of two files , and prepare the script consequently"
     nsize = os.path.getsize(TD+n)
     osize = os.path.getsize(TD+o)
@@ -1940,10 +1947,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if USE_DELTA_ALGO == 'bsdiff' and osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
       print ' Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
     #
-    p, this_delta_piped = delta_files__(o, n, p, USE_DELTA_ALGO, piped)
+    p, this_delta_outpiped = delta_files__(o, n, p, USE_DELTA_ALGO, outpiped, infifo)
     #script.write(s)
     #
-    if DEBUG > 2 and not this_delta_piped : script_md5_check_file(n)
+    if DEBUG > 2 and not this_delta_outpiped : script_md5_check_file(n)
     #
     tim += time.time()      
     #
@@ -1951,7 +1958,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
     bsdiff_time += tim
     bsdiff_datasize += nsize
     #
-    script.write('rm '+o+' '+p+'\n')
+    if infifo:
+      script.write('rm '+p+'\n')
+    else:
+      script.write('rm '+o+' '+p+'\n')
     ## how did we fare ?
     deltasize = os.path.getsize(TD+p)
     if VERBOSE > 1 :
@@ -1964,7 +1974,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     patch_append(p[6:])
     #clean up
     unlink(TD+o)
-    return this_delta_piped
+    return this_delta_outpiped
 
   def cmp_gz(o,n):
     "compare gzip files, ignoring header; returns first different byte (+-10), or True if equal"
@@ -2181,7 +2191,16 @@ def do_delta_(olddeb,newdeb,delta,TD):
   script.write("FTH='"+fake_tar_2nd_echo+"'\n")
   script.write("E='echo -ne'\n")
   
+  if delta_uses_infifo : #create the fifo as input for xdelta3
+    the_fifo=a_numb_file.next()
+    script.write("mkfifo %s\n" % the_fifo)
+  else:
+    the_fifo=None
+  
+  #do we use pipes as output of the backend delta
   delta_tar_uses_pipes=True
+  # note that delta_uses_infifo needs delta_tar_uses_pipes
+  assert(delta_tar_uses_pipes or not delta_uses_infifo)
   
   global time_corr
   time_corr=0
@@ -2189,7 +2208,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   ####################  vvv     delta_tar    vvv ###########################
   def delta_tar(old_filename, new_filename, CWD,\
                   skip=[], old_md5={}, new_md5={},\
-                  chunked_p=True,debdelta_conf_skip=()):
+                  chunked_p=(not delta_uses_infifo) ,debdelta_conf_skip=()):
     " compute delta of two tar files, and prepare the script consequently"
     assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
 
@@ -2395,7 +2414,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write('wait\n')
       if background:
         script.write('(')
-      this_delta_piped=delta_files(current_chunk_name, p, piped=delta_tar_uses_pipes)
+      this_delta_piped=delta_files(current_chunk_name, p, delta_tar_uses_pipes, the_fifo)
       if delta_tar_uses_pipes:
         if not this_delta_piped:
           script.write('cat '+p+'\n')
@@ -2446,7 +2465,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
           one_old_file=some_old_file.next()
         #write the chunk into a temporary
         mega_cat.close()
-        script.write(') > '+current_chunk_name+'\n') #write chunk
+        if the_fifo:
+          script.write(') > '+the_fifo+'&\n')  #write to fifo, background
+        else:
+          script.write(') > '+current_chunk_name+'\n') #write chunk
         #delta the chunk
         mega_cat_chunk(progressive_new_offset, newtarinfo.offset )
         #start a new chunk
@@ -2505,7 +2527,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
     #write the chunk into a temporary
     mega_cat.close()
-    script.write(') > '+current_chunk_name+'\n')  #write chunk , chunks are always piped
+    if the_fifo:
+      script.write(') > '+the_fifo+'&\n')  #write to fifo, background
+    else:
+      script.write(') > '+current_chunk_name+'\n')  #write chunk , chunks are always piped
     if os.path.exists(TD+'/OLD/'+CWD):
       rmtree(TD+'/OLD/'+CWD)
     if os.path.getsize(TD+'/'+current_chunk_name) > 0 :
@@ -2646,6 +2671,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
   #this is done already from the receiving end
   if DEBUG > 2 and newdeb_md5sum :
     script_md5_check_file("NEW.file",md5=newdeb_md5sum)
+  
+  if the_fifo:
+    script.write("rm %s\n" % the_fifo)
   
   #script is done
   script.close()
