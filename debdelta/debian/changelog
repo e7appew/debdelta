@@ -1,3 +1,22 @@
+debdelta (0.39) unstable; urgency=low
+
+  * Reviewed messages printed (at different verbosity levels) .
+  * Inside the delta, the internal script uses shell pipes,
+     to reduce usage of temporary files .
+  * Set Homepage: http://debdelta.debian.net
+  * etc/sources.conf : use debdeltas.debian.net, thanks to Paul Wise
+     for the suggestion, and thanks to the Bononia people (Closes: #517942).
+  * xdelta3 (>= 0y) can use a FIFO for the input source (a.k.a
+     the old version of the file). When using '--delta-algo xdelta3'
+     the delta now, in its internal script, can process all old files 
+     in one pipe, w/o using many chunks stored in temporary files. Such
+     deltas are marked by a new internal feature 'needs-xdelta3-fifo'.
+     This is disabled by '--disable-feature xdelta3-fifo'
+  * debdelta/debdeltas : store incomplete delta files as delta_tmp_ , are
+     renamed when they are completed (and tested, and signed, if required) 
+  
+ -- A Mennucc1 <mennucc1@debian.org>  Fri, 03 Apr 2010 13:40:59 +0200
+
 debdelta (0.38) unstable; urgency=low
 
   * debdelta-upgrade : 

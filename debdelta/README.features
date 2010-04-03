@@ -44,6 +44,13 @@ needs-xdelta3
 
 The support for all 3 above was added before Debian/lenny.
 
+needs-xdelta3-fifo
+ this delta needs xdelta3 at least version 0y , that supports reading
+ the source thru a name FIFO. The support for this was added in
+ 'debdelta' 0.39, and will be available in Debian/stable with the
+ release of Debian/squeeze.  If you want to create deltas that are
+ compatible with Debian/lenny, use '--disable-feature xdelta3-fifo'.
+
 ---- compressor
 
 debdelta uses internally bzip2 and gzip in many places,

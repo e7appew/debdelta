@@ -7,10 +7,9 @@ to store and transmit only the changes between Debian packages.  This
 suite contains 'debdelta-upgrade', that downloads deltas and use them
 to create all Debian packages needed for an 'apt-get upgrade'.
 
-debdelta is  Copyright (C) 2006-09 Andrea Mennucci
+debdelta is  Copyright (C) 2006-2010 Andrea Mennucci
 
 debdelta is free software.  See the file COPYING for copying conditions.
-
 
 debdelta uses 'minizgip', that is a simplified version of
   /usr/share/doc/zlib1g-dev/examples/minigzip.c.gz
@@ -56,27 +55,22 @@ It will generate delta files with names such as
  package_old-version_new-version_architecture.debdelta
 and put them in the directory where the new .deb is.
 
-If the delta exceeds ~80% of the deb, 'debdeltas' will delete it
+If the delta exceeds ~70% of the deb, 'debdeltas' will delete it
 and leave a stamp of the form
  package_old-version_new-version_architecture.debdelta-too-big
 
-Example usage:
-
-$ debdeltas --dir /tmp --old /var/cache/apt/archives/ /var/cache/apt/archives/
-
-'debdeltas' can also scan 'Packages' file on its own.
-See the scripts /usr/share/debdelta/debmirror-delta-security
+Example usages are in the man page; see also
+the scripts /usr/share/debdelta/debmirror-delta-security
 and  /usr/share/debdelta/debmirror-deltas
-for usage examples.
-
-With the --dir argument, it will put the deltas in a different tree
-(this is necessary if you use 'debmirror' , since 'debmirror' will
- destroy any file that it does not recognize)
 
 ----------- debdelta-upgrade
 
 This command will download necessary deltas
-and apply them to create debs for an 'apt-get upgrade'
+and apply them to create debs for an 'apt-get upgrade' .
+
+The deltas are available for upgrades in
+ 'stable' , 'stable-security' , 'testing', 'unstable' and 'experimental',
+ for i386 and amd64.
 
 Example usage:
 # apt-get update && debdelta-upgrade && apt-get upgrade
@@ -110,15 +104,11 @@ achieve.
 
 Tests and comparisons on backend binary delta difference compressors
 are available in 
-http://tonelli.sns.it/pub/mennucc1/debdelta/run/tests
+http://debdelta.debian.net/run/tests
 see README.txt
 
-
-I am currently running 'debdeltas' in a mirror that mirrors
-'stable' , 'stable-security' , 'testing', 'unstable' and
-'experimental', for i386 and amd64.
-Logs are in 
-http://tonelli.sns.it/pub/mennucc1/debdelta/run/log
+Logs of the server that creates deltas for 'debdelta-upgrade' are in 
+http://debdelta.debian.net/run/log
 
 
 ------------ exact patching and exact recompression

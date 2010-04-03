@@ -19,9 +19,12 @@ host=ftp.debian.org
 #where to store deltas
 deltamir=/mirror/debian-deltas
 #delete old debs from trash if the space here drops below kB :
-freespace=200000
+minfreespace=2000000
 #delete deltas and old_debs that are older than days (regardless of space)
 old_delete_days=60
+
+#where to keep snapshots of the older indexes of the archives (for the --snapshot option)
+dists_snapshots=/mirror/debian-snapshots
 
 #where is the debdeltas program
 debdeltas=/usr/bin/debdeltas
@@ -61,6 +64,7 @@ VERBOSE=''
 RM='rm'
 DO_MIRROR=true
 DO_CLEAN_DELTAS=''
+DO_SNAPSHOT=''
 while [ "$1" ] ; do
  case "$1" in
   -h|--help)
@@ -83,7 +87,7 @@ Options:
               also, do not 'rm' stuff, just tell
 --no-mirror  if it crashed, resume the unfinished jobs
 --clean-deltas , clean useless deltas (see debdeltas man page)
-
+--snapshot     capture a snapshot of the archive (use daily)
 EOF
   exit ;;
   -v)  VERBOSE="$VERBOSE -v"  ;;
@@ -91,6 +95,7 @@ EOF
   #used to finish interrupted runs
   --no-mirror) DO_MIRROR='' ;;
   --clean-deltas) DO_CLEAN_DELTAS=true ;;
+  --snapshot) DO_SNAPSHOT=true ;;
   *) echo "Unknown option $1 , try --help" ;  exit 1 ;;
  esac
  shift
@@ -113,7 +118,9 @@ log=/nonexistant
 ## profile debdeltas
 #debdeltas="python -m cProfile -o /tmp/debdelta-profile-$(dirname $p | tr / _ ) $debdeltas"
 
+today=`date +'%F'`
 yyyymm=`date +'%Y-%m'`
+test -d $deltamir/log/$yyyymm || mkdir $deltamir/log/$yyyymm
 
 ################## routines
 
@@ -122,11 +129,11 @@ freetrash () {
  age=${old_delete_days}
  blocksize=`stat -f  -c "%s" "$trash"`
  newsize=0 #trick to run at least once
- while test $age -ge 1 -a $newsize -le $freespace ; do
+ while test $age -ge 1 -a $newsize -le $minfreespace ; do
   find "$trash"  -name '*.deb' -type f -mtime +$age  |  xargs -r $RM $VERBOSE || true
-  freeblocks=`stat -f  -c "%a" "$trash"`
-  newsize=`expr $freeblocks \* $blocksize / 1024 `
-  age=`expr $age - 5 `
+  freeblocks=`stat -f -c "%a" "$trash"`
+  newsize=`expr $freeblocks \* $blocksize / 1024`
+  age=`expr $age - 5`
  done
 }
 
@@ -190,7 +197,6 @@ run_debmirror () {
 
 findmelog () {
  date=`date +'%F-%H'`
- test -d $deltamir/log/$yyyymm || mkdir $deltamir/log/$yyyymm
  log=$deltamir/log/$yyyymm/${date}.log
  if test -r $log -o -r $log.gz ; then 
   for i in 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z ; do 
@@ -201,8 +207,7 @@ findmelog () {
  fi
 }
 
-
-
+created_deltas=""
 
 run_debdeltas  () {
  if ! test "$olddists" -a -r "$olddists/dists" ; then
@@ -220,22 +225,26 @@ run_debdeltas  () {
   for dist in $DISTs ; do
    echo -------------- $dist ----
    #lenny contains debdelta 0.27, that does not understand lzma
-   if test "$dist" = lenny ; then x="--disable-feature lzma"
-   else x="" ; fi
+   if test "$dist" = lenny ; then x="--disable-feature lzma" ; else x="" ; fi
    for p in $( cd $debmir ; find dists/$dist/ -name Packages.gz) ; do
-    echo ------ debdelta $p
+    if test -r ${dists_snapshots}/before.4/$p ; then o="--old  ${dists_snapshots}/before.4/$p" ; else o='' ; fi
+    echo ------ debdelta $x $o --old $olddists/$p $p
     $debdeltas $VERBOSE $debdelta_opt  \
-       --alt $trash  \
+       --alt $trash $x $o \
        --old $olddists/$p \
        --dir $deltamir//  $debmir/$p
    done
   done
  )
 
- egrep -3 -i 'error|warning' $log || true
- if grep -q -i 'error' $log ; then
-  echo "------ full log is in $log"
+ #uncomment for added verbosity
+ #egrep -3 -i 'error|warning' $log || true
+ if grep -iq 'error' $log ; then
+  #some error occurred
+  test ! -r "$log".gz && { gzip -9 $log ; log=${log}.gz ; }
+  echo "-----ERRORS--- full log is in $log , data in $olddists "
  else
+  #no error occurred, clean up
   if test "$olddists" ; then
    if test -r "$olddists/dists" ; then
     $RM -r  "$olddists/dists"
@@ -248,8 +257,13 @@ run_debdeltas  () {
     rmdir "$olddists" ; else echo Not empty "$olddists" ; 
    fi
   fi
+  if grep -v '^---' $log | grep -v '^ Total running time' |  grep  -q '.' ; then
+   test ! -r "$log".gz && gzip -9 $log
+   created_deltas=1
+  else
+   rm $log
+  fi
  fi
- test "$log" -a -r "$log" -a ! -r "$log".gz && gzip -9 $log
 }
 
 
@@ -274,19 +288,34 @@ if test "${DO_CLEAN_DELTAS}" ; then
  freetrash
 fi
 
+if test "${DO_SNAPSHOT}" ; then
+  if test -e $debmirlock ; then 
+   echo Archive $debmir is locked, cannot --snapshot 
+  elif test -w ${dists_snapshots} -a -d ${dists_snapshots} ; then
+   test -e ${dists_snapshots}/before.4 && rm -r ${dists_snapshots}/before.4
+   test -e ${dists_snapshots}/before.3 && mv ${dists_snapshots}/before.3 ${dists_snapshots}/before.4
+   test -e ${dists_snapshots}/before.2 && mv ${dists_snapshots}/before.2 ${dists_snapshots}/before.3
+   test -e ${dists_snapshots}/before.1 && mv ${dists_snapshots}/before.1 ${dists_snapshots}/before.2
+   mkdir ${dists_snapshots}/before.1
+   cp -a $debmir/dists ${dists_snapshots}/before.1/.
+  else
+   echo Please set dists_snapshots to a directory where I can write, not ${dists_snapshots} 1>&2
+  fi
+fi
+
 if [ "${DO_MIRROR}" ] ; then
  run_debmirror
 else
- echo skipped mirror step
+ echo ---------- skipped mirror step
 fi
 
 if [ "$olddists"  -a -r "$olddists" ] ; then 
  run_debdeltas
-else
-  for olddists  in ${TMPDIR:-/tmp}/olddists* ; do
-   if [ "$olddists"  -a -r "$olddists" ] ; then
-     echo ----------- $olddists
-     run_debdeltas
-   fi
-  done
 fi
+
+for olddists  in ${TMPDIR:-/tmp}/olddists* ; do
+ if [ "$olddists"  -a -r "$olddists" ] ; then
+   echo ----------- there are old dists in $olddists
+ fi
+done
+
