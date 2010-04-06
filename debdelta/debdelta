@@ -169,7 +169,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.270 2010/04/02 12:41:54 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.271 2010/04/06 09:01:44 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -596,10 +596,13 @@ def check_is_delta(f):
     die('Error: '+f+ ' does not seem to be a Debian delta ')
   p.close()
 
-def puke(s,e=''):
+def puke(s,e=None):
   " write informations on stderr, if DEBUG also traceback"
   (typ, value, trace)=sys.exc_info()
-  sys.stderr.write(str(s)+' : '+str(e)+str(typ)+str(value)+'\n')
+  if e == None or len(str(e)) < 2:
+    sys.stderr.write(str(s)+' : '+str(e)+' '+str(typ)+' '+str(value)+'\n')
+  else:
+    sys.stderr.write(str(s)+' : '+str(e)+'\n')
   if DEBUG and trace and traceback.print_tb(trace):
     sys.stderr.write( traceback.print_tb(trace)+'\n')
 
@@ -1153,12 +1156,13 @@ def parse_prelink_conf():
 
 def do_patch(delta,olddeb,newdeb, info=None, diversions=None, do_gpg=DO_GPG):
   runtime={}
+  T=None
   try:
     T=tempo()
     r=do_patch_(delta,olddeb,newdeb, T, runtime,
                 info=info, diversions=diversions, do_gpg=do_gpg)
   except:
-    rmtree(T)
+    if T : rmtree(T)
     if newdeb and os.path.exists(newdeb):
       os.unlink(newdeb)
     raise
@@ -1182,7 +1186,6 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     olddeb=abspath(olddeb)
   elif diversions == None:
     diversions=scan_diversions()
-  
   
   start_sec = time.time()
   runtime['patchprogress']=0
@@ -1615,6 +1618,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
 ##################################################### compute delta
 def do_delta(olddeb,newdeb,delta):
+  T=None
   try:
     T=tempo()
     if os.path.exists(delta+'_tmp_') :
@@ -1633,10 +1637,10 @@ def do_delta(olddeb,newdeb,delta):
       os.unlink(delta)
     if delta and os.path.exists(delta+'_tmp_'):
       os.unlink(delta+'_tmp_')
-    rmtree(T)
+    if T : rmtree(T)
     raise
   else:
-    rmtree(T)
+    if T : rmtree(T)
   return r
 
 def do_delta_(olddeb,newdeb,delta,TD):
