@@ -194,7 +194,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.273 2010/09/25 13:10:09 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.274 2010/09/25 13:40:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -645,7 +645,7 @@ else:
 if VERBOSE < 1 :
   GPG_BASE_CMD_LINE+=['--quiet']
 
-GPG_SIGN  =GPG_BASE_CMD_LINE+["--sign","--armor","--clearsign","--default-key",GPG_SIGNING_KEY]
+GPG_SIGN=GPG_BASE_CMD_LINE+["--batch","--armor","--clearsign","--default-key",GPG_SIGNING_KEY,"--sign"]
 
 
 def _compute_hashes_(na):
@@ -680,7 +680,7 @@ def verify_signature(signature, DIR):
 
   (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_gpg_verified")
   #(read_end, write_end) = os.pipe()
-  p=subprocess.Popen(GPG_BASE_CMD_LINE+['--status-fd',"2",'--output',"-",signature],
+  p=subprocess.Popen(GPG_BASE_CMD_LINE+['--batch','--status-fd',"2",'--output',"-",signature],
                      stdout=subprocess.PIPE,stderr=temp_fd)
   r=_verify_signature_no_gpg(p.stdout, DIR, role)
   p.wait()
