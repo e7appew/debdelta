@@ -194,7 +194,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.274 2010/09/25 13:40:08 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.275 2010/09/25 18:25:58 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3873,6 +3873,7 @@ def delta_upgrade_(args):
   patching_thread=threading.Thread(
     target=thread_do_patch  ,
     args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
+  patching_thread.daemon=True
   patching_thread.start()
 
   ################### first merry-go-round
@@ -4099,6 +4100,7 @@ def delta_upgrade_(args):
   
   if DO_PROGRESS and terminalcolumns > 4:
     progress_thread=threading.Thread(target=print_progress, args=( thread_returns, ) )
+    progress_thread.daemon=True
     progress_thread.start()
   else:
     progress_thread=None
