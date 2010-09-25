@@ -9,7 +9,7 @@ Homepage: http://debdelta.debian.net
 Package: debdelta
 Architecture: any
 Depends: python, bzip2, binutils, ${shlibs:Depends}
-Recommends: python-apt, xdelta3, xdelta, lzma, xdelta, bsdiff
+Recommends: python-apt, xdelta3, xdelta, lzma, xdelta, bsdiff, gnupg2, gnupg-agent
 Conflicts: xdelta3 (<< 0y.dfsg-1)
 Enhances: cupt
 Description: diff and patch utilities which work with Debian packages

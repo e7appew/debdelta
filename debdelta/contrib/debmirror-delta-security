@@ -4,7 +4,7 @@
 # used by debdelta-upgrade for upgrading package in stable and
 # stable-security
 
-# Copyright (C) 2006-09 Andrea Mennucci.
+# Copyright (C) 2006-10 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
 
 #who I am
@@ -28,32 +28,98 @@ fulldebmir=/mirror/debian
 #the name by which "stable" is known in that mirror
 stable="lenny"
 
+#where the gnupg stuff specific to debdelta resides
+GNUPGHOME=/var/lib/debdelta/gnupg
+
+#where the gnupg agent variable is stored
+#(unset this if you do not want to use the agent)
+# note that this needs gnupg2 >= 2.0.11 (that is not lenny)
+GNUPGAGENTINFO="${GNUPGHOME}/debdeltas-gpg-agent-info" 
+
+#the secret key to sign the deltas
+GNUPGSEC=THESECRETKEY
+
+#note: if you export this , then it will affect also debmirror
+# make sure the deb repository key is copied there
+#export GNUPGHOME
+
 #where to create the repository of deltas
 deltamir=/mirror/debian-security-deltas
 
 #where is the debdeltas program
 debdeltas=/usr/bin/debdeltas
 #options to your taste
-debdelta_opt=" -n 3 --delta-algo xdelta3 --sign my_favorite_key"
+debdelta_opt=" -n 3 --delta-algo xdelta3 --sign $GNUPGSEC"
+
+
+
+# set gpg-agent variables, test it
+gpgagentcmd="gpg-agent --homedir \"${GNUPGHOME}\" --daemon --write-env-file \"$GNUPGAGENTINFO\" "
+if test "$GNUPGAGENTINFO"  ; then 
+ if test ! -r "$GNUPGAGENTINFO"  ; then 
+  echo ERROR no agent info, please start the agent with
+  echo $gpgagentcmd
+  exit 1
+ else
+  . "$GNUPGAGENTINFO" 
+  export GPG_AGENT_INFO
+  if test ! "${GPG_AGENT_INFO}" -o  ! -e "${GPG_AGENT_INFO/:*/}" -o ! -O "${GPG_AGENT_INFO/:*/}" ; then
+     echo ERROR agent info is not OK, please run the command
+     echo $gpgagentcmd
+     exit 1
+  elif ! echo | gpg-connect-agent --homedir ${GNUPGHOME} ; then
+     echo ERROR agent is not responding, please run the command
+     echo $gpgagentcmd
+     exit 1
+  fi
+ fi
+fi
+
+
+#test that we can sign, possibly loading the password in the agent
+if test  "$GNUPGSEC" ; then
+ t=`tempfile`
+ echo pippo > $t
+ if  ! gpg2 --quiet --batch --homedir "${GNUPGHOME}"  -o /dev/null --default-key $GNUPGSEC --sign $t  ;
+ then
+  echo signature test FAILED
+  rm $t
+  exit 1
+ fi
+ rm $t
+fi
+
+
+#make copy of current stable-security lists of packages
+olddists=${TMPDIR:-/tmp}/oldsecdists-`date +'%F_%H-%M-%S'`
+mkdir $olddists
+cp -a $secdebmir/dists $olddists
+
 
 #do mirror security
-trap "rm  $VERBOSE -f $secdebmirlock" 0
+trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 #this version of 'debmirror' is patched to support the '--trash' option,
-#  --trash option, see in /usr/share/debdelta
+# see in /usr/share/debdelta
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
  --nosource -h security.debian.org \
  -r debian-security -d stable/updates  --arch=i386,amd64
 
 #do create deltas
 lockfile -r 1  /tmp/$b.lock || exit 1
-trap "rm  $VERBOSE -f /tmp/$b.lock" 0
+trap "rm  $VERBOSE -f /tmp/$b.lock; echo FAILED , please delete $olddists " 0
 cd $secdebmir
-for p in `find dists -name Packages.gz` ; do
- q=`echo $p | sed "s:/stable/updates/:/$stable/:"`
- $debdeltas $VERBOSE -vd $debdelta_opt  \
-  --alt $fulldebmir/$q   --alt $deltamir/old_debs  \
-  --dir $deltamir//   $p
+for arch in i386 amd64 ; do
+ for sec in main contrib non-free ; do
+   $debdeltas $VERBOSE -v --test $debdelta_opt  \
+     --old $fulldebmir/dists/lenny/$sec/binary-$arch/Packages.gz \
+     --old $olddists/dists/lenny/updates/$sec/binary-$arch/Packages.gz \
+     --alt $deltamir/old_debs  \
+     --dir $deltamir//   dists/lenny/updates/$sec/binary-$arch/Packages.gz
+  done
 done
 
 #do clean up a bit
+trap "" 0
+rm  $VERBOSE -f /tmp/$b.lock
+rm -r $olddists
 find $deltamir/old_debs -type f -mtime +80 | xargs -r rm

@@ -1,3 +1,24 @@
+debdelta (0.40exp) experimental; urgency=low
+
+  * Add l10n support, it_IT translation (viva DUCCIT!)
+  * Type fix in man debdelta-upgrade, thanks to A. Costa (Closes: #593174).
+  * Typo fix in error message: "...applying of delta
+     for ... failed", thanks to A. Costa (Closes: #593187).
+  * Use 'gpg2 --batch' internally for signing or verifying,
+     (to avoid printing on the tty as much as possible)
+  * Implement usage of gnupg-agent in the example scripts
+  * Recommends gnupg2, gnupg-agent
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sat, 25 Sep 2010 15:19:14 +0200
+
+debdelta (0.39trl) unstable; urgency=high
+  
+  * The real thing release: upload the real 0.39, not a damaged version;
+  * fixes: "debdelta _append_() wrong number of arguments", thanks to
+    cybjit (Closes: #585079) for noting.
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 13 Jun 2010 16:58:15 +0200
+
 debdelta (0.39) unstable; urgency=low
 
   * Reviewed messages printed (at different verbosity levels) .

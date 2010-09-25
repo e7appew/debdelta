@@ -1,0 +1,169 @@
+--- debdelta	2010/04/06 09:01:44	1.271
++++ debdelta	2010/09/18 10:27:59
+@@ -1174,6 +1174,8 @@
+   if TD[-1] != '/':
+     TD = TD + '/'
+   
++  import thread, threading
++  
+   HAVE_PRELINK=os.path.exists('/usr/sbin/prelink')
+   HAVE_LOCALEPURGE=os.path.exists('/etc/locale.nopurge') or os.path.exists('/usr/sbin/localepurge')
+   
+@@ -1203,6 +1205,8 @@
+   os.unlink(temp_err_name)
+ 
+   runtime['patchprogress']=1
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (1, newdebshortname))
+ 
+   is_signed=False
+   for a in ar_list_delta:
+@@ -1219,6 +1223,8 @@
+       print "WARNING, delta is not signed: "+delta
+ 
+   runtime['patchprogress']=2
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (2, newdebshortname))
+ 
+   _info_patch_unzip_(TD)
+ 
+@@ -1234,6 +1240,8 @@
+   params=info_2_db(info)
+   
+   runtime['patchprogress']=3
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (3, newdebshortname))
+ 
+   #this is not needed in preparing the patch, but may help in forensic
+   conf_files=[]
+@@ -1261,6 +1269,8 @@
+       raise DebDeltaError('Old deb size is '+str(olddebsize)+' instead of '+params['OLD/Size'])
+   
+   runtime['patchprogress']=4
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (4, newdebshortname))
+ 
+   if DEBUG > 1 :
+       #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
+@@ -1287,6 +1297,8 @@
+                  '\nin old/installed deb, '+a+' = ' +dpkg_params[a])
+ 
+   runtime['patchprogress']=5
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (5, newdebshortname))
+ 
+   ### some auxiliary routines, separated to make code more readable
+ 
+@@ -1428,6 +1440,8 @@
+   ###see into parameters: the patch may need extra info and data
+ 
+   runtime['patchprogress']=6
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (6, newdebshortname))
+ 
+   prelink_time=None
+   
+@@ -1490,33 +1504,58 @@
+     raise DebDeltaError('localepurge removed '+str(len(localepurged))+' files.')
+ 
+   runtime['patchprogress']=12
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (12, newdebshortname))
+ 
+   a=''
+   if DEBUG: a='-v'
+   script_time = - time.time()
+-
++  
++  newfile=os.path.join(TD,'NEW.file')
++  newdebsize=None
++  if  'NEW/Size' in params:
++    newdebsize = int(params['NEW/Size'])
++  
+   temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
+   temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
+   F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
+                      stderr=subprocess.PIPE, stdout=temp_name_fd)
+   progresschar=0.0
+   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
++  
++  def update_progress():
++    count=1
++    while sys and time and runtime and 'update_progress_exit' not in runtime:
++      if os.path.exists(newfile) and newdebsize :
++        progress=(int(12.0 + 42.0 * progresschar / progresslen + \
++                      42.0 * os.path.getsize(newfile) / newdebsize ))
++      else:
++        progress=(int(12.0 + 42.0 * progresschar / progresslen ))
++      runtime['patchprogress']=count ## HACK progress
++      if sys and do_progress:
++        sys.stderr.write('P %d %2d%% %s\r' % (count, progress, newdebshortname))
++      time.sleep(0.05)
++      count += 1
++
++  progress_thread=threading.Thread(target=update_progress)
++  progress_thread.start()
++  
+   for j in F.stderr:
+     os.write(temp_err_name_fd, j)
+     progresschar+=len(j)
+-    progress=(int(12.0 + 84.0 * progresschar / progresslen))
+-    runtime['patchprogress']=progress
+-    if do_progress:
+-      sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
++  
+   F.wait()
+-  if do_progress and terminalcolumns: #clean up
+-    sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
+   ret=F.returncode
+   os.close(temp_err_name_fd)
+   os.close(temp_name_fd)
+ 
++  runtime['update_progress_exit']=True
++
+   script_time += time.time()
++
+   runtime['patchprogress']=97
++  if do_progress:
++    sys.stderr.write('P %2d%% %s\r' % (97, newdebshortname))
+ 
+   #helper for debugging
+   def tempos():
+@@ -1566,11 +1605,9 @@
+       raise DebDeltaError('error in patch.sh.')
+ 
+   #then we check for the conformance
+-  if  'NEW/Size' in params:
+-    newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
+-    if newdebsize != int(params['NEW/Size']):
+-      fore()
+-      raise DebDeltaError('new deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
++  if newdebsize != None and newdebsize != os.path.getsize(newfile):
++    fore()
++    raise DebDeltaError('new deb size is '+str(os.path.getsize(newfile))+' instead of '+str(newdebsize))
+ 
+   if DO_MD5:
+     if 'NEW/MD5sum' in params:
+@@ -1586,14 +1623,19 @@
+   os.unlink(temp_name)
+   os.unlink(temp_err_name)
+ 
+-  runtime['patchprogress']=99
++  runtime['patchprogress']=98
++  if do_progress:
++        sys.stderr.write('P %2d%% %s\r' % (98, newdebshortname))
+ 
+   if newdeb:
+-      shutil.move(TD+'NEW.file',newdeb)
+-
++      shutil.move(newfile,newdeb)
++  
+   end_sec = time.time()
+   elaps=(end_sec - start_sec)
+ 
++  if do_progress and terminalcolumns: #clean up
++    sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
++  
+   if VERBOSE :
+       if newdeb:
+         debsize = os.stat(newdeb)[ST_SIZE]

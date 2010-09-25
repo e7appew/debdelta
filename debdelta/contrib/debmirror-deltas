@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 # A complex script that creates a repository of deltas, that can be
-# used by debdelta-upgrade for upgrading packages in.
+# used by debdelta-upgrade for upgrading packages.
 # See also --help below.
 
 # Copyright (C) 2006-10 Andrea Mennucci.
@@ -21,15 +21,31 @@ deltamir=/mirror/debian-deltas
 #delete old debs from trash if the space here drops below kB :
 minfreespace=2000000
 #delete deltas and old_debs that are older than days (regardless of space)
-old_delete_days=60
+old_delete_days=50
 
 #where to keep snapshots of the older indexes of the archives (for the --snapshot option)
 dists_snapshots=/mirror/debian-snapshots
 
+#where the gnupg stuff specific to debdelta resides
+# and in particular the public and private keyrings
+GNUPGHOME=/var/lib/debdelta/gnupg
+
+#where the gnupg agent variable is stored
+#(unset this if you do not want to use the agent)
+# note that this needs gnupg2 >= 2.0.11 (that is not lenny)
+GNUPGAGENTINFO="${GNUPGHOME}/debdeltas-gpg-agent-info" 
+
+#the secret key to sign the deltas
+GNUPGSEC=0xTHESECKEY
+
+#note: if you export this , then it will affect also debmirror:
+# make sure the deb repository key is copied there
+#export GNUPGHOME
+
 #where is the debdeltas program
 debdeltas=/usr/bin/debdeltas
 #options to your taste
-debdelta_opt="-v -d --test --delta-algo xdelta3 --gpg-home ~/debdelta/gnupg --sign 0xXXXXXXX "
+debdelta_opt="-v -d --test --delta-algo xdelta3 --gpg-home $GNUPGHOME --sign $GNUPGSEC "
 
 ##if you apply the 'trash patch' in contrib to debmirror, then you may use this:
 debmirror_opt="--trash $deltamir/old_debs --method=http"
@@ -58,6 +74,17 @@ DISTs='lenny squeeze sid experimental'
 ########### customize over here ^^^^^^^^^^^^^^
 
 
+#since the output is automatically parsed, do it in English 
+unset LANG
+unset LC_ALL
+unset LC_NUMERIC
+
+
+gpgagentcmd="gpg-agent --homedir \"${GNUPGHOME}\" --daemon --write-env-file \"$GNUPGAGENTINFO\" "
+
+##enable this after catastrofic failures, to try to create all leftover deltas
+## parsing all olddists once again
+RECOVER=''
 
 DEBUG=''
 VERBOSE=''
@@ -82,25 +109,81 @@ on arches $ARCHs .
 
 Options:
 
--v   verbose  (passed to debmirror and debdeltas)
--d   debug    (passed to debmirror and debdeltas),
-              also, do not 'rm' stuff, just tell
---no-mirror  if it crashed, resume the unfinished jobs
---clean-deltas , clean useless deltas (see debdeltas man page)
+-v   verbose   (passed to debmirror and debdeltas)
+-d   debug     (passed to debmirror and debdeltas),
+               also, do not 'rm' stuff, just tell
+--no-mirror    do not download debs to the local mirror
+--recover      if it crashed, resume the unfinished jobs
+--clean-deltas clean useless deltas (see debdeltas man page)
 --snapshot     capture a snapshot of the archive (use daily)
+--start-gpg-agent               start gpg agent, feed
+               the passwd for the secret gpg key in it
 EOF
   exit ;;
   -v)  VERBOSE="$VERBOSE -v"  ;;
-  -d)  DEBUG=--debug ;  RM='echo -- rm ' ;;
+  -d)  DEBUG=--debug ;  RM='echo -- would rm ' ;;
   #used to finish interrupted runs
   --no-mirror) DO_MIRROR='' ;;
+  --recover) RECOVER=true ;;
   --clean-deltas) DO_CLEAN_DELTAS=true ;;
   --snapshot) DO_SNAPSHOT=true ;;
+  --start-gpg-agent)
+     echo ------  start agent
+     $gpgagentcmd
+     . "$GNUPGAGENTINFO" 
+     export GPG_AGENT_INFO
+     #force loading of the private key (I know no better way)
+     echo ------ sign dummy file, to load the key
+     t=`tempfile`
+     echo pippo > $t
+     gpg2 --quiet --homedir "${GNUPGHOME}" -o /dev/null --sign $t
+     rm $t
+     exit 0
+    ;;
   *) echo "Unknown option $1 , try --help" ;  exit 1 ;;
  esac
  shift
 done
 
+#################### set gpg stuff, test it
+
+
+gpgagentcmd="$1 --start-gpg-agent"
+
+# set gpg-agent variables, test it
+if test "$GNUPGAGENTINFO"  ; then 
+ if test ! -r "$GNUPGAGENTINFO"  ; then 
+  echo ERROR no agent info, please start the agent with
+  echo $gpgagentcmd
+  exit 1
+ else
+  . "$GNUPGAGENTINFO" 
+  export GPG_AGENT_INFO
+  if test ! "${GPG_AGENT_INFO}" -o  ! -e "${GPG_AGENT_INFO/:*/}" -o ! -O "${GPG_AGENT_INFO/:*/}" ; then
+     echo ERROR agent info is not OK, please run the command
+     echo $gpgagentcmd
+     exit 1
+  elif ! echo | gpg-connect-agent --homedir ${GNUPGHOME} ; then
+     echo ERROR agent is not responding, please run the command
+     echo $gpgagentcmd
+     exit 1
+  fi
+ fi
+fi
+
+
+#test that we can sign, possibly loading the password in the agent
+if test  "$GNUPGSEC" ; then
+ t=`tempfile`
+ echo pippo > $t
+ if  ! gpg2 --quiet --batch --homedir "${GNUPGHOME}"  -o /dev/null --default-key $GNUPGSEC --sign $t  ;
+ then
+  echo signature test FAILED
+  rm $t
+  exit 1
+ fi
+ rm $t
+fi
 
 ###################### some useful variables
 
@@ -120,7 +203,6 @@ log=/nonexistant
 
 today=`date +'%F'`
 yyyymm=`date +'%Y-%m'`
-test -d $deltamir/log/$yyyymm || mkdir $deltamir/log/$yyyymm
 
 ################## routines
 
@@ -158,7 +240,7 @@ run_debmirror () {
   exit 1
  fi
 
- olddists=${TMPDIR:-/tmp}/olddists$$
+ olddists=${TMPDIR:-/tmp}/olddists-`date +'%F_%H-%M-%S'`
  mkdir $olddists
 
  tm=$olddists/debmirror-stdout
@@ -183,14 +265,15 @@ run_debmirror () {
    awk '{ print "> " $0 }' $tm 
    echo debmirror failed stderr $tme 
    awk '{ print "> " $0 }' $tme
-   $RM $VERBOSE $tm $tme
    $RM -f $debmirlock || true
+   #sometimes the temporary directory of debmirror is messed up
    #rm -r $debmir/.temp
    cleanuppool
    freetrash
    exit 1
+ else
+   $RM $VERBOSE $tm $tme
  fi
- $RM $VERBOSE $tm $tme
 }
 
 
@@ -198,10 +281,12 @@ run_debmirror () {
 findmelog () {
  date=`date +'%F-%H'`
  log=$deltamir/log/$yyyymm/${date}.log
- if test -r $log -o -r $log.gz ; then 
+ err=$deltamir/log/$yyyymm/${date}.err
+ if test -r $log -o -r $log.gz -o -r $err -o -r $err.gz ; then 
   for i in 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z ; do 
-   if test -r $log -o -r $log.gz ; then 
+   if test -r $log -o -r $log.gz  -o -r $err -o -r $err.gz ; then 
      log=$deltamir/log/$yyyymm/${date}.$i.log
+     err=$deltamir/log/$yyyymm/${date}.$i.err
    fi
   done
  fi
@@ -217,7 +302,7 @@ run_debdeltas  () {
  findmelog
  (
   exec >> $log
-  exec 2>> $log
+  exec 2>> $err
   echo -n --------------oldnew pass----   ; date   ;
   echo "------ tmpdir was in $olddists"
   echo -n ---- options to debdelta ;  echo -- $debdelta_opt
@@ -239,11 +324,13 @@ run_debdeltas  () {
 
  #uncomment for added verbosity
  #egrep -3 -i 'error|warning' $log || true
- if grep -iq 'error' $log ; then
+
+ if  test -s $err || grep -iq 'error' $log ; then
   #some error occurred
   test ! -r "$log".gz && { gzip -9 $log ; log=${log}.gz ; }
-  echo "-----ERRORS--- full log is in $log , data in $olddists "
+  echo "-----ERRORS--- full log is in $log  or ...err.gz , data in $olddists "
  else
+  rm $err # it is empty
   #no error occurred, clean up
   if test "$olddists" ; then
    if test -r "$olddists/dists" ; then
@@ -261,7 +348,7 @@ run_debdeltas  () {
    test ! -r "$log".gz && gzip -9 $log
    created_deltas=1
   else
-   rm $log
+   $RM $log
   fi
  fi
 }
@@ -281,12 +368,19 @@ run_debdeltas_clean () {
 
 ########################################### code
 
+#always free space from the trash
+freetrash
 
-if test "${DO_CLEAN_DELTAS}" ; then
+if test `stat -f -c "%a" "$deltamir"` -le 32 ; then
+ echo "------- emergency pool cleanup , very low disk space in delta mirror"
  run_debdeltas_clean
  cleanuppool
- freetrash
+elif test "${DO_CLEAN_DELTAS}" ; then
+ run_debdeltas_clean
+ cleanuppool
 fi
+
+test -d $deltamir/log/$yyyymm ||  mkdir $deltamir/log/$yyyymm
 
 if test "${DO_SNAPSHOT}" ; then
   if test -e $debmirlock ; then 
@@ -310,12 +404,18 @@ else
 fi
 
 if [ "$olddists"  -a -r "$olddists" ] ; then 
+ #the mirror was updated, so we check the difference 
  run_debdeltas
+else
+ test "$DEBUG" && echo olddists is not defined or is not readable : "$olddists"
 fi
 
-for olddists  in ${TMPDIR:-/tmp}/olddists* ; do
- if [ "$olddists"  -a -r "$olddists" ] ; then
-   echo ----------- there are old dists in $olddists
- fi
-done
-
+##enable this to try to create all leftover deltas
+if test "$RECOVER" ; then
+ for olddists  in ${TMPDIR:-/tmp}/olddists* ; do
+  if [ "$olddists"  -a -r "$olddists" ] ; then
+   echo ----------------------------------- creating deltas wrt $olddists
+   run_debdeltas
+  fi
+ done
+fi

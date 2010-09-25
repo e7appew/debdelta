@@ -35,10 +35,12 @@ fi
 
 sizes_by_instsize=`tempfile`
 
-zcat "$@" | awk '/NEW/{P=$3 ; SI=$9 * 1 ; SZ = $16 * 1 ; N = N + 1 ; };
-/^ deb delta is/{if (SI > 1 ) { SZ = $16 * 1; TOTDEBSZ = TOTDEBSZ + SZ ; PC = $4 * 1 ; \
-  TOTDELTASZ = TOTDELTASZ + ( SZ * PC   ) ;   print SI, " ",  PC,SZ }} ;
-END{printf("# total %d new debs processed, %d KB installed size\n",N,TOTDEBSZ); 
+zcat "$@" | awk '/^ NEW/{P=$3 ; SI=$9 * 1 ; SZ = $16 * 1 ; N = N + 1 ; };
+/^ deb delta is/{if (SI > 1 ) { SZ = $16 * 1; TOTDEBSZ = TOTDEBSZ + SZ ; PC = $4 * 1 ;
+  TOTDELTASZ = TOTDELTASZ + ( SZ * PC   ) ;   print SI, " ",  PC,SZ }};
+/^ delta is/{if (SI > 1 ) { SZ = $15 * 1; TOTDEBSZ = TOTDEBSZ + SZ ; PC = $3 * 1 ;
+  TOTDELTASZ = TOTDELTASZ + ( SZ * PC   ) ;   print SI, " ",  PC,SZ }};
+END{printf("# total %d new debs processed, %d KB installed size\n",N,TOTDEBSZ);
 if(TOTDEBSZ>0){printf("#size average=%d\n", TOTDELTASZ / TOTDEBSZ );};}'  >  $sizes_by_instsize
 
 sizes_by_instsize_avg=`tail -1 $sizes_by_instsize | cut -d= -f2 `
@@ -64,6 +66,7 @@ delta_speeds_by_instsize=`tempfile`
 
 zcat "$@" | awk '/NEW/{P=$3 ; SI=$9 * 1};
 /^ deb delta is/{SZ = $16 * 1 ; }
+/^ delta is/{SZ = $15 * 1 ; }
 /^ delta time/{ if( SI > 1) { N = N+1 ;  TOTSZ = TOTSZ + SZ ; TOTTIM = TOTTIM + $3 ; SP= $6 * 1 ; TSP=TSP+SP ;  print SI, " ", SP }};
 #/^Total running time:/{TOTTIM = $4 * 1 }
 END{if(TOTTIM>0){printf("#create average=%d\n", TOTSZ / TOTTIM )};}'    >  $delta_speeds_by_instsize 
@@ -74,6 +77,7 @@ patch_speeds_by_instsize=`tempfile`
 
 zcat "$@" | awk '/NEW/{P=$3 ; SI=$9 * 1};
 /^ deb delta is/{SZ = $16 * 1 ;}
+/^ delta is/{SZ = $15 * 1 ;}
 / Patching done/{ if( SI > 1) {N = N+1 ; TOTSZ = TOTSZ + SZ ;  TOTTIM = TOTTIM + ($4 * 1 ); SP= $6 * 1 ; TSP=TSP+SP ; print SI, " ", SP }};
 END{if(TOTTIM>0){printf("#patch average=%d\n", TOTSZ / TOTTIM )} ; }'    >  $patch_speeds_by_instsize
 
