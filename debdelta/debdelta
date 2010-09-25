@@ -180,6 +180,10 @@ else:
   GPG_HOME=None
 GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
 
+GPG_CMD='gpg'
+if os.path.exists('/usr/bin/gpg2'):
+  GPG_CMD='/usr/bin/gpg2'
+
 CLEAN_DELTAS = False
 CLEAN_DELTAS_MTIME = 2 # two days grace period
 CLEAN_ALT    = False
@@ -190,7 +194,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.272 2010/09/25 09:30:55 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.273 2010/09/25 13:10:09 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -634,11 +638,11 @@ def puke(s,e=None):
 ################################################################### GPG
 
 if GPG_HOME:
-  GPG_BASE_CMD_LINE=["gpg","--homedir",GPG_HOME]
+  GPG_BASE_CMD_LINE=[GPG_CMD,"--homedir",GPG_HOME]
 else:
-  GPG_BASE_CMD_LINE=["gpg","--keyring",GPG_MASTER_PUB_KEYRING]
+  GPG_BASE_CMD_LINE=[GPG_CMD,"--keyring",GPG_MASTER_PUB_KEYRING]
 
-if not VERBOSE:
+if VERBOSE < 1 :
   GPG_BASE_CMD_LINE+=['--quiet']
 
 GPG_SIGN  =GPG_BASE_CMD_LINE+["--sign","--armor","--clearsign","--default-key",GPG_SIGNING_KEY]
