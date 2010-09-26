@@ -194,7 +194,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.275 2010/09/25 18:25:58 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.276 2010/09/26 07:38:14 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -1539,7 +1539,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
   F.wait()
   if do_progress and terminalcolumns: #clean up
-    sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
+    sys.stderr.write(' ' * terminalcolumns + '\r')
   ret=F.returncode
   os.close(temp_err_name_fd)
   os.close(temp_name_fd)
@@ -3441,7 +3441,7 @@ def delta_upgrade_(args):
   warnings.simplefilter("ignore",FutureWarning)
   
   if DO_PROGRESS:
-    sys.stderr.write(string.ljust(_('Initializing APT cache...'),terminalcolumns-2)+'\r')
+    sys.stderr.write(string.ljust(_('Initializing APT cache...'),terminalcolumns)+'\r')
   elif VERBOSE:
     print _('Initializing APT cache...'),
   
@@ -3471,7 +3471,7 @@ def delta_upgrade_(args):
       return str(int(a/1024/1024))+'MB'
   
   if DO_PROGRESS:
-    sys.stderr.write(string.ljust(_('Upgrading APT cache...'),terminalcolumns-2)+'\r')
+    sys.stderr.write(string.ljust(_('Upgrading APT cache...'),terminalcolumns)+'\r')
   elif VERBOSE:
     print _('upgrading...'),
 
@@ -3479,7 +3479,7 @@ def delta_upgrade_(args):
   cache.upgrade(True)
 
   if DO_PROGRESS:
-    sys.stderr.write(string.ljust(_('Upgraded APT cache.'),terminalcolumns-2)+'\r')
+    sys.stderr.write(string.ljust(_('Upgraded APT cache.'),terminalcolumns)+'\r')
   elif VERBOSE:
     print _('done.')
 
@@ -3563,7 +3563,7 @@ def delta_upgrade_(args):
             msg=_("Created,    time %(time)5.2fsec, speed %(speed)4s/sec, %(name)s")
             msgdata={'time' : a, 'speed' : SizeToKibiStr(l / (a+0.001)), 'name' : os.path.basename(newdeb)}
             if DO_PROGRESS:
-              sys.stderr.write(string.ljust(msg % msgdata, terminalcolumns-2)+'\n')
+              sys.stderr.write(string.ljust(msg % msgdata, terminalcolumns)+'\n')
             else:
               print msg % msgdata
           except KeyboardInterrupt:
@@ -3616,18 +3616,18 @@ def delta_upgrade_(args):
     if terminalcolumns == None:
       return download+' ; '+patch
     if not patch:
-      return download[:(terminalcolumns-1)]
+      return download[:terminalcolumns]
     if not download:
-      return patch[:(terminalcolumns-1)]
+      return patch[:terminalcolumns]
     ld=len(download)
     lp=len(patch)
     b=ld + lp
-    if b < terminalcolumns - 4 :
+    if b < terminalcolumns - 3 :
       return download+' ; '+patch
-    a=float(terminalcolumns-4)/float(b)
+    a=float(terminalcolumns-5)/float(b)
     ld=int(ld*a)
     lp=int(lp*a)
-    return download[:ld] + ' ; ' + patch[:lp]
+    return download[:ld] + ' ; ' + patch[:lp] + '..'
   
   #########################################
 
@@ -3858,7 +3858,7 @@ def delta_upgrade_(args):
       msg=_("Downloaded, time %(time)5.2fsec, speed %(speed)4s/sec, %(name)s")
       msgdata={'time' : a , 'speed' : SizeToKibiStr(j / (a+0.001)) , 'name' : os.path.basename(uri)}
       if DO_PROGRESS:
-        sys.stderr.write(string.ljust(msg % msgdata, terminalcolumns-2)+'\n')
+        sys.stderr.write(string.ljust(msg % msgdata, terminalcolumns)+'\n')
       else:
         print msg % msgdata
       
@@ -3910,7 +3910,7 @@ def delta_upgrade_(args):
       progress_count+=1
       if 0 == (progress_count & 63):
         sys.stderr.write(string.ljust('%2.1f%%' % (float(progress_count) * 100.0 / len(cache)),
-                                       terminalcolumns-2) + '\r')
+                                       terminalcolumns) + '\r')
 
     if is_installed(p) and marked_upgrade(p) :
       if args and p.name not in args:
@@ -4009,7 +4009,7 @@ def delta_upgrade_(args):
       if DO_PROGRESS:
         sys.stderr.write(string.ljust('%2.1f%% ' % (float(progress_count) * 100.0 / len(cache)) + \
                                         _('Downloading head of %s...') % p.name,
-                                      terminalcolumns-2) + '\r')
+                                      terminalcolumns) + '\r')
       deltas_down_time-=time.time()
       status, tempname, l, complete = download_10k_uri(uri,abs_delta_name)
       deltas_down_time+=time.time()
@@ -4046,7 +4046,7 @@ def delta_upgrade_(args):
           print 'Delta is present:', delta_name, tempname,'    '
       elif DO_PROGRESS:
           sys.stderr.write(string.ljust('%2.1f%%' % (float(progress_count) * 100.0 / len(cache)) + \
-                                          _('Downloaded head of %s.') % p.name, terminalcolumns-2) + '\r')
+                                          _('Downloaded head of %s.') % p.name, terminalcolumns) + '\r')
 
       if os.path.isfile(tempname):
         deltas_down_size+=os.path.getsize(tempname)
@@ -4083,7 +4083,7 @@ def delta_upgrade_(args):
 
   if DEBUG or VERBOSE:
     if DO_PROGRESS:
-      sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
+      sys.stderr.write(' ' * (terminalcolumns) +'\r')
     print ' '+ _('Deltas: %(present)d present and %(absent)d not,') % \
         {'present' : len(available_deltas), 'absent' : len(not_available_deltas)}
     print ' '+ _('downloaded so far: time %(time).2fsec, size %(size)s, speed %(speed)4s/sec.') % \
@@ -4177,7 +4177,7 @@ def delta_upgrade_(args):
     time.sleep(0.1)
   
   if DO_PROGRESS:
-    sys.stderr.write(' ' * (terminalcolumns-2) +'\r')
+    sys.stderr.write(' ' * terminalcolumns +'\r')
   
   total_time += time.time()
   print _('Delta-upgrade statistics:')
