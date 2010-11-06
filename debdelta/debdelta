@@ -28,23 +28,23 @@ except Exception,a:
 
 doc={}
 doc['delta']=_("""\
-Usage: debdelta [ option...  ] fromfile tofile patchout
-  Computes a delta from fromfile to tofile and writes it to patchout
+Usage: debdelta [ option...  ] fromfile tofile delta
+  Computes the difference of two deb files, from fromfile to tofile, and writes it to delta
 
 Options:
 --signing-key KEY
-            key used to sign the delta (using GnuPG)
---no-md5    do not include MD5 info in debdelta
---needsold  create a patch that can only be used if the old .deb is available
+            gnupg key used to sign the delta
+--no-md5    do not include MD5 info in delta
+--needsold  create a delta that can only be used if the old deb is available
  -M Mb      maximum memory  to use (for 'bsdiff' or 'xdelta')
 --delta-algo ALGO
-            use a specific backend for computing binary diffs;
+            use a specific backend for computing binary diffs
 """)
 
 
 doc['deltas']=_("""\
-Usage: debdeltas [ option...  ]  [deb_files and dirs, or Package files]
-  Computes all missing deltas for Debian files.
+Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Package' files]
+  Computes all missing deltas for deb files.
   It orders by version number and produce deltas to the newest version
 
 Options:
@@ -52,14 +52,11 @@ Options:
             key used to sign the deltas (using GnuPG)
 --dir DIR   force saving of deltas in this DIR
             (otherwise they go in the dir of the newer deb_file)
-
---old ARGS  Package files containing list of old versions of packages
-
+--old ARGS  'Package' files containing list of old versions of debs
 --alt ARGS  for any cmdline argument, search for debs also in this place
-            
- -n N       how many deltas to produce for each package (default unlimited)
---no-md5    do not include MD5 info in debdelta
---needsold  create a patch that can only be used if the old .deb is available
+ -n N       how many deltas to produce for each deb (default unlimited)
+--no-md5    do not include MD5 info in delta
+--needsold  create a delta that can only be used if the old .deb is available
 --delta-algo ALGO
             use a specific backend for computing binary diffs;
             possible values are: xdelta xdelta-bzip xdelta3 bsdiff
@@ -70,23 +67,24 @@ Options:
 ## implement : --search    search in the directory of the above debs for older versions
 
 doc['patch']=_("""\
-Usage: debpatch [ option...  ] patchin  fromfile  tofile 
-  Applies patchin to fromfile and produces a reconstructed  version of tofile.
+Usage: debpatch [ option...  ] delta  fromfile  tofile 
+  Applies delta to fromfile and produces a reconstructed  version of tofile.
 
 (When using 'debpatch' and the old .deb is not available,
   use '/' for the fromfile.)
 
-Usage: debpatch --info  patch
-  Write info on patch.
+Usage: debpatch --info delta
+  Write info on delta.
 
 Options:
---no-md5   do not verify MD5 (if found in info in debdelta)
+--no-md5   do not verify MD5 (if found in info in delta)
  -A        accept unsigned deltas
 """)
 
 doc['delta-upgrade']=_("""\
-Usage: debdelta-upgrade [packages]
-  Downloads all deltas that may be used to 'apt-get upgrade', and apply them
+Usage: debdelta-upgrade [package names]
+  Downloads all deltas and apply them to create the debs
+  that are needed by 'apt-get upgrade'.
 
 Options:
 --dir DIR   directory where to save results
@@ -96,8 +94,8 @@ Options:
 """)
 
 doc['patch-url']=_("""\
-Usage: debpatch-url [packages]
-  Show URL wherefrom to downloads all deltas that may be used to 'apt-get upgrade' the given packages
+Usage: debpatch-url [package names]
+  Show URL wherefrom to downloads all deltas that may be used to upgrade the given package names
 """)
 
 doc_common=_("""\
@@ -194,7 +192,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.276 2010/09/26 07:38:14 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.277 2010/11/06 22:40:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
