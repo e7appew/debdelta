@@ -4,7 +4,12 @@
 # used by debdelta-upgrade for upgrading packages.
 # See also --help below.
 
-# Copyright (C) 2006-10 Andrea Mennucci.
+# WARNING : after the release of Squeeze, this script is deprecated:
+#  indeed the new archive signatures need debmirror >= 2.6,
+#  and I did not prepare a 'trash' patch for it, but instead wrote
+#  a new script to use the new 'debmirror --marshal' option
+
+# Copyright (C) 2006-11 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
 
 
@@ -48,7 +53,7 @@ debdeltas=/usr/bin/debdeltas
 debdelta_opt="-v -d --test --delta-algo xdelta3 --gpg-home $GNUPGHOME --sign $GNUPGSEC "
 
 ##if you apply the 'trash patch' in contrib to debmirror, then you may use this:
-debmirror_opt="--trash $deltamir/old_debs --method=http"
+debmirror_opt="--trash $deltamir/old_debs --method=http  --diff=none"
 trash=$deltamir/old_debs
 debmirror=/usr/local/bin/debmirror_2.4_mine
 
@@ -79,8 +84,9 @@ unset LANG
 unset LC_ALL
 unset LC_NUMERIC
 
-
-gpgagentcmd="gpg-agent --homedir \"${GNUPGHOME}\" --daemon --write-env-file \"$GNUPGAGENTINFO\" "
+startgpgagent () {
+ gpg-agent --homedir "${GNUPGHOME}" --daemon --write-env-file "$GNUPGAGENTINFO" ; 
+}
 
 ##enable this after catastrofic failures, to try to create all leftover deltas
 ## parsing all olddists once again
@@ -129,7 +135,7 @@ EOF
   --snapshot) DO_SNAPSHOT=true ;;
   --start-gpg-agent)
      echo ------  start agent
-     $gpgagentcmd
+     startgpgagent
      . "$GNUPGAGENTINFO" 
      export GPG_AGENT_INFO
      #force loading of the private key (I know no better way)
@@ -148,7 +154,7 @@ done
 #################### set gpg stuff, test it
 
 
-gpgagentcmd="$1 --start-gpg-agent"
+gpgagentcmd="$0 --start-gpg-agent"
 
 # set gpg-agent variables, test it
 if test "$GNUPGAGENTINFO"  ; then 

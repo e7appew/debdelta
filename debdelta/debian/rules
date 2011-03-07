@@ -51,8 +51,9 @@ binary-arch:	checkroot build
 	# /usr/share
 	cp po/it.mo $(D)/usr/share/locale/it/LC_MESSAGES/debdelta.mo
 	install debpatch.sh $(D)/usr/share/debdelta
-	install contrib/debmirror-delta-security $(D)/usr/share/debdelta
-	install contrib/debmirror-deltas $(D)/usr/share/debdelta
+	install contrib/debmirror-delta-security $(D)/usr/share/debdelta/
+	install contrib/debmirror-marshal-deltas $(D)/usr/share/debdelta/
+	install contrib/debmarshal_list_useless_debs $(D)/usr/share/debdelta/
 	install contrib/dpkg-sig $(D)/usr/share/debdelta
 	cp contrib/debmirror*trash_option.patch  $(D)/usr/share/debdelta
 	ln -s ../../bin/debdelta  $(D)/usr/share/debdelta/debpatch-url

@@ -7,7 +7,7 @@ to store and transmit only the changes between Debian packages.  This
 suite contains 'debdelta-upgrade', that downloads deltas and use them
 to create all Debian packages needed for an 'apt-get upgrade'.
 
-debdelta is  Copyright (C) 2006-2010 Andrea Mennucci
+debdelta is  Copyright (C) 2006-2011 Andrea Mennucci
 
 debdelta is free software.  See the file COPYING for copying conditions.
 

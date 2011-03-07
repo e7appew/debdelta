@@ -1,0 +1,425 @@
+#!/bin/bash
+set -e
+
+# A complex script that creates a repository of deltas, that can be
+# used by debdelta-upgrade for upgrading packages.
+# See also --help below.
+
+# Copyright (C) 2006-11 Andrea Mennucci.
+# License: GNU Library General Public License, version 2 or later
+
+########### customize under here  vvvvvvvvvvvvv
+
+### what to mirror
+
+#where is stored the full mirror of debian
+debmir=/mirror/debian
+
+#where to mirror from
+host=ftp.debian.org
+
+## debmirror options
+debmirror_opt="--debmarshal --method=http --diff=none"
+debmirror=/usr/bin/debmirror
+
+ARCHc='i386,amd64'
+ARCHs='i386 amd64'
+
+DISTc='lenny,squeeze,wheezy,sid,experimental'
+DISTs='lenny squeeze wheezy sid experimental'
+
+SECTIONc='main,contrib,non-free'
+SECTIONs='main contrib non-free'
+
+#how many snapshots to keep in the debs mirror
+# (as stored by the --debmarshal option)
+keep_marshal_snapshots=16
+
+#when cleaning the debs mirror, do not delete anything
+# if the maximum number of files to be deleted exceeds this:
+max_delete=1500
+
+#the tool that prints the list of 'useless debs' i.e. debs not
+# listed in any distribution
+debmarshal_list_useless_debs=/usr/share/debdelta/debmarshal_list_useless_debs
+
+### how to delta
+
+#where to store deltas
+deltamir=/mirror/debian-deltas
+#delete deltas and old_debs that are older than days (regardless of space)
+old_delete_days=50
+
+#where the gnupg stuff specific to debdelta resides
+# and in particular the public and private keyrings
+GNUPGHOME=/var/lib/debdelta/gnupg
+
+#where the gnupg agent variable is stored
+#(unset this if you do not want to use the agent)
+# note that this needs gnupg2 >= 2.0.11 (that is not lenny)
+GNUPGAGENTINFO="${GNUPGHOME}/debdeltas-gpg-agent-info" 
+
+#the secret key to sign the deltas
+GNUPGSEC=0xTHATKEY
+
+#note: if you export this , then it will affect also debmirror:
+# make sure the deb repository key is copied there
+#export GNUPGHOME
+
+#where is the debdeltas program
+debdeltas=/usr/bin/debdeltas
+#options to your taste
+debdelta_opt="-v -d --test --delta-algo xdelta3 --gpg-home $GNUPGHOME --sign $GNUPGSEC "
+
+
+#this should be in the same partition as the debian mirror $debmir
+# (otherwise the resulting deltas will have to copied from it)
+TMPDIR=/mirror/tmp
+export TMPDIR
+
+
+########### customize over here ^^^^^^^^^^^^^^
+
+#since the output is automatically parsed, do it in English 
+unset LANG
+unset LC_ALL
+unset LC_NUMERIC
+
+startgpgagent () {
+ gpg-agent --homedir "${GNUPGHOME}" --daemon --write-env-file "$GNUPGAGENTINFO" ; 
+}
+
+
+DEBUG=''
+VERBOSE=''
+RM='rm'
+MV='mv'
+DO_MIRROR=true
+DO_CLEAN_DELTAS=''
+DO_CLEAN_DEBS=''
+while [ "$1" ] ; do
+ case "$1" in
+  -h|--help)
+  cat <<EOF
+Usage: debmirror-marshal-deltas [options]
+
+This script (that contains many variables that must be customized!)
+keeps a full mirror of the Debian repository (using 'debmirror'),
+and it uses it to build a repository of deltas (using 'debdeltas').
+
+Note that this script assumes that the current Debian
+distributions are $DISTc .
+It will generate deltas for the upgrades in those,
+on arches $ARCHc , and sections $SECTIONc .
+
+Options:
+
+-v   verbose   (passed to debmirror and debdeltas)
+-d   debug     (passed to debmirror and debdeltas),
+               also, do not 'rm' stuff, just tell
+--no-mirror    do not download debs to the local mirror
+--clean-deltas clean useless deltas (see debdeltas man page)
+--clean-debs   clean older snapshots in deb mirror
+--start-gpg-agent        start gpg agent, feed the
+               passwd for the secret gpg key in it, then exit
+EOF
+  exit ;;
+  -v)  VERBOSE="$VERBOSE -v"  ;;
+  -d)  DEBUG=--debug ;  RM='echo -- would rm ' ;  MV='echo -- would mv ' ;;
+  --no-mirror) DO_MIRROR='' ;;
+  --clean-deltas) DO_CLEAN_DELTAS=true ;;
+  --clean-debs)   DO_CLEAN_DEBS=true ;;
+  --snapshot) echo $0 does not use its own snapshots any more ; exit ;;
+  --start-gpg-agent)
+     echo ------  start agent
+     startgpgagent
+     . "$GNUPGAGENTINFO" 
+     export GPG_AGENT_INFO
+     #force loading of the private key (I know no better way)
+     echo ------ sign dummy file, to load the key
+     t=`tempfile`
+     echo pippo > $t
+     gpg2 --quiet --homedir "${GNUPGHOME}" -o /dev/null --sign $t
+     rm $t
+     exit 0
+    ;;
+  *) echo "$0: Unknown option $1 , try --help" ;  exit 1 ;;
+ esac
+ shift
+done
+
+#################### set gpg stuff, test it
+
+
+gpgagentcmd="$0 --start-gpg-agent"
+
+# set gpg-agent variables, test it
+if test "$GNUPGAGENTINFO"  ; then 
+ if test ! -r "$GNUPGAGENTINFO"  ; then 
+  echo ERROR no agent info, please start the agent with
+  echo $gpgagentcmd
+  exit 1
+ else
+  . "$GNUPGAGENTINFO" 
+  export GPG_AGENT_INFO
+  if test ! "${GPG_AGENT_INFO}" -o  ! -e "${GPG_AGENT_INFO/:*/}" -o ! -O "${GPG_AGENT_INFO/:*/}" ; then
+     echo ERROR agent info is not OK, please run the command
+     echo $gpgagentcmd
+     exit 1
+  elif ! echo | gpg-connect-agent --homedir ${GNUPGHOME} ; then
+     echo ERROR agent is not responding, please run the command
+     echo $gpgagentcmd
+     exit 1
+  fi
+ fi
+fi
+
+
+#test that we can sign, possibly loading the password in the agent
+if test  "$GNUPGSEC" ; then
+ t=`tempfile`
+ echo pippo > $t
+ if  ! gpg2 --quiet --batch --homedir "${GNUPGHOME}"  -o /dev/null --default-key $GNUPGSEC --sign $t  ;
+ then
+  echo signature test FAILED
+  rm $t
+  exit 1
+ fi
+ rm $t
+fi
+
+###################### some useful variables
+
+#the lock used by debmirror
+debmirlock=$debmir/Archive-Update-in-Progress-`hostname  -f`
+
+b=`basename $0`
+
+mylockfile=${TMPDIR:-/tmp}/$b.lock
+lockfile -r 10  $mylockfile || exit 1
+trap "rm $VERBOSE -f $mylockfile" 0
+
+log=/nonexistant
+
+## profile debdeltas
+#debdeltas="python -m cProfile -o /tmp/debdelta-profile-$(dirname $p | tr / _ ) $debdeltas"
+
+today=`date +'%F'`
+yyyymm=`date +'%Y-%m'`
+
+################## routines
+
+
+
+clean_old_deltas () {
+ find $deltamir/pool \
+   \( -name '*debdelta-fails' -or -name '*debdelta-too-big' \
+      -or -name  '*debdelta' \) -mtime +${old_delete_days} -type f |\
+       xargs -r  $RM   $VERBOSE || true
+ 
+ find $deltamir/pool/ -type d -empty | xargs -r rmdir $VERBOSE || true
+}
+
+
+
+run_debmirror () {
+ if test -e $debmirlock ; then 
+  echo Archive $debmir is locked 
+  exit 1
+ fi
+
+ tm=`tempfile`
+ tme=`tempfile`
+
+ $debmirror  $debmir --nosource \
+  $debmirror_opt  --arch=$ARCHc \
+  --section=$SECTIONc \
+  -v $DEBUG -h $host -d $DISTc \
+     > $tm 2> $tme ; dme=$? 
+
+ if test "$dme" != 0  ; then
+   echo debmirror failed , exit code $dme , stdout  $tm 
+   awk '{ print "> " $0 }' $tm 
+   echo debmirror failed stderr $tme 
+   awk '{ print "> " $0 }' $tme
+   $RM -f $debmirlock || true
+   #sometimes the temporary directory of debmirror is messed up
+   #rm -r $debmir/.temp
+   clean_old_deltas
+   exit 1
+ else
+   $RM $VERBOSE $tm $tme
+ fi
+}
+
+
+
+findmelog () {
+ date=`date +'%F-%H'`
+ log=$deltamir/log/$yyyymm/${date}.log
+ err=$deltamir/log/$yyyymm/${date}.err
+ if test -r $log -o -r $log.gz -o -r $err -o -r $err.gz ; then 
+  for i in 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z ; do 
+   if test -r $log -o -r $log.gz -o -r $err -o -r $err.gz ; then 
+     log=$deltamir/log/$yyyymm/${date}.$i.log
+     err=$deltamir/log/$yyyymm/${date}.$i.err
+   fi
+  done
+ fi
+}
+
+created_deltas=""
+
+run_debdeltas  () {
+ findmelog
+ (
+  exec >> $log
+  exec 2>> $err
+  echo -n --------------oldnew pass----   ; date   ;
+  echo -n ---- options to debdelta ;  echo -- $debdelta_opt
+
+  for dist in $DISTs ; do
+   echo -------------- $dist ----
+   #lenny contains debdelta 0.27, that does not understand lzma
+   if test "$dist" = lenny ; then x="--disable-feature lzma" ; else x="" ; fi
+   for sec in $SECTIONs ; do  for arch in $ARCHs ; do
+    if test -r   $debmir/dists/$dist/0/$sec/binary-$arch/Packages.gz  ; then
+       o="--old  $debmir/dists/$dist/0/$sec/binary-$arch/Packages.gz"
+    else
+       o=''
+    fi
+    echo ------ $sec $arch
+    $debdeltas $VERBOSE $debdelta_opt   $x $o \
+     --old $debmir/dists/$dist/latest/$sec/binary-$arch/Packages.gz \
+     --dir $deltamir// \
+     $debmir/dists/$dist/$sec/binary-$arch/Packages.gz
+   done ; done
+  done
+ )
+
+ #uncomment for added verbosity
+ #egrep -3 -i 'error|warning' $log || true
+
+ if test -s $err || grep -iq 'error' $log ; then
+  #some error occurred
+  test ! -r "$log".gz && { gzip -9 $log ; log=${log}.gz ; }
+  echo "-----ERRORS--- full log is in $log or ...err.gz "
+ else
+  rm $err # it is empty
+  #no error occurred, clean up
+  if grep -v '^---' $log | grep -v '^ Total running time' |  grep  -q '.' ; then
+   test ! -r "$log".gz && gzip -9 $log
+   created_deltas=1
+  else
+    $RM $log
+  fi
+ fi
+}
+
+
+run_debdeltas_clean () {
+   echo -------------- cleanup delta pool
+   $debdeltas --clean-deltas -n 0 \
+     --dir $deltamir// \
+       $(  for arch in $ARCHs ; do
+            for sec in $SECTIONs ; do
+              for dist in $DISTs ; do
+                echo $debmir/dists/$dist/$sec/binary-$arch/Packages.gz 
+           done ; done ; done )
+}
+
+
+clean_old_debs () {
+ if test -e $debmirlock ; then 
+  echo Archive $debmir is locked 
+  exit 1
+ fi
+ echo -------------- cleanup mirror
+ didthat=0
+ for dist in $DISTs ; do
+  pushd $debmir/dists/$dist/ > /dev/null
+  #act only if there are at least 3 snapshots
+  if test -d 0 -a -d 1 -a -d 3 ; then
+   latest=$(echo [0-9] [0-9][0-9] [0-9][0-9][0-9] [0-9][0-9][0-9][0-9] \
+            | tr ' ' '\n' |  sort -n | tail -n 1)
+   #check sanity
+   sane=1
+   t=0 ; f=1 ;
+   while test "$f" -le "$latest" ; do
+    if test ! -d "$f" ; then
+     echo "Warning, ignoring $debmir/dists/$dist , the snapshot $f does not exist"
+     sane=0
+    elif test $t -nt $f ; then
+     echo "Warning, ignoring $debmir/dists/$dist , the snapshot $f is older than the $t "
+     sane=0
+    fi
+    f=$(( $f + 1 )) ; t=$(( $t + 1 ))
+   done
+   # if sane and too many snapshots, move all down a step
+   if test "$sane" = 1 -a "$keep_marshal_snapshots"  -a "$latest" -gt "$keep_marshal_snapshots" ; then
+    didthat=1
+    d=$(( $latest - $keep_marshal_snapshots ))
+    t=0
+    #remove older
+    while test "$t" -le "$d" -a -d "$d" ; do $RM -r $t ; t=$(( $t + 1 )) ; done
+    #move down others
+    t=0
+    f=$(( $d + 1 ))
+    while test "$f" -le "$latest" ; do
+     $MV $f $t
+     t=$(( $t + 1 ))
+     f=$(( $f + 1 ))
+    done
+    t=$(( $t - 1 ))
+    rm latest
+    ln -s $t latest
+    echo "------------ deleted revisions from 0 to $d in $dist (latest now points to $t)"
+   fi # end of " if sane and too many snapshots"
+  fi #end of "if at least 3 snapshots"
+  popd > /dev/null
+ done
+ if test "$didthat" = 1 ; then
+  z=`tempfile`
+  ${debmarshal_list_useless_debs} $debmir > $z
+  ! grep -vx '.*\.deb' $z  #(just in case)
+  n=$(wc -l < $z)
+  if test $n -lt $max_delete ; then
+   echo "--- delete $n debs"
+   tr '\n' '\000' < $z | xargs -0 $RM
+   rm $z
+  else
+   echo "--- will not delete $n debs (too many!), the list is in $z"
+  fi
+ fi
+}
+
+
+########################################### code
+
+
+if test `stat -f -c "%a" "$deltamir"` -le 512 ; then
+ echo "------- emergency delta pool cleanup , very low disk space in delta mirror"
+ run_debdeltas_clean
+ clean_old_deltas
+elif test "${DO_CLEAN_DELTAS}" ; then
+ run_debdeltas_clean
+ clean_old_deltas
+fi
+
+if test `stat -f -c "%a" "$debmir"` -le 512 ; then
+ echo "------- emergency debs pool cleanup , very low disk space in debs mirror"
+ clean_old_debs
+elif test "${DO_CLEAN_DEBS}" ; then
+ clean_old_debs
+fi
+
+
+test -d $deltamir/log/$yyyymm ||  mkdir $deltamir/log/$yyyymm
+
+if [ "${DO_MIRROR}" ] ; then
+ run_debmirror
+else
+ echo ---------- skipped mirror step
+fi
+
+run_debdeltas

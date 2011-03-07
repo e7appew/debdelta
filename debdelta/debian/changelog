@@ -1,3 +1,18 @@
+debdelta (0.41) unstable; urgency=low
+
+  * Bump Standards-Version .
+  * Review --help messages .
+  * Small corrections to it.po .
+  * Remove obsolete stuff from contrib/ .
+  * Updated version of 'debmirror-delta-security' (for stable=squeeze).
+  * New 'debmirror-marshal-deltas' script, that uses the new 
+     'debmirror --debmarshal' option to manage the debs mirror and
+     generate the deltas used by 'debdelta-upgrade'.
+  * Add contrib/debmarshal_list_useless_debs (used by above).
+  * Reviewed the README files.
+  
+ -- A Mennucc1 <mennucc1@debian.org>  Mon, 07 Mar 2011 19:26:54 +0100
+
 debdelta (0.40exp) experimental; urgency=low
 
   * Add l10n support, it_IT translation (viva DUCCIT!)
