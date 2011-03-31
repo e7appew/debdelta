@@ -1,9 +1,14 @@
-head	1.277;
+head	1.278;
 access;
 symbols;
 locks;
 comment	@# @;
 
+
+1.278
+date	2011.03.13.08.22.24;	author debdev;	state Exp;
+branches;
+next	1.277;
 
 1.277
 date	2010.11.06.22.40.08;	author debdev;	state Exp;
@@ -1395,9 +1400,12 @@ desc
 @@
 
 
-1.277
+1.278
 log
-@review help messages
+@debdelta: when premangling , use as extension rightmost
+ non-numeric nibblet, so that
+ library paths such as /usr/lib/libfoo.so.1.2.3 ,
+ consider 'so' as the extension
 @
 text
 @#!/usr/bin/python
@@ -1594,7 +1602,7 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.276 2010/09/26 07:38:14 debdev Exp $"
+RCS_VERSION="$Id: debdelta,v 1.277 2010/11/06 22:40:08 debdev Exp $"
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
@@ -3534,12 +3542,21 @@ def do_delta_(olddeb,newdeb,delta,TD):
     
   ########### helper sh functions for script, for delta_tar()
 
-  import difflib
+  import difflib, re
+  re_numbers=re.compile(r'^[0-9][0-9]*$')
 
-  def file_similarity_premangle(oo):
-    o=oo.split('/')
-    (ob,oe)=os.path.splitext(o[-1])
-    return o[:-1]+ ob.split('_')+[oe]
+  def file_similarity_premangle(fp):
+    fps=fp.split('/')
+    bns=fps[-1].split('.')
+    j=len(bns)-1 #search first "non numeric" extension, and put it last
+    while j >= 0 and re_numbers.match(bns[j]):
+      j-=1
+    if j >= 0:
+      a=bns.pop(j)
+      r = fps[:-1] + bns + [a,]
+    else:
+      r = fps[:-1] + bns
+    return r
   
   def files_similarity_score__noext__(oo,nn):
     ln=len(nn)
@@ -3750,12 +3767,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
           #would you believe? many packages contain MD5 for files they do not ship...
           if VERBOSE > 1 and o not in skip: print '  hmmm... there is a md5 but not a file: ',o
 
+    #database of databases of premangled old names , by "extension" and name
     oldnames_premangle={}
     for o in oldnames:
-      a,b=os.path.splitext(o)
-      if b not in oldnames_premangle:
-        oldnames_premangle[b]={}
-      oldnames_premangle[b][o]=file_similarity_premangle(a)
+      om=file_similarity_premangle(o)
+      a=om[-1] # "extension"
+      if a not in oldnames_premangle:
+        oldnames_premangle[a]={}
+      oldnames_premangle[a][o]=om
 
     for newname in newnames:
       newtarinfo=newtarinfos[newname]
@@ -3778,11 +3797,11 @@ def do_delta_(olddeb,newdeb,delta,TD):
         oldname=newname
         if VERBOSE > 2 : print '   use same name old file: ',newname
       #try correspondence by file name and len similarity
-      nb,ne=os.path.splitext(newname)
+      np=file_similarity_premangle(newname)
+      ne=np[-1] # "extension" 
       if oldname == None and ne in oldnames_premangle:
         basescore=1.6
         nl=newtarinfo.size
-        np=file_similarity_premangle(nb)
         for o in oldnames_premangle[ne]:
           op=oldnames_premangle[ne][o]
           l=oldtarinfos[o].size
@@ -5878,6 +5897,38 @@ if  os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
       pass
   raise SystemExit(0)
 
+@
+
+
+1.277
+log
+@review help messages
+@
+text
+@d195 1
+a195 1
+RCS_VERSION="$Id: debdelta,v 1.276 2010/09/26 07:38:14 debdev Exp $"
+d2135 2
+a2136 1
+  import difflib
+d2138 12
+a2149 4
+  def file_similarity_premangle(oo):
+    o=oo.split('/')
+    (ob,oe)=os.path.splitext(o[-1])
+    return o[:-1]+ ob.split('_')+[oe]
+d2360 1
+d2363 5
+a2367 4
+      a,b=os.path.splitext(o)
+      if b not in oldnames_premangle:
+        oldnames_premangle[b]={}
+      oldnames_premangle[b][o]=file_similarity_premangle(a)
+d2390 2
+a2391 1
+      nb,ne=os.path.splitext(newname)
+a2394 1
+        np=file_similarity_premangle(nb)
 @
 
 
