@@ -123,8 +123,6 @@ from copy    import copy
 
 from types import StringType, FunctionType, TupleType, ListType, DictType
 
-import shutil
-
 def get_termsize():
   import termios, fcntl, struct
   s = struct.pack("HHHH", 0, 0, 0, 0)
