@@ -190,8 +190,6 @@ DO_PREDICTOR = False
 DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
-RCS_VERSION="$Id: debdelta,v 1.278 2011/03/13 08:22:24 debdev Exp $"
-
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
