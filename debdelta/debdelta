@@ -1855,12 +1855,11 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def script_md5_check_file(n,md5=None):
     if md5==None:
       assert(os.path.isfile(TD+n))
-      pm=my_popen_read('md5sum '+TD+n)
-      a=pm.readline()
-      pm.read()
-      md5=a[:32]
+      md5=compute_md5(TD+n)
     print "    adding extra MD5 for ",n
     script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
+    # if it is too quiet, try
+    #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
 
   def patch_append(f):
     if VERBOSE > 2 :
