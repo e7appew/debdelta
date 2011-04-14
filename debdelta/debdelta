@@ -2102,11 +2102,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
       return
     if a[9] != '\003' :
       if VERBOSE : print ' Warning: unknown OS in .gz format: ',oct(ord(a[9])),n
+    #OK, it seems we can play our trick
     p='_tmp_'
-    #save new file and unzip
-    shutil.copy2(TD+n,TD+p+'.new.gz')
-    system("gunzip '"+n+"'",TD)
-    shutil.copy2(TD+n[:-3],TD+p+'.new')
+    #unzip new file
+    pro=subprocess.Popen(('zcat',TD+n),stdout=open(TD+p+'.new','w'), cwd=TD)
+    pro.wait()
+    if pro.returncode: raise DebDeltaError('argghh, zcat failed on us')
     #test our ability of recompressing
     l=[1,2,3,4,5,6,7,8,9]
     del l[pack_level]
@@ -2114,27 +2115,33 @@ def do_delta_(olddeb,newdeb,delta,TD):
     l.reverse()
     for i in l:
       #force -n  ... no problem with timestamps
-      gzip_flags="-n -"+str(i)      
-      system("gzip -c "+gzip_flags+" '"+n[:-3]+"' > "+p+'.faked.gz',TD)
-      r=cmp_gz(TD+p+'.new.gz',TD+p+'.faked.gz')
+      gzip_flags="-"+str(i)
+      pro=subprocess.Popen(("gzip",'-c','-n',gzip_flags,TD+p+'.new'),stdout=open(TD+p+'.faked.gz','w'))
+      pro.wait()
+      if pro.returncode: DebDeltaError('Argh, gzip failed on us')
+      r=cmp_gz(TD+n,TD+p+'.faked.gz')
       if r == True:
         break
       if i == pack_level and VERBOSE > 3:
         print '    warning: wrong guess to re-gzip to equal file: ',gzip_flags,r,n
     if r != True:
       if VERBOSE > 2 : print '   warning: cannot re-gzip to equal file: ',r,n
-      os.unlink(TD+p+".new") ; os.unlink(TD+p+'.new.gz') ; os.unlink(TD+p+'.faked.gz') 
+      os.unlink(TD+p+".new") ; os.unlink(TD+p+'faked.gz')
       return
     #actual delta of decompressed files
-    system("zcat '"+o+"' > "+p+'.old',TD)
+    pro=subprocess.Popen(('zcat',TD+o),stdout=open(TD+p+'.old','w'), cwd=TD)
+    pro.wait()
+    if pro.returncode: raise DebDeltaError('argh, zcat failed on us')
     script.write("zcat '"+o+"' > "+p+".old ; rm '"+o+"' \n")
     if VERBOSE > 2 : print '   ',n[9:],'  (= to %d%%): ' % (100*before/newsize) ,
     delta_files(p+'.old',p+'.new')
+    script.write("gzip -c -n "+gzip_flags+" < "+p+".new  > '"+o+"' ; rm "+p+".new\n")
+    #replace the old file with the best that we can do re-gzipping the new file
+    #this is important in the rest of the delta-ing process
     os.rename(TD+p+'.faked.gz',TD+o)
-    script.write("gzip -c "+gzip_flags+" < "+p+".new  > '"+o+"' ; rm "+p+".new\n")
-    if DEBUG > 1 :  script_md5_check_file(o)
-    os.unlink(TD+p+'.new.gz')
-    
+    if DEBUG > 1 :
+      script_md5_check_file(o, compute_md5(TD+o))
+
   ########### helper sh functions for script, for delta_tar()
 
   import difflib, re
