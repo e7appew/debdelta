@@ -2012,8 +2012,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   def cmp_gz(o,n):
     "compare gzip files, ignoring header; returns first different byte (+-10), or True if equal"
-    of=open(TD+o)
-    nf=open(TD+n)
+    of=open(o)
+    nf=open(n)
     oa=of.read(10)
     na=nf.read(10)
     if na[:3] != '\037\213\010' :
@@ -2055,7 +2055,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def delta_gzipped_files(o,n):
     "delta o and n, replace o with n"
     assert(o[-3:] == '.gz' and n[-3:] == '.gz')
-    before=cmp_gz(o,n)
+    before=cmp_gz(TD+o,TD+n)
     if before == True:
       if VERBOSE > 3: print '    equal but for header: ',n
       return
@@ -2107,7 +2107,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #force -n  ... no problem with timestamps
       gzip_flags="-n -"+str(i)      
       system("gzip -c "+gzip_flags+" '"+n[:-3]+"' > "+p+'.faked.gz',TD)
-      r=cmp_gz(p+'.new.gz',p+'.faked.gz')
+      r=cmp_gz(TD+p+'.new.gz',TD+p+'.faked.gz')
       if r == True:
         break
       if i == pack_level and VERBOSE > 3:
