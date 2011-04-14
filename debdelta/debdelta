@@ -555,15 +555,31 @@ def die(s):
 
 
 def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
-  " if return_output , it will return (stdout,stderr,exitcode) regardless"
-  if type(a) != StringType :
-    a=string.join(a,' ')
+  "a must be a tuple, TD the temporary directory ; if return_output , it will return (stdout,stderr,exitcode) regardless"
+  assert type(a) in (ListType, TupleType)
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
     print ' Warning "system()" in ',TD,' for ',a
   (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_out_system")
   (temp_err_fd, temp_err_name) = tempfile.mkstemp(prefix="debdelta_err_system")
-  if VERBOSE > 3 : print '    system(',a,')=',
-  ret = os.system("cd '" +TD +"' ; ( "+a+" ) > "+temp_name+" 2> "+temp_err_name)
+  if not '|' in a:
+    if VERBOSE > 3 : print '   system(',a,')=',
+    pro = subprocess.Popen(args=a,stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
+    pro.wait()
+    ret = pro.returncode
+    del pro
+  else:
+    #special code for pipes http://docs.python.org/library/subprocess.html#replacing-shell-pipeline
+    l=a.index('|'); a1=a[:l]; a2=a[l+1:]
+    if VERBOSE > 3 : print '    system(',a1,' piped in ',a2,')=',
+    pro1 = subprocess.Popen(args=a1,stdout=subprocess.PIPE,stderr=temp_err_fd,cwd=TD)
+    pro2 = subprocess.Popen(args=a2,stdin=pro1.stdout,stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
+    pro1.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits.
+    pro1.wait()
+    pro2.wait()
+    ret = pro1.returncode | pro2.returncode
+    del pro1, pro2, a1, a2, l
+  os.close(temp_fd)
+  os.close(temp_err_fd)
   if VERBOSE > 3 : print ret
   if ignore_output==False and (os.stat(temp_name)[ST_SIZE] > 0 or os.stat(temp_err_name)[ST_SIZE] > 0 ):
     print ' command "%s" returned %d and  produced output as follows' % (a,ret)
@@ -571,22 +587,18 @@ def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
       print 'stdout:  ',repr(i)
     for i in open(temp_err_name):
       print 'stderr:  ',repr(i)
-  os.close(temp_fd)
-  os.close(temp_err_fd)
   if return_output:
     return temp_name, temp_err_name, ret
   os.unlink(temp_err_name)
   os.unlink(temp_name)
   if ret == 0:
     return
-  elif ret == 2:
-    raise KeyboardInterrupt
-  elif ret != 256 or a[:6] != 'xdelta' :
-    s='Error , non zero return status '+str(ret)+' for command "'+a+'"'
+  elif ret != 1 or a[0] != 'xdelta' :
+    s='Error , non zero return status '+str(ret)+' for command "'+repr(a)+'"'
     try:
       if DEBUG and saveargs:
         T=abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
-        open(T+'/command','w').write(a)
+        open(T+'/command','w').write(repr(a))
         for l in saveargs:
           if l[0] != '/':
             l = TD+'/'+l
@@ -775,7 +787,7 @@ def sign_delta(delta, db, role="maker"):
     p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
     p.wait()
     if p.returncode==0:
-      r=os.system("ar qS "+delta+" "+TD+"/_gpg"+role)
+      r=system(("ar","qS",delta,TD+"/_gpg"+role),TD)
   except:
     rmtree(TD)
     raise
@@ -795,15 +807,15 @@ def sign_delta(delta, db, role="maker"):
 def _info_patch_unzip_(TD):
   "unzip info and patch.sh"
   if os.path.exists(TD+'PATCH/info.gz'):
-    system('gunzip PATCH/info.gz',TD)
+    system(('gunzip','PATCH/info.gz'),TD)
   if os.path.exists(TD+'PATCH/patch.sh.gz'):
-    system('gunzip PATCH/patch.sh.gz',TD)
+    system(('gunzip','PATCH/patch.sh.gz'),TD)
   elif os.path.exists(TD+'PATCH/patch.sh.bz2'):
-    system('bunzip2 PATCH/patch.sh.bz2',TD)  
+    system(('bunzip2','PATCH/patch.sh.bz2'),TD)  
   elif os.path.exists(TD+'PATCH/patch.sh.lzma'):
     if not os.path.exists('/usr/bin/unlzma'):
       raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
-    system('unlzma PATCH/patch.sh.lzma',TD)
+    system(('unlzma','PATCH/patch.sh.lzma'),TD)
 
 def get_info_slow(delta,T=None):
   if T:
@@ -813,7 +825,7 @@ def get_info_slow(delta,T=None):
   if TD[-1] != '/':
     TD = TD + '/'
   delta=abspath(expanduser(delta))
-  system('ar x  '+delta+' info info.gz patch.sh patch.sh.gz patch.sh.bz2',
+  system(('ar','x',delta,'info','info.gz','patch.sh','patch.sh.gz','patch.sh.bz2','patch.sh.lzma'),
          TD+'/PATCH', ignore_output=True)
   _info_patch_unzip_(TD)
   info = _scan_delta_info_(TD)
@@ -1230,7 +1242,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if olddeb != '/':
       check_deb(olddeb)
   
-  temp_name, temp_err_name, ret=system('ar xvo '+delta,  TD+'/PATCH', return_output=True, ignore_output=True)
+  temp_name, temp_err_name, ret=system(('ar','xvo',delta), TD+'/PATCH', return_output=True, ignore_output=True)
   if ret :
     raise DebDeltaError('Cannot extract from '+delta)
   ar_list_delta=[a[4:] for a in open(temp_name).read().split('\n') if a]
@@ -1288,7 +1300,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       #unpack the old control structure, if available
       os.mkdir(TD+'/OLD/CONTROL')
       #unpack control.tar.gz
-      system('ar p '+TD+'OLD.file control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',TD)
+      system(('ar','p',TD+'OLD.file','control.tar.gz','|','tar','-xzp','-f','-','-C',TD+'OLD/CONTROL'),TD)
   #then we check for the conformance
   if olddeb != '/' and 'OLD/Size' in params:
     olddebsize = os.stat(olddeb)[ST_SIZE]
@@ -1477,13 +1489,13 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
-          system('ar p '+TD+'OLD.file data.tar.bz2 | tar -x --bzip2 -p -f - -C '+TD+'OLD/DATA', TD)
+          system(('ar','p',TD+'OLD.file','data.tar.bz2','|','tar','-xp','--bzip2','-f','-','-C',TD+'OLD/DATA'), TD)
         elif 'data.tar.gz' in ar_list_old:
-          system('ar p '+TD+'OLD.file data.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/DATA', TD)
+          system(('ar','p',TD+'OLD.file','data.tar.gz','|','tar','-xp','-z','-f','-','-C',TD+'OLD/DATA'), TD)
         elif 'data.tar.lzma' in ar_list_old:
           if not os.path.exists('/usr/bin/lzma'):
             raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
-          system('ar p '+TD+'OLD.file data.tar.lzma | unlzma -c | tar -x -p -f - -C '+TD+'OLD/DATA', TD)
+          system(('ar','p',TD+'OLD.file','data.tar.lzma','|','unlzma','-c','|','tar','-xpf','-','-C',TD+'OLD/DATA'), TD)
         else: assert(0)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
@@ -1730,7 +1742,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   for o in 'OLD', 'NEW' :
       os.mkdir(TD+o+'/CONTROL')
       #unpack control.tar.gz
-      system('ar p '+TD+o+'.file control.tar.gz | tar -x -z -f - -C '+TD+o+'/CONTROL',TD)
+      system(('ar','p',TD+o+'.file','control.tar.gz','|','tar','-xzf','-','-C',TD+o+'/CONTROL'),TD)
       ## scan control
       p=open(TD+'/'+o+'/CONTROL/control')
       s=[]
@@ -1877,16 +1889,16 @@ def do_delta_(olddeb,newdeb,delta,TD):
   def unzip(f):
     c=''
     if f[-3:] == '.gz' :
-      system('gunzip '+f,TD)
+      system(('gunzip',f),TD)
       f=f[:-3]
       c='.gz'
     elif  f[-4:] == '.bz2' :
-      system('bunzip2 '+f,TD)
+      system(('bunzip2',f),TD)
       f=f[:-4]
       c='.bz2'
     elif f[-5:] == '.lzma' :
       info_append('needs-lzma')
-      system('unlzma '+f,TD)
+      system(('unlzma',f),TD)
       f=f[:-5]
       c='.lzma'
     else: raise NotImplementedError(' dont know how to decompress '+repr(f))
@@ -1921,31 +1933,31 @@ def do_delta_(olddeb,newdeb,delta,TD):
     #bdiff
     #http://www.webalice.it/g_pochini/bdiff/
     if algo == 'bdiff':
-      system('~/debdelta/bdiff-1.0.5/bdiff -q -nooldmd5 -nonewmd5 -d  '+o+' '+n+' '+p,TD)
+      system(('~/debdelta/bdiff-1.0.5/bdiff','-q','-nooldmd5','-nonewmd5','-d',o,n,p),TD)
       script.write('~/debdelta/bdiff-1.0.5/bdiff -p '+o+' '+p+' '+n+'\n')    
     #zdelta
     #http://cis.poly.edu/zdelta/
     elif algo == 'zdelta':
-      system('~/debdelta/zdelta-2.1/zdc  '+o+' '+n+' '+p,TD)
+      system(('~/debdelta/zdelta-2.1/zdc',o,n,p),TD)
       script.write('~/debdelta/zdelta-2.1/zdu '+o+' '+p+' '+n+'\n')
     #bdelta 
     #http://deltup.sf.net
     elif algo == 'bdelta':
-      system('~/debdelta/bdelta-0.1.0/bdelta  '+o+' '+n+' '+p,TD)
+      system(('~/debdelta/bdelta-0.1.0/bdelta',o,n,p),TD)
       script.write('~/debdelta/bdelta-0.1.0/bpatch '+o+' '+n+' '+p+'\n')
     #diffball
     #http://developer.berlios.de/projects/diffball/
     elif algo == 'diffball':
-      system('~/debdelta/diffball-0.7.2/differ  '+o+' '+n+' '+p,TD)
+      system(('~/debdelta/diffball-0.7.2/differ',o,n,p),TD)
       script.write('~/debdelta/diffball-0.7.2/patcher '+o+' '+p+' '+n+'\n')
     #rdiff
     elif algo == 'rdiff':
-      system('rdiff signature '+o+' sign_file.tmp  ',TD)
-      system('rdiff delta  sign_file.tmp  '+n+' '+p,TD)
+      system(('rdiff','signature',o,'sign_file.tmp'),TD)
+      system(('rdiff','delta','sign_file.tmp',n,p),TD)
       script.write('rdiff patch '+o+' '+p+' '+n+'\n')
     #xdelta3
     elif algo == 'xdelta3' :
-      system('xdelta3 -9 -R -D -n -S djw -s  '+o+' '+n+' '+p,TD,(o,n))
+      system(('xdelta3','-9','-R','-D','-n','-S','djw','-s',o,n,p),TD)
       if infifo : o = infifo #use fifo as input
       if outpiped:
         this_delta_outpiped=True
@@ -1957,20 +1969,20 @@ def do_delta_(olddeb,newdeb,delta,TD):
     ## but , in my experiments, this number is more like 12.
     ##But bsdiff is sooooo slow!
     elif algo == 'bsdiff' : # not ALLOW_XDELTA or ( osize < (MAXMEMORY / 12)):    
-      system('bsdiff  '+o+' '+n+' '+p,TD,(o,n))
+      system(('bsdiff',o,n,p),TD)
       script.write('bspatch '+o+' '+n+' '+p+'\n')
     #seems that 'xdelta' is buggy on 64bit and different-endian machines
     #xdelta does not deal with different endianness!
     elif algo == 'xdelta-bzip' :
-      system('xdelta delta --pristine --noverify -0 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
+      system(('xdelta','delta','--pristine','--noverify','-0','-m'+str(int(MAXMEMORY/1024))+'k',o,n,p),TD)
       system('bzip2 -9 '+p,TD,(p,))
       script.write('bunzip2 '+p+'.bz2 ; xdelta patch '+p+' '+o+' '+n+'\n')
       p  += '.bz2'
     elif algo == 'xdelta' :
-      system('xdelta delta --pristine --noverify -9 -m'+str(int(MAXMEMORY/1024))+'k '+o+' '+n+' '+p,TD,(o,n))
+      system(('xdelta','delta','--pristine','--noverify','-9','-m'+str(int(MAXMEMORY/1024))+'k',o,n,p),TD)
       script.write('xdelta patch '+p+' '+o+' '+n+'\n')
     elif algo == 'jojodiff' :
-      system('~/debdelta/jdiff06/src/jdiff -b '+o+' '+n+' '+p,TD)
+      system(('~/debdelta/jdiff06/src/jdiff','-b',o,n,p),TD)
       script.write('~/debdelta/jdiff06/src/jpatch '+o+' '+p+' '+n+'\n')
     else: raise AssertionError(' unsupported delta algo ')
     return p, this_delta_outpiped
@@ -2639,7 +2651,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   for name in ar_list_new :
     newname = 'NEW/'+name
-    system('ar p '+TD+'NEW.file '+name+' >> '+TD+newname,TD)
+    system(('ar','x',TD+'NEW.file',name), TD+'/NEW/')
 
     newsize = os.stat(TD+newname)[ST_SIZE]
     if VERBOSE > 1: print '  studying ' , name , ' of len %dkB' % (newsize/1024)
@@ -2663,7 +2675,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif not NEEDSOLD and name[:11] == 'control.tar' :
       #(mm this is almost useless, just saves a few bytes)
       oldname = 'OLD/'+name
-      system('ar p OLD.file '+name+' >> '+oldname, TD)
+      system(('ar','x',TD+'OLD.file',name), TD+'OLD')
       ##avoid using strange files that dpkg may not install in /var...info/
       skip=[]
       for a in os.listdir(TD+'OLD/CONTROL') :
@@ -2706,7 +2718,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     elif  NEEDSOLD :
       #file is long, and has old version ; lets compute a delta
       oldname = 'OLD/'+name
-      system('ar p OLD.file '+name+' >> '+oldname, TD)
+      system(('ar','x',TD+'OLD.file',name), TD+'OLD')
       script.write('ar p OLD.file '+name+' >> '+oldname+'\n')
       (oldname,co) = unzip(oldname)
       (newname,cn) = unzip(newname)
@@ -2738,17 +2750,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
   script.close()
 
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
-  v=''
-  #if VERBOSE > 1 :v ='-v' #disabled... it does not look good inlogs
   patch_files = []
   if 'lzma' not in DISABLED_FEATURES and os.path.exists('/usr/bin/lzma'):
-    system('lzma -q -9 -k '+v+' PATCH/patch.sh', TD)
+    system(('lzma','-q','-9','-k','PATCH/patch.sh'), TD)
     patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.lzma'), 'lzma', 'patch.sh.lzma'))
-  system('bzip2 -q --keep -9  '+v+'  PATCH/patch.sh', TD)
+  system(('bzip2','-q','--keep','-9','PATCH/patch.sh'), TD)
   patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.bz2'), 'bzip2', 'patch.sh.bz2'))
-  system('gzip -q -9 -n '+v+' PATCH/patch.sh', TD)
+  system(('gzip','-q','-9','-n','PATCH/patch.sh'), TD)
   patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.gz'), 'gzip', 'patch.sh.gz'))
-  del v
 
   # Use the smallest compressed patch.sh
   patch_files.sort()
