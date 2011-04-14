@@ -121,7 +121,7 @@ from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXU
 from os.path import abspath, expanduser
 from copy    import copy
 
-from types import StringType, FunctionType, TupleType, ListType, DictType
+from types import StringType, UnicodeType, FunctionType, TupleType, ListType, DictType
 
 def get_termsize():
   import termios, fcntl, struct
@@ -640,6 +640,18 @@ if VERBOSE < 1 :
   GPG_BASE_CMD_LINE+=['--quiet']
 
 GPG_SIGN=GPG_BASE_CMD_LINE+["--batch","--armor","--clearsign","--default-key",GPG_SIGNING_KEY,"--sign"]
+
+def compute_md5(o):
+  "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type"
+  import hashlib
+  if type(o) in (StringType, UnicodeType):
+    o = open(o)
+  m=hashlib.md5()
+  a=o.read(1024)
+  while a:
+    m.update(a)
+    a=o.read(1024)
+  return m.hexdigest()
 
 
 def _compute_hashes_(na):
