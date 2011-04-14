@@ -2633,10 +2633,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   def md5_ar(TD,n,name):
     "extra md5 check, for tracking strange bugs"
-    pm=my_popen_read('cd '+TD+'; ar p NEW.file '+name+' | md5sum -')
-    data_tar_md5=pm.readline()[:32]
-    pm.read()
-    pm.close()
+    p=subprocess.Popen(('ar','p',TD+'NEW.file',name), stdout=subprocess.PIPE).stdout
+    data_tar_md5=compute_md5(p)
     script_md5_check_file(n,data_tar_md5)
 
   for name in ar_list_new :
