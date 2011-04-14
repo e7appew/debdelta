@@ -1610,12 +1610,10 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if DO_MD5:
     if 'NEW/MD5sum' in params:
       if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
-      try:
-        system('echo "'+params['NEW/MD5sum']+'  NEW.file" | md5sum -c', TD,
-               ignore_output=True)
-      except:
+      m= compute_md5(open(TD+'NEW.file'))
+      if params['NEW/MD5sum'] != m :
         fore()
-        raise
+        raise DebDeltaError(' MD5 mismatch, '+repr()+' != ' + repr(m) )
     else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
 
   os.unlink(temp_name)
