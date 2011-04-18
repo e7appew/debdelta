@@ -2126,7 +2126,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
         print '    warning: wrong guess to re-gzip to equal file: ',gzip_flags,r,n
     if r != True:
       if VERBOSE > 2 : print '   warning: cannot re-gzip to equal file: ',r,n
-      os.unlink(TD+p+".new") ; os.unlink(TD+p+'faked.gz')
+      os.unlink(TD+p+".new") ; os.unlink(TD+p+'.faked.gz')
       return
     #actual delta of decompressed files
     pro=subprocess.Popen(('zcat',TD+o),stdout=open(TD+p+'.old','w'), cwd=TD)
