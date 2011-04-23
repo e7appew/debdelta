@@ -1,4 +1,5 @@
 #!/bin/bash
+
 set -e
 
 # A complex script that creates a repository of deltas, that can be
@@ -7,78 +8,6 @@ set -e
 
 # Copyright (C) 2006-11 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
-
-########### customize under here  vvvvvvvvvvvvv
-
-### what to mirror
-
-#where is stored the full mirror of debian
-debmir=/mirror/debian
-
-#where to mirror from
-host=ftp.debian.org
-
-## debmirror options
-debmirror_opt="--debmarshal --method=http --diff=none"
-debmirror=/usr/bin/debmirror
-
-ARCHc='i386,amd64'
-ARCHs='i386 amd64'
-
-DISTc='lenny,squeeze,wheezy,sid,experimental'
-DISTs='lenny squeeze wheezy sid experimental'
-
-SECTIONc='main,contrib,non-free'
-SECTIONs='main contrib non-free'
-
-#how many snapshots to keep in the debs mirror
-# (as stored by the --debmarshal option)
-keep_marshal_snapshots=16
-
-#when cleaning the debs mirror, do not delete anything
-# if the maximum number of files to be deleted exceeds this:
-max_delete=1500
-
-#the tool that prints the list of 'useless debs' i.e. debs not
-# listed in any distribution
-debmarshal_list_useless_debs=/usr/share/debdelta/debmarshal_list_useless_debs
-
-### how to delta
-
-#where to store deltas
-deltamir=/mirror/debian-deltas
-#delete deltas and old_debs that are older than days (regardless of space)
-old_delete_days=50
-
-#where the gnupg stuff specific to debdelta resides
-# and in particular the public and private keyrings
-GNUPGHOME=/var/lib/debdelta/gnupg
-
-#where the gnupg agent variable is stored
-#(unset this if you do not want to use the agent)
-# note that this needs gnupg2 >= 2.0.11 (that is not lenny)
-GNUPGAGENTINFO="${GNUPGHOME}/debdeltas-gpg-agent-info" 
-
-#the secret key to sign the deltas
-GNUPGSEC=0xTHATKEY
-
-#note: if you export this , then it will affect also debmirror:
-# make sure the deb repository key is copied there
-#export GNUPGHOME
-
-#where is the debdeltas program
-debdeltas=/usr/bin/debdeltas
-#options to your taste
-debdelta_opt="-v -d --test --delta-algo xdelta3 --gpg-home $GNUPGHOME --sign $GNUPGSEC "
-
-
-#this should be in the same partition as the debian mirror $debmir
-# (otherwise the resulting deltas will have to copied from it)
-TMPDIR=/mirror/tmp
-export TMPDIR
-
-
-########### customize over here ^^^^^^^^^^^^^^
 
 #since the output is automatically parsed, do it in English 
 unset LANG
@@ -97,15 +26,16 @@ MV='mv'
 DO_MIRROR=true
 DO_CLEAN_DELTAS=''
 DO_CLEAN_DEBS=''
+CONF=''
 while [ "$1" ] ; do
  case "$1" in
   -h|--help)
   cat <<EOF
-Usage: debmirror-marshal-deltas [options]
+Usage: debmirror-marshal-deltas [options] -c CONFFILE
 
-This script (that contains many variables that must be customized!)
-keeps a full mirror of the Debian repository (using 'debmirror'),
-and it uses it to build a repository of deltas (using 'debdeltas').
+This script keeps a full mirror of the Debian repository (using
+'debmirror'), and it uses it to build a repository of deltas (using
+'debdeltas').
 
 Note that this script assumes that the current Debian
 distributions are $DISTc .
@@ -117,6 +47,7 @@ Options:
 -v   verbose   (passed to debmirror and debdeltas)
 -d   debug     (passed to debmirror and debdeltas),
                also, do not 'rm' stuff, just tell
+-c CONF        configuration file
 --no-mirror    do not download debs to the local mirror
 --clean-deltas clean useless deltas (see debdeltas man page)
 --clean-debs   clean older snapshots in deb mirror
@@ -126,6 +57,7 @@ EOF
   exit ;;
   -v)  VERBOSE="$VERBOSE -v"  ;;
   -d)  DEBUG=--debug ;  RM='echo -- would rm ' ;  MV='echo -- would mv ' ;;
+  -c)  shift; CONF="$1" ;;
   --no-mirror) DO_MIRROR='' ;;
   --clean-deltas) DO_CLEAN_DELTAS=true ;;
   --clean-debs)   DO_CLEAN_DEBS=true ;;
@@ -147,6 +79,19 @@ EOF
  esac
  shift
 done
+
+################## read configuration
+
+if test "$CONF" = ""  ; then
+ echo "please specify a configuration file"
+ exit 1
+fi
+if test ! -r "$CONF" ; then
+ echo "cannot read configuration file: $CONF"
+ exit 1
+fi
+
+. "$CONF"
 
 #################### set gpg stuff, test it
 
