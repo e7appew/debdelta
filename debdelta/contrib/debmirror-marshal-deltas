@@ -221,20 +221,23 @@ run_debdeltas  () {
   exec >> $log
   exec 2>> $err
   echo -n --------------oldnew pass----   ; date   ;
-  echo -n ---- options to debdelta ;  echo -- $debdelta_opt
+  echo  "---- options to debdelta -- $debdelta_opt "
 
   for dist in $DISTs ; do
    echo -------------- $dist ----
    #lenny contains debdelta 0.27, that does not understand lzma
    if test "$dist" = lenny ; then x="--disable-feature lzma" ; else x="" ; fi
    for sec in $SECTIONs ; do  for arch in $ARCHs ; do
-    if test -r   $debmir/dists/$dist/0/$sec/binary-$arch/Packages.gz  ; then
-       o="--old  $debmir/dists/$dist/0/$sec/binary-$arch/Packages.gz"
-    else
-       o=''
-    fi
-    echo ------ $sec $arch
-    $debdeltas $VERBOSE $debdelta_opt   $x $o \
+    if test "$dist" = squeeze-updates ; then
+      wo="--old  $debmir/dists/squeeze/$sec/binary-$arch/Packages.gz" 
+    else  wo="" ; fi
+    for OV in 0 10 20 30 ; do
+     if test -r   $debmir/dists/$dist/$OV/$sec/binary-$arch/Packages.gz  ; then
+       wo="$wo --old  $debmir/dists/$dist/$OV/$sec/binary-$arch/Packages.gz"
+     fi
+    done
+    echo "------ $sec $arch --  (debdelta options  +=   $x $wo )"
+    $debdeltas $VERBOSE $debdelta_opt   $x $wo \
      --old $debmir/dists/$dist/latest/$sec/binary-$arch/Packages.gz \
      --dir $deltamir// \
      $debmir/dists/$dist/$sec/binary-$arch/Packages.gz
@@ -274,22 +277,17 @@ run_debdeltas_clean () {
 }
 
 
-clean_old_debs () {
- if test -e $debmirlock ; then 
-  echo Archive $debmir is locked 
-  exit 1
- fi
- echo -------------- cleanup mirror
- didthat=0
- for dist in $DISTs ; do
+debmarshal_trim_snapshots ()
+{
+ rectcode=1
+ for dist in $DISTs ; do 
   pushd $debmir/dists/$dist/ > /dev/null
   #act only if there are at least 3 snapshots
   if test -d 0 -a -d 1 -a -d 3 ; then
    latest=$(echo [0-9] [0-9][0-9] [0-9][0-9][0-9] [0-9][0-9][0-9][0-9] \
             | tr ' ' '\n' |  sort -n | tail -n 1)
    #check sanity
-   sane=1
-   t=0 ; f=1 ;
+   sane=1 ; t=0 ; f=1 ;
    while test "$f" -le "$latest" ; do
     if test ! -d "$f" ; then
      echo "Warning, ignoring $debmir/dists/$dist , the snapshot $f does not exist"
@@ -298,24 +296,24 @@ clean_old_debs () {
      echo "Warning, ignoring $debmir/dists/$dist , the snapshot $f is older than the $t "
      sane=0
     fi
-    f=$(( $f + 1 )) ; t=$(( $t + 1 ))
+    let f++ ; let t++ ;
    done
    # if sane and too many snapshots, move all down a step
    if test "$sane" = 1 -a "$keep_marshal_snapshots"  -a "$latest" -gt "$keep_marshal_snapshots" ; then
-    didthat=1
-    d=$(( $latest - $keep_marshal_snapshots ))
+    retcode=0
+    let d=latest-keep_marshal_snapshots
     t=0
     #remove older
-    while test "$t" -le "$d" -a -d "$d" ; do $RM -r $t ; t=$(( $t + 1 )) ; done
+    while test "$t" -le "$d" -a -d "$d" ; do $RM -r $t ; let t++ ; done
     #move down others
     t=0
-    f=$(( $d + 1 ))
+    let f=d+1
     while test "$f" -le "$latest" ; do
      $MV $f $t
-     t=$(( $t + 1 ))
-     f=$(( $f + 1 ))
+     let t++
+     let f++
     done
-    t=$(( $t - 1 ))
+    let t--
     rm latest
     ln -s $t latest
     echo "------------ deleted revisions from 0 to $d in $dist (latest now points to $t)"
@@ -323,7 +321,16 @@ clean_old_debs () {
   fi #end of "if at least 3 snapshots"
   popd > /dev/null
  done
- if test "$didthat" = 1 ; then
+ return $retcode
+}
+
+clean_old_debs () {
+ if test -e $debmirlock ; then 
+  echo Archive $debmir is locked 
+  exit 1
+ fi
+ echo -------------- cleanup mirror
+ if debmarshal_trim_snapshots ; then
   z=`tempfile`
   ${debmarshal_list_useless_debs} $debmir > $z
   ! grep -vx '.*\.deb' $z  #(just in case)
