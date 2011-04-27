@@ -1728,10 +1728,55 @@ def do_delta_(olddeb,newdeb,delta,TD):
   a_numb_file=a_numb_file_gen()
   a_numb_patch=a_numb_file_gen()
   
-  #start writing script 
-  script=open(TD+'PATCH/patch.sh','w')
-  script.write('#!/bin/bash -e\n')
-    
+  ### 
+  class Script:
+    "manages the script 'patch.sh' that is the core of the delta"
+    def __init__(self):
+      #start writing script 
+      self.fd=open(TD+'PATCH/patch.sh','w')
+      self.fd.write('#!/bin/bash -e\n')
+    def write(self,s):
+      "verbatim write in the script"
+      self.fd.write(s)
+    def close(self):
+      self.fd.close()
+      
+    def zip(self, n, cn, newhead=None):
+      """inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)
+      This is obsolete, not efficient, left as a compatibility layer."""
+      self.fd.write('cat "'+n+'" | ')
+      self.zip_piped(cn, newhead)
+      self.fd.write(" > '"+n+cn+"' && rm '"+n+"'\n")
+      
+    def zip_piped(self, cn, newhead=None):
+      "inverts the unzip() function, with piped behaviour"
+      if cn == '.gz' :
+        if newhead:
+          s=prepare_for_echo(newhead)
+          self.fd.write("($E '"+ s +"' && ./minigzip -9 | tail -c +"+str(len(newhead)+1)+')')
+        else:
+          self.fd.write('./minigzip -9')
+      elif  cn == '.bz2' :
+        info_append('needs-minibzip2')
+        self.fd.write('./minibzip2 -9')
+      elif cn == '.lzma' :
+        info_append('needs-lzma')
+        self.fd.write('lzma -9')
+      else: assert(0)
+  
+    def md5_check_file(self, n, md5=None):
+      "add a md5 check in the script (this is done only if a lot -d are passed on cmdline)"
+      if md5==None:
+        assert(os.path.isfile(TD+n))
+        md5=compute_md5(TD+n)
+      print "    adding extra MD5 for ",n
+      self.fd.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
+      # if it is too quiet, try
+      #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
+  
+  
+  script=Script()
+  
   ##### unpack control.tar.gz, scan control, write  parameters
   info=[]
   def info_append(s):
@@ -1773,12 +1818,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   
   if DO_MD5 :
     # compute a MD5 of NEW deb
-    p=my_popen_read('md5sum '+TD+'NEW.file')
-    a=p.readline()
-    p.read()
-    p.close
-    newdeb_md5sum=a[:32]
-    info.append('NEW/MD5sum: '+ newdeb_md5sum[:32])
+    newdeb_md5sum=compute_md5(TD+'NEW.file')
+    info.append('NEW/MD5sum: '+ newdeb_md5sum)
   else:
     newdeb_md5sum=None
 
@@ -1862,15 +1903,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   ############### some routines  to prepare delta of two files
 
-  def script_md5_check_file(n,md5=None):
-    if md5==None:
-      assert(os.path.isfile(TD+n))
-      md5=compute_md5(TD+n)
-    print "    adding extra MD5 for ",n
-    script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
-    # if it is too quiet, try
-    #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
-
   def patch_append(f):
     if VERBOSE > 2 :
       a=os.stat(TD+'PATCH/'+f)[ST_SIZE]
@@ -1904,28 +1936,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     else: raise NotImplementedError(' dont know how to decompress '+repr(f))
     return (f,c)
 
-  def script_zip(n, cn,newhead=None):
-    """inverts the unzip() function ; optionally, forces .gz header (to fight changes in libz)
-    This is obsolete, not efficient, left as a compatibility layer."""
-    script.write('cat "'+n+'" | ')
-    script_zip_piped(cn, newhead)
-    script.write(" > '"+n+cn+"' && rm '"+n+"'\n")
 
-  def script_zip_piped(cn,newhead=None):
-    "inverts the unzip() function, with piped.behaviour"
-    if cn == '.gz' :
-      if newhead:
-        s=prepare_for_echo(newhead)
-        script.write("($E '"+ s +"' && ./minigzip -9 | tail -c +"+str(len(newhead)+1)+')')
-      else:
-        script.write('./minigzip -9')
-    elif  cn == '.bz2' :
-      info_append('needs-minibzip2')
-      script.write('./minibzip2 -9')
-    elif cn == '.lzma' :
-      info_append('needs-lzma')
-      script.write('lzma -9')
-    else: assert(0)
 
   def delta_files__(o, n, p, algo, outpiped, infifo):
     "delta of file 'o' to 'n' using/producing patch 'p' ; xdelta3 can also pipe"
@@ -1997,7 +2008,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     p = 'PATCH/'+a_numb_patch.next()
     tim = -time.time()
     #
-    if DEBUG > 3 :  script_md5_check_file(o)
+    if DEBUG > 3 :  script.md5_check_file(o)
     #
     if USE_DELTA_ALGO == 'bsdiff' and osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
       print ' Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
@@ -2005,7 +2016,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     p, this_delta_outpiped = delta_files__(o, n, p, USE_DELTA_ALGO, outpiped, infifo)
     #script.write(s)
     #
-    if DEBUG > 2 and not this_delta_outpiped : script_md5_check_file(n)
+    if DEBUG > 2 and not this_delta_outpiped : script.md5_check_file(n)
     #
     tim += time.time()      
     #
@@ -2157,7 +2168,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     #this is important in the rest of the delta-ing process
     os.rename(TD+p+'.faked.gz',TD+o)
     if DEBUG > 1 :
-      script_md5_check_file(o, compute_md5(TD+o))
+      script.md5_check_file(o, compute_md5(TD+o))
 
   ########### helper sh functions for script, for delta_tar()
 
@@ -2623,9 +2634,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if delta_tar_uses_pipes:
       #close  the recompressing pipe
       script.write(')|') #pipe the delta/recompressing pipe
-      script_zip_piped(new_filename_ext,new_file_zip_head)
+      script.zip_piped(new_filename_ext,new_file_zip_head)
     else:
-      script_zip(new_filename,new_filename_ext,new_file_zip_head)
+      script.zip(new_filename,new_filename_ext,new_file_zip_head)
   ####################  ^^^^    delta_tar    ^^^^ ###########################
 
   ############ start computing deltas  
@@ -2652,7 +2663,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     "extra md5 check, for tracking strange bugs"
     p=subprocess.Popen(('ar','p',TD+'NEW.file',name), stdout=subprocess.PIPE).stdout
     data_tar_md5=compute_md5(p)
-    script_md5_check_file(n,data_tar_md5)
+    script.md5_check_file(n,data_tar_md5)
 
   for name in ar_list_new :
     newname = 'NEW/'+name
@@ -2728,7 +2739,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       (oldname,co) = unzip(oldname)
       (newname,cn) = unzip(newname)
       delta_files(oldname,newname)
-      script_zip(newname,cn)
+      script.zip(newname,cn)
       script.write('cat '+newname+cn+' >> NEW.file ;  rm '+newname+cn+'\n')
       unlink(TD+newname)
       del co,cn
@@ -2746,7 +2757,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   #this is done already from the receiving end
   if DEBUG > 2 and newdeb_md5sum :
-    script_md5_check_file("NEW.file",md5=newdeb_md5sum)
+    script.md5_check_file("NEW.file",md5=newdeb_md5sum)
   
   if the_fifo:
     script.write("rm %s\n" % the_fifo)
