@@ -1773,12 +1773,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   
   if DO_MD5 :
     # compute a MD5 of NEW deb
-    p=my_popen_read('md5sum '+TD+'NEW.file')
-    a=p.readline()
-    p.read()
-    p.close
-    newdeb_md5sum=a[:32]
-    info.append('NEW/MD5sum: '+ newdeb_md5sum[:32])
+    newdeb_md5sum=compute_md5(TD+'NEW.file')
+    info.append('NEW/MD5sum: '+ newdeb_md5sum)
   else:
     newdeb_md5sum=None
 
