@@ -1764,6 +1764,17 @@ def do_delta_(olddeb,newdeb,delta,TD):
         self.fd.write('lzma -9')
       else: assert(0)
   
+    def md5_check_file(self, n, md5=None):
+      "add a md5 check in the script (this is done only if a lot -d are passed on cmdline)"
+      if md5==None:
+        assert(os.path.isfile(TD+n))
+        md5=compute_md5(TD+n)
+      print "    adding extra MD5 for ",n
+      self.fd.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
+      # if it is too quiet, try
+      #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
+  
+  
   script=Script()
   
   ##### unpack control.tar.gz, scan control, write  parameters
@@ -1892,15 +1903,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   ############### some routines  to prepare delta of two files
 
-  def script_md5_check_file(n,md5=None):
-    if md5==None:
-      assert(os.path.isfile(TD+n))
-      md5=compute_md5(TD+n)
-    print "    adding extra MD5 for ",n
-    script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
-    # if it is too quiet, try
-    #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
-
   def patch_append(f):
     if VERBOSE > 2 :
       a=os.stat(TD+'PATCH/'+f)[ST_SIZE]
@@ -2006,7 +2008,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     p = 'PATCH/'+a_numb_patch.next()
     tim = -time.time()
     #
-    if DEBUG > 3 :  script_md5_check_file(o)
+    if DEBUG > 3 :  script.md5_check_file(o)
     #
     if USE_DELTA_ALGO == 'bsdiff' and osize > ( 1.1 * (MAXMEMORY / 12))  and VERBOSE  :
       print ' Warning, memory usage by bsdiff on the order of %dMb' % (12 * osize / 2**20)
@@ -2014,7 +2016,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     p, this_delta_outpiped = delta_files__(o, n, p, USE_DELTA_ALGO, outpiped, infifo)
     #script.write(s)
     #
-    if DEBUG > 2 and not this_delta_outpiped : script_md5_check_file(n)
+    if DEBUG > 2 and not this_delta_outpiped : script.md5_check_file(n)
     #
     tim += time.time()      
     #
@@ -2166,7 +2168,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     #this is important in the rest of the delta-ing process
     os.rename(TD+p+'.faked.gz',TD+o)
     if DEBUG > 1 :
-      script_md5_check_file(o, compute_md5(TD+o))
+      script.md5_check_file(o, compute_md5(TD+o))
 
   ########### helper sh functions for script, for delta_tar()
 
@@ -2661,7 +2663,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
     "extra md5 check, for tracking strange bugs"
     p=subprocess.Popen(('ar','p',TD+'NEW.file',name), stdout=subprocess.PIPE).stdout
     data_tar_md5=compute_md5(p)
-    script_md5_check_file(n,data_tar_md5)
+    script.md5_check_file(n,data_tar_md5)
 
   for name in ar_list_new :
     newname = 'NEW/'+name
@@ -2755,7 +2757,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
   #this is done already from the receiving end
   if DEBUG > 2 and newdeb_md5sum :
-    script_md5_check_file("NEW.file",md5=newdeb_md5sum)
+    script.md5_check_file("NEW.file",md5=newdeb_md5sum)
   
   if the_fifo:
     script.write("rm %s\n" % the_fifo)
