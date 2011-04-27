@@ -1728,10 +1728,21 @@ def do_delta_(olddeb,newdeb,delta,TD):
   a_numb_file=a_numb_file_gen()
   a_numb_patch=a_numb_file_gen()
   
-  #start writing script 
-  script=open(TD+'PATCH/patch.sh','w')
-  script.write('#!/bin/bash -e\n')
-    
+  ### 
+  class Script:
+    "manages the script 'patch.sh' that is the core of the delta"
+    def __init__(self):
+      #start writing script 
+      self.fd=open(TD+'PATCH/patch.sh','w')
+      self.fd.write('#!/bin/bash -e\n')
+    def write(self,s):
+      "verbatim write in the script"
+      self.fd.write(s)
+    def close(self):
+      self.fd.close()
+  
+  script=Script()
+  
   ##### unpack control.tar.gz, scan control, write  parameters
   info=[]
   def info_append(s):
