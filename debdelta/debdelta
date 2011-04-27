@@ -1728,19 +1728,29 @@ def do_delta_(olddeb,newdeb,delta,TD):
   a_numb_file=a_numb_file_gen()
   a_numb_patch=a_numb_file_gen()
   
-  ### 
+  ####################### class Script ########################
   class Script:
     "manages the script 'patch.sh' that is the core of the delta"
-    def __init__(self):
+    def __init__(self, delta_uses_infifo, delta_tar_uses_pipes):
       #start writing script 
       self.fd=open(TD+'PATCH/patch.sh','w')
       self.fd.write('#!/bin/bash -e\n')
       self.member=None
+      self.current_chunk_name=None
+      self.delta_uses_infifo=delta_uses_infifo
+      self.delta_tar_uses_pipes=delta_tar_uses_pipes
+      if delta_uses_infifo : #create the fifo as input for xdelta3
+        self.the_fifo=a_numb_file.next()
+        self.fd.write("mkfifo %s\n" % self.the_fifo)
+      else:
+        self.the_fifo=None
       
     def write(self,s):
       "verbatim write in the script"
       self.fd.write(s)
     def close(self):
+      if self.the_fifo:
+        self.fd.write("rm %s\n" % self.the_fifo)
       self.fd.close()
       
     def zip(self, n, cn, newhead=None):
@@ -1769,8 +1779,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     def start_member(self,n):
       "start a new 'ar' member"
       self.member=n
+      assert(self.current_chunk_name==None)
       if delta_tar_uses_pipes:
-        script.write('(')
+        self.fd.write('(')
   
     def end_member(self):
       assert(self.member)
@@ -1780,6 +1791,27 @@ def do_delta_(olddeb,newdeb,delta,TD):
         self.fd.write('cat '+self.member+' >> NEW.file ;  rm '+self.member+'\n')
       self.member=None
   
+    def start_rebuilding(self):
+      "starts the first part of the delta/recompressing pipe (for a 'ar' member)"
+      if delta_tar_uses_pipes:
+        self.fd.write('(')
+    def end_rebuilding(self):
+      "ends the first part of the delta/recompressing pipe"
+      if self.delta_tar_uses_pipes:
+        self.fd.write(')|') #pipe the delta/recompressing pipe
+    
+    def start_chunk(self, current_chunk_name):
+      "start the pipe to create the chunk. The chunk is always piped"
+      self.fd.write('(')
+      self.current_chunk_name=current_chunk_name
+    def end_chunk(self, current_chunk_name):
+      assert(self.current_chunk_name==current_chunk_name)
+      if self.the_fifo:
+        self.fd.write(') > '+self.the_fifo+'&\n')  #write to fifo, background
+      else:
+        self.fd.write(') > '+current_chunk_name+'\n') #write chunk
+      self.current_chunk_name=None
+    
     def md5_check_file(self, n, md5=None):
       "add a md5 check in the script (this is done only if a lot -d are passed on cmdline)"
       if md5==None:
@@ -1790,7 +1822,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       # if it is too quiet, try
       #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
   
-  script=Script()
+  ####################### end of class Script ########################
   
   ##### unpack control.tar.gz, scan control, write  parameters
   info=[]
@@ -1848,6 +1880,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
   #do we use a fifo as input for xdelta3
   delta_uses_infifo = ('xdelta3-fifo' not in DISABLED_FEATURES) and (USE_DELTA_ALGO == 'xdelta3')
 
+
+  #do we use pipes as output of the backend delta
+  delta_tar_uses_pipes=True
+  # note that delta_uses_infifo needs delta_tar_uses_pipes
+  assert(delta_tar_uses_pipes or not delta_uses_infifo)
+  
+  script=Script(delta_uses_infifo, delta_tar_uses_pipes)
+  
   a=USE_DELTA_ALGO
   if a == 'xdelta-bzip':
     a='xdelta'
@@ -2293,17 +2333,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
   script.write("FTH='"+fake_tar_2nd_echo+"'\n")
   script.write("E='echo -ne'\n")
   
-  if delta_uses_infifo : #create the fifo as input for xdelta3
-    the_fifo=a_numb_file.next()
-    script.write("mkfifo %s\n" % the_fifo)
-  else:
-    the_fifo=None
-  
-  #do we use pipes as output of the backend delta
-  delta_tar_uses_pipes=True
-  # note that delta_uses_infifo needs delta_tar_uses_pipes
-  assert(delta_tar_uses_pipes or not delta_uses_infifo)
-  
   global time_corr
   time_corr=0
 
@@ -2472,9 +2501,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
     
     ######### final pass : scan new tar, extract regular files, prepare deltas
     if VERBOSE > 2 : print '  scanning ',new_filename
-
+    
+    script.start_rebuilding()
+    
     current_chunk_name=a_numb_file.next()
+    script.start_chunk(current_chunk_name)
     mega_cat=open(TD+'/'+current_chunk_name,'w')
+    
     #helper function
     def _append_(p, w, rm):
       mega_cat.write(w+fake_tar_2nd)
@@ -2518,7 +2551,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write('wait\n')
       if background:
         script.write('(')
-      this_delta_piped=delta_files(current_chunk_name, p, delta_tar_uses_pipes, the_fifo)
+      this_delta_piped=delta_files(current_chunk_name, p, delta_tar_uses_pipes, script.the_fifo)
       if delta_tar_uses_pipes:
         if not this_delta_piped:
           script.write('cat '+p+'\n')
@@ -2549,12 +2582,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
     progressive_new_offset=0
     
-    if delta_tar_uses_pipes:
-      #start the recompressing pipe
-      script.write('(')#start the delta/recompressing pipe
-    #start the pipe to create the chunk. The chunk is always piped
-    script.write('(')#start the pipe to write  the chunk
-    
     for newtarinfo in newtar:
       #progressive mega_cat
       a=mega_cat.tell()
@@ -2569,15 +2596,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
           one_old_file=some_old_file.next()
         #write the chunk into a temporary
         mega_cat.close()
-        if the_fifo:
-          script.write(') > '+the_fifo+'&\n')  #write to fifo, background
-        else:
-          script.write(') > '+current_chunk_name+'\n') #write chunk
+        script.end_chunk(current_chunk_name)
         #delta the chunk
         mega_cat_chunk(progressive_new_offset, newtarinfo.offset )
         #start a new chunk
-        script.write('(') #start the pipe to write the chunk
         current_chunk_name=a_numb_file.next()
+        script.start_chunk(current_chunk_name)
         mega_cat=open(TD+'/'+current_chunk_name,'w')
         #
         progressive_new_offset=newtarinfo.offset
@@ -2631,10 +2655,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
 
     #write the chunk into a temporary
     mega_cat.close()
-    if the_fifo:
-      script.write(') > '+the_fifo+'&\n')  #write to fifo, background
-    else:
-      script.write(') > '+current_chunk_name+'\n')  #write chunk , chunks are always piped
+    script.end_chunk(current_chunk_name)
     if os.path.exists(TD+'/OLD/'+CWD):
       rmtree(TD+'/OLD/'+CWD)
     if os.path.getsize(TD+'/'+current_chunk_name) > 0 :
@@ -2646,12 +2667,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write("cat '"+p+"'\n")
       else:
         script.write('mv '+p+' '+new_filename+ '\n')
+    script.end_rebuilding() #pipes the rebuilding part into the recompressing part
     if delta_tar_uses_pipes:
-      #close  the recompressing pipe
-      script.write(')|') #pipe the delta/recompressing pipe
       script.zip_piped(new_filename_ext,new_file_zip_head)
     else:
       script.zip(new_filename,new_filename_ext,new_file_zip_head)
+
   ####################  ^^^^    delta_tar    ^^^^ ###########################
 
   ############ start computing deltas  
@@ -2757,9 +2778,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
   #this is done already from the receiving end
   if DEBUG > 2 and newdeb_md5sum :
     script.md5_check_file("NEW.file",md5=newdeb_md5sum)
-  
-  if the_fifo:
-    script.write("rm %s\n" % the_fifo)
   
   #script is done
   script.close()
