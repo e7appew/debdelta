@@ -1735,6 +1735,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
       #start writing script 
       self.fd=open(TD+'PATCH/patch.sh','w')
       self.fd.write('#!/bin/bash -e\n')
+      self.member=None
+      
     def write(self,s):
       "verbatim write in the script"
       self.fd.write(s)
@@ -1764,6 +1766,20 @@ def do_delta_(olddeb,newdeb,delta,TD):
         self.fd.write('lzma -9')
       else: assert(0)
   
+    def start_member(self,n):
+      "start a new 'ar' member"
+      self.member=n
+      if delta_tar_uses_pipes:
+        script.write('(')
+  
+    def end_member(self):
+      assert(self.member)
+      if delta_tar_uses_pipes:
+        self.fd.write(') >> NEW.file\n') #end delta tar
+      else:
+        self.fd.write('cat '+self.member+' >> NEW.file ;  rm '+self.member+'\n')
+      self.member=None
+  
     def md5_check_file(self, n, md5=None):
       "add a md5 check in the script (this is done only if a lot -d are passed on cmdline)"
       if md5==None:
@@ -1773,7 +1789,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
       self.fd.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
       # if it is too quiet, try
       #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
-  
   
   script=Script()
   
@@ -2658,13 +2673,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   #process all contents of old vs new .deb
   ar_list_old= list_ar(TD+'OLD.file')
   ar_list_new= list_ar(TD+'NEW.file')
-
-  def md5_ar(TD,n,name):
-    "extra md5 check, for tracking strange bugs"
-    p=subprocess.Popen(('ar','p',TD+'NEW.file',name), stdout=subprocess.PIPE).stdout
-    data_tar_md5=compute_md5(p)
-    script.md5_check_file(n,data_tar_md5)
-
+  
   for name in ar_list_new :
     newname = 'NEW/'+name
     system(('ar','x',TD+'NEW.file',name), TD+'/NEW/')
@@ -2689,6 +2698,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       p.close()
       unlink(TD+newname)
     elif not NEEDSOLD and name[:11] == 'control.tar' :
+      script.start_member(newname)
       #(mm this is almost useless, just saves a few bytes)
       oldname = 'OLD/'+name
       system(('ar','x',TD+'OLD.file',name), TD+'OLD')
@@ -2698,14 +2708,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
         if a not in dpkg_keeps_controls:
           skip.append(a)
       #delta it
-      if delta_tar_uses_pipes:
-        script.write('(') #start delta tar
       delta_tar(oldname,newname,'CONTROL',skip)
-      if delta_tar_uses_pipes:
-        script.write(') >> NEW.file\n') #end delta tar
-      else:
-        script.write('cat '+newname+' >> NEW.file ;  rm '+newname+'\n')
+      script.end_member()
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
+      script.start_member(newname)
       if 'data.tar.gz' in ar_list_old  :
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
@@ -2717,17 +2723,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
       else: assert(0)
-      if delta_tar_uses_pipes:
-        script.write('(') #start delta tar
       delta_tar(x,newname,'DATA',old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
       del x
-      if delta_tar_uses_pipes:
-        script.write(') >> NEW.file\n') #end delta tar
-      else:
-        #cannot MD5 along the pipe , 
-        if DEBUG > 3 : md5_ar(TD,newname,name)
-        script.write('cat '+newname+' >> NEW.file ; rm '+newname+'\n') #end delta tar
+      script.end_member()
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
       patchname=verbatim(newname)
       script.write('cat '+patchname+' >> NEW.file ; rm '+patchname+'\n')
