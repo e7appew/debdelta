@@ -1827,6 +1827,17 @@ def do_delta_(olddeb,newdeb,delta,TD):
         append_NEW_file(self.extrachar)
       self.fd.write(')\n')
 
+    def recompressing_by_arg(self,new_filename,new_filename_ext,new_file_zip_head,new_file_size):
+      "flexible recompressing for data.tar , depending on first argument passed to the script"
+      self.fd.write('( if test "$1" = "" \n then\n')
+      self.recompressing(new_filename,new_filename_ext,new_file_zip_head)
+      self.fd.write('elif test "$1" = "unzipped" \n then\n')
+      #http://en.wikipedia.org/wiki/Ar_(Unix)
+      assert(new_filename == 'NEW/data.tar')
+      ar_line_unzipped='data.tar'.ljust(16)+self.ar_line[16:48]+str(new_file_size).ljust(10)+'`\n'
+      append_NEW_file(ar_line_unzipped) #there is no extra char, tar is 512b blocks
+      self.fd.write('cat >> NEW.file \n elif test "$1" = "piped" \n then cat >> data.pipe \n fi )\n')
+
     def start_chunk(self, current_chunk_name):
       "start the pipe to create the chunk. The chunk is always piped"
       self.fd.write('(')
@@ -2690,7 +2701,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
       p=verbatim(new_filename)
       script.write("cat '"+p+"'\n")
     script.end_rebuilding() #pipes the rebuilding part into the recompressing part
-    script.recompressing(new_filename,new_filename_ext,new_file_zip_head)
+    if new_filename == 'NEW/data.tar':
+      script.recompressing_by_arg(new_filename,new_filename_ext,new_file_zip_head,new_file_size)
+    else:
+      script.recompressing(new_filename,new_filename_ext,new_file_zip_head)
 
   ####################  ^^^^    delta_tar    ^^^^ ###########################
 
