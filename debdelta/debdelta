@@ -1713,9 +1713,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
    in chunks (indeed bsdiff cannot manage large files w/o exausting all your memory!)
   All the (chunks of) steps (1a,b) are in a subshell, and its result stdout is piped in (2).
   """
-  #(NB if the variable 'delta_tar_uses_pipes' would be set to False, then the above
-  #would use a lot of intermediate temporary files, instead of pipes; this was the
-  #old behaviour; pipes are the default nowadays)
   if TD[-1] != '/':
     TD = TD + '/'
 
@@ -1758,14 +1755,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
     """This class helps create the script 'patch.sh' that is the core of the delta.
     The script recreates the new deb. See documentation of do_delta_() for details.
     """
-    def __init__(self, delta_uses_infifo, delta_tar_uses_pipes):
+    def __init__(self, delta_uses_infifo):
       #start writing script 
       self.fd=open(TD+'PATCH/patch.sh','w')
       self.fd.write('#!/bin/bash -e\n')
       self.member=None
       self.current_chunk_name=None
       self.delta_uses_infifo=delta_uses_infifo
-      self.delta_tar_uses_pipes=delta_tar_uses_pipes
       if delta_uses_infifo : #create the fifo as input for xdelta3
         self.the_fifo=a_numb_file.next()
         self.fd.write("mkfifo %s\n" % self.the_fifo)
@@ -1807,25 +1803,19 @@ def do_delta_(olddeb,newdeb,delta,TD):
       "start a new 'ar' member"
       self.member=n
       assert(self.current_chunk_name==None)
-      if delta_tar_uses_pipes:
-        self.fd.write('(')
+      self.fd.write('(')
   
     def end_member(self):
       assert(self.member)
-      if delta_tar_uses_pipes:
-        self.fd.write(') >> NEW.file\n') #end delta tar
-      else:
-        self.fd.write('cat '+self.member+' >> NEW.file ;  rm '+self.member+'\n')
+      self.fd.write(') >> NEW.file\n') #end delta tar
       self.member=None
   
     def start_rebuilding(self):
       "starts the first part of the delta/recompressing pipe (for a 'ar' member)"
-      if delta_tar_uses_pipes:
-        self.fd.write('(')
+      self.fd.write('(')
     def end_rebuilding(self):
       "ends the first part of the delta/recompressing pipe"
-      if self.delta_tar_uses_pipes:
-        self.fd.write(')|') #pipe the delta/recompressing pipe
+      self.fd.write(')|') #pipe the delta/recompressing pipe
     
     def start_chunk(self, current_chunk_name):
       "start the pipe to create the chunk. The chunk is always piped"
@@ -1910,14 +1900,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   #do we use a fifo as input for xdelta3
   delta_uses_infifo = ('xdelta3-fifo' not in DISABLED_FEATURES) and (USE_DELTA_ALGO == 'xdelta3')
 
-
-  #do we use pipes as output of the backend delta
-  delta_tar_uses_pipes=True
-  # note that delta_uses_infifo needs delta_tar_uses_pipes
-  assert(delta_tar_uses_pipes or not delta_uses_infifo)
-  
   #Note that there is just one object instanced from class Script()
-  script=Script(delta_uses_infifo, delta_tar_uses_pipes)
+  script=Script(delta_uses_infifo)
   
   a=USE_DELTA_ALGO
   if a == 'xdelta-bzip':
@@ -2582,12 +2566,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
         script.write('wait\n')
       if background:
         script.write('(')
-      this_delta_piped=delta_files(current_chunk_name, p, delta_tar_uses_pipes, script.the_fifo)
-      if delta_tar_uses_pipes:
-        if not this_delta_piped:
-          script.write('cat '+p+'\n')
-      else:
-          script.write('cat '+p+' >> '+new_filename+'\n')
+      this_delta_piped=delta_files(current_chunk_name, p, True, script.the_fifo)
+      if not this_delta_piped:
+        script.write('cat '+p+'\n')
       if not this_delta_piped:
         script.write('rm '+p+'\n')
       if background:
@@ -2694,15 +2675,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     else:
       #the (tail of the) new tar did not match anything in the old tar, nothing to delta
       p=verbatim(new_filename)
-      if delta_tar_uses_pipes:
-        script.write("cat '"+p+"'\n")
-      else:
-        script.write('mv '+p+' '+new_filename+ '\n')
+      script.write("cat '"+p+"'\n")
     script.end_rebuilding() #pipes the rebuilding part into the recompressing part
-    if delta_tar_uses_pipes:
-      script.zip_piped(new_filename_ext,new_file_zip_head)
-    else:
-      script.zip(new_filename,new_filename_ext,new_file_zip_head)
+    script.zip_piped(new_filename_ext,new_file_zip_head)
 
   ####################  ^^^^    delta_tar    ^^^^ ###########################
 
