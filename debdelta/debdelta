@@ -1799,16 +1799,18 @@ def do_delta_(olddeb,newdeb,delta,TD):
         self.fd.write('lzma -9')
       else: assert(0)
   
-    def start_member(self,n):
+    def start_member(self, ar_line, newname, extrachar):
       "start a new 'ar' member"
-      self.member=n
+      self.member=newname
+      self.ar_line=ar_line
+      self.extrachar=extrachar
       assert(self.current_chunk_name==None)
-      self.fd.write('(')
+      self.fd.write('{')
   
     def end_member(self):
       assert(self.member)
-      self.fd.write(') >> NEW.file\n') #end delta tar
       self.member=None
+      self.fd.write('}\n')
   
     def start_rebuilding(self):
       "starts the first part of the delta/recompressing pipe (for a 'ar' member)"
@@ -1817,6 +1819,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
       "ends the first part of the delta/recompressing pipe"
       self.fd.write(')|') #pipe the delta/recompressing pipe
     
+    def recompressing(self,new_filename,new_filename_ext,new_file_zip_head):
+      append_NEW_file(self.ar_line)
+      script.zip_piped(new_filename_ext,new_file_zip_head)
+      self.fd.write(' >> NEW.file\n') #end delta tar
+      if self.extrachar :
+        append_NEW_file(self.extrachar)
+
     def start_chunk(self, current_chunk_name):
       "start the pipe to create the chunk. The chunk is always piped"
       self.fd.write('(')
@@ -2680,7 +2689,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       p=verbatim(new_filename)
       script.write("cat '"+p+"'\n")
     script.end_rebuilding() #pipes the rebuilding part into the recompressing part
-    script.zip_piped(new_filename_ext,new_file_zip_head)
+    script.recompressing(new_filename,new_filename_ext,new_file_zip_head)
 
   ####################  ^^^^    delta_tar    ^^^^ ###########################
 
@@ -2711,10 +2720,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
     newsize = os.stat(TD+newname)[ST_SIZE]
     if VERBOSE > 1: print '  studying ' , name , ' of len %dkB' % (newsize/1024)
     #add 'ar' structure
-    s = newdeb_file.read(60)
-    if VERBOSE > 3: print '    ar line: ',repr(s)
-    assert( s[:len(name)] == name and s[-2] == '`' and s[-1] == '\n' )
-    append_NEW_file(s)
+    ar_line = newdeb_file.read(60)
+    if VERBOSE > 3: print '    ar line: ',repr(ar_line)
+    assert( ar_line[:len(name)] == name and ar_line[-2] == '`' and ar_line[-1] == '\n' )
     #sometimes there is an extra \n, depending if the previous was odd length
     newdeb_file.seek(newsize  ,1)
     if newsize & 1 :
@@ -2723,12 +2731,16 @@ def do_delta_(olddeb,newdeb,delta,TD):
       extrachar = ''
     #add file to delta
     if newsize < 128:      #file is too short to compute a delta,
+      append_NEW_file(ar_line)
       p=open(TD+newname)
       append_NEW_file( p.read(newsize))
       p.close()
       unlink(TD+newname)
+      #pad new deb
+      if extrachar :
+        append_NEW_file(extrachar)
     elif not NEEDSOLD and name[:11] == 'control.tar' :
-      script.start_member(newname)
+      script.start_member(ar_line, newname, extrachar)
       #(mm this is almost useless, just saves a few bytes)
       oldname = 'OLD/'+name
       system(('ar','x',TD+'OLD.file',name), TD+'OLD')
@@ -2741,7 +2753,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       delta_tar(oldname,newname,'CONTROL',skip)
       script.end_member()
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
-      script.start_member(newname)
+      script.start_member(ar_line, newname, extrachar)
       if 'data.tar.gz' in ar_list_old  :
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
@@ -2758,9 +2770,14 @@ def do_delta_(olddeb,newdeb,delta,TD):
       del x
       script.end_member()
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
+      append_NEW_file(ar_line)
       patchname=verbatim(newname)
       script.write('cat '+patchname+' >> NEW.file ; rm '+patchname+'\n')
+      #pad new deb
+      if extrachar :
+        append_NEW_file(extrachar)
     elif  NEEDSOLD :
+      append_NEW_file(ar_line)
       #file is long, and has old version ; lets compute a delta
       oldname = 'OLD/'+name
       system(('ar','x',TD+'OLD.file',name), TD+'OLD')
@@ -2771,12 +2788,12 @@ def do_delta_(olddeb,newdeb,delta,TD):
       script.zip(newname,cn)
       script.write('cat '+newname+cn+' >> NEW.file ;  rm '+newname+cn+'\n')
       unlink(TD+newname)
+      #pad new deb
+      if extrachar :
+        append_NEW_file(extrachar)
       del co,cn
     else:
       die('internal error j98')
-    #pad new deb
-    if extrachar :
-      append_NEW_file(extrachar)
   # put in script any leftover
   s = newdeb_file.read()
   if s:
