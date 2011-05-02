@@ -563,7 +563,7 @@ def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
   (temp_err_fd, temp_err_name) = tempfile.mkstemp(prefix="debdelta_err_system")
   if not '|' in a:
     if VERBOSE > 3 : print '   system(',a,')=',
-    pro = subprocess.Popen(args=a,stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
+    pro = subprocess.Popen(args=a,stdin=open(os.devnull),stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
     pro.wait()
     ret = pro.returncode
     del pro
@@ -571,7 +571,7 @@ def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
     #special code for pipes http://docs.python.org/library/subprocess.html#replacing-shell-pipeline
     l=a.index('|'); a1=a[:l]; a2=a[l+1:]
     if VERBOSE > 3 : print '    system(',a1,' piped in ',a2,')=',
-    pro1 = subprocess.Popen(args=a1,stdout=subprocess.PIPE,stderr=temp_err_fd,cwd=TD)
+    pro1 = subprocess.Popen(args=a1,stdin=open(os.devnull),stdout=subprocess.PIPE,stderr=temp_err_fd,cwd=TD)
     pro2 = subprocess.Popen(args=a2,stdin=pro1.stdout,stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
     pro1.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits.
     pro1.wait()
@@ -1545,6 +1545,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
   temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
   F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
+                     stdin=open(os.devnull),
                      stderr=subprocess.PIPE, stdout=temp_name_fd)
   progresschar=0.0
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
