@@ -43,6 +43,11 @@ in case that a delta fails.
 \fB\-k
 keep temporary files (use for debugging).
 .TP
+\fB\-\-format \fIFORMAT
+format of recreated debs. FORMAT=deb is the usual,
+FORMAT=unzipped means that the data.tar part is not compressed,
+(and this may save some time)
+.TP
 .B \-A \--accept-unsigned
 accept unsigned deltas.
 .TP

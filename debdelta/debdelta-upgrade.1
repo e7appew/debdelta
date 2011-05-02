@@ -27,6 +27,11 @@ directory where to save results.
 (default: /var/cache/apt/archives for root, 
 /tmp/archive for non-root users)
 .TP
+\fB\-\-format \fIFORMAT
+format of recreated debs. FORMAT=deb is the usual,
+FORMAT=unzipped means that the data.tar part is not compressed,
+(and this may save some time)
+.TP
 \fB\-\-deb\-policy \fIPOLICY
 policy to decide which debs to download,
 it is a comma separated list of (abbreviations of)
