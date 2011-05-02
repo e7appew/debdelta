@@ -79,6 +79,8 @@ Usage: debpatch --info delta
 Options:
 --no-md5   do not verify MD5 (if found in info in delta)
  -A        accept unsigned deltas
+--format FORMAT
+           format of created deb
 """)
 
 doc['delta-upgrade']=_("""\
@@ -91,6 +93,8 @@ Options:
 --deb-policy POLICY
             policy to decide which debs to download,
  -A         accept unsigned deltas
+--format FORMAT
+            format of created debs
 """)
 
 doc['patch-url']=_("""\
@@ -165,6 +169,9 @@ DO_MD5  = True
 DEB_POLICY = ['b','s','e']
 DO_PROGRESS = terminalcolumns != None
 
+DEB_FORMAT='deb'
+DEB_FORMAT_LIST=('deb','unzipped') #not yet implemented on patching side :  ('unpacked','piped')
+
 #for debdeltas: test patches internally
 DO_TEST = False
 
@@ -213,7 +220,7 @@ else:
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
                  ('help','info','needsold','dir=','no-act','alt=','old=','delta-algo=',
                     'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug',
-                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test") )
+                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test", "format=") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(3)
@@ -278,6 +285,11 @@ else:
       if not os.path.isdir(GPG_HOME):
         print _("Error: --gpg-home `%s' does not exist.") % GPG_HOME
         raise SystemExit(3)
+    elif o ==  '--format' :  # maybe, and action in ("delta-upgrade", "patch"):
+      if v not in DEB_FORMAT_LIST:
+        sys.stderr.write(_("Error: output format `%s' is unknown.") % v + '\n')
+        raise SystemExit(3)
+      DEB_FORMAT=v
     else:
       sys.stderr.write(_("Error: option `%s' is unknown, try --help") % o + '\n')
       raise SystemExit(3)
