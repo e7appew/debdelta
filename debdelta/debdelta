@@ -3299,7 +3299,7 @@ def do_deltas(debs):
         except DebDeltaError,s:
           if not VERBOSE : print _('Creating:'),delta
           print ' Creation of delta failed, reason: ',str(s)
-          if os.path.exists(deltatmp):
+          if os.path.exists(deltatmp) and DEBUG == 0:
             os.unlink(deltatmp)
           if not s.retriable :
             open(delta+'-fails','w').close()
@@ -3335,7 +3335,7 @@ def do_deltas(debs):
             pret=do_patch(deltatmp,old['File'],None , info=info_delta, do_gpg=None)
           except DebDeltaError,s:
             print ' '+_('Error: testing of delta failed:')+' '+str(s)
-            if os.path.exists(deltatmp):
+            if os.path.exists(deltatmp) and DEBUG==0:
               os.unlink(deltatmp)
             if not  s.retriable :
               open(delta+'-fails','w').close()
@@ -3346,7 +3346,7 @@ def do_deltas(debs):
           except Exception,s:
             exitstatus=max(exitstatus,4)
             puke(" *** Error while testing delta  "+delta,s)
-            if os.path.exists(deltatmp):
+            if os.path.exists(deltatmp) and DEBUG==0:
               os.unlink(deltatmp)
             open(delta+'-fails','w').close()
           if pret == None:
