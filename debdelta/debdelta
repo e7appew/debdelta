@@ -1804,7 +1804,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
       self.ar_line=ar_line
       self.extrachar=extrachar
       assert(self.current_chunk_name==None)
-      self.fd.write('{')
+      self.fd.write('{\n')
   
     def end_member(self):
       assert(self.member)
@@ -1819,11 +1819,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
       self.fd.write(')|') #pipe the delta/recompressing pipe
     
     def recompressing(self,new_filename,new_filename_ext,new_file_zip_head):
+      self.fd.write('(')
       append_NEW_file(self.ar_line)
       script.zip_piped(new_filename_ext,new_file_zip_head)
       self.fd.write(' >> NEW.file\n') #end delta tar
       if self.extrachar :
         append_NEW_file(self.extrachar)
+      self.fd.write(')\n')
 
     def start_chunk(self, current_chunk_name):
       "start the pipe to create the chunk. The chunk is always piped"
