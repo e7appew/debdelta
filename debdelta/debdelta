@@ -1974,6 +1974,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
   ############### some routines  to prepare delta of two files
 
   def patch_append(f):
+    #possibly GPG
+    if DO_GPG:
+      gpg_hashes[f] = _compute_hashes_(TD+'PATCH/'+f)
     if VERBOSE > 2 :
       a=os.stat(TD+'PATCH/'+f)[ST_SIZE]
       print '   appending ',f,' of size ', a,' to delta, %3.2f'  % ( a * 100. /  newdebsize ) , '% of new .deb'
@@ -2103,9 +2106,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
     if VERBOSE > 1 :
       print '  delta is %3.2f%% of %s, speed: %dkB /sec'  % \
           ( ( deltasize * 100. /  nsize ) , n, (nsize / 1024. / ( tim + 0.001 )))
-    #possibly GPG
-    if DO_GPG:
-      gpg_hashes[p[6:]] = _compute_hashes_(TD+p)
     #save it
     patch_append(p[6:])
     #clean up
@@ -2803,10 +2803,6 @@ def do_delta_(olddeb,newdeb,delta,TD):
   if VERBOSE > 1 : print '  '+patch_files[0][1]+' wins on patch.sh'
   if patch_files[0][1] == 'lzma':
     info_append('needs-lzma')
-  
-  if DO_GPG:
-    gpg_hashes[patch_files[0][2]] = _compute_hashes_(TD+"PATCH/"+patch_files[0][2])
-  
   patch_append(patch_files[0][2])
   del patch_files
   
