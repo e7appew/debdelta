@@ -1,3 +1,11 @@
+debdelta (0.42) UNRELEASED; urgency=low
+
+  * Implemented streaming capabilities in patches;
+    implemented new --format option for 'debdelta-upgrade', so that
+    '--format=unzipped' will create debs with data.tar uncompressed
+
+ --
+
 debdelta (0.41) unstable; urgency=low
 
   * Bump Standards-Version .
