@@ -2415,8 +2415,11 @@ def do_delta_(olddeb,newdeb,delta,TD):
     new_file_zip_head=f.read(20)
     f.close()
     (new_filename,new_filename_ext) = unzip(new_filename)
+    new_file_md5=compute_md5(TD+new_filename)
+    new_file_size=os.path.getsize(TD+new_filename)
+    info_append(new_filename+': '+new_file_md5+' '+str(new_file_size))
     ####  scan the new tarfile, compare to the old tar contents
-    assert(0 == (os.path.getsize(TD+new_filename)% 512))
+    assert(0 == (new_file_size % 512))
     newtar = tarfile.open(TD+new_filename, "r")
     newnames = []
     newtarinfos = {}
