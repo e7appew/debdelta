@@ -1554,9 +1554,17 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if DEBUG: a='-v'
   script_time = - time.time()
 
+  this_deb_format=DEB_FORMAT
+  if DEB_FORMAT != 'deb' and 'NEW/data.tar' not in params:
+    #this patch does not support streaming
+    this_deb_format='deb'
+  
   temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
   temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
-  F=subprocess.Popen([SHELL,'-v','-e','PATCH/patch.sh'], cwd=TD,
+  cmd=[SHELL,'-v','-e','PATCH/patch.sh']
+  if this_deb_format != 'deb':
+    cmd+=[this_deb_format]
+  F=subprocess.Popen(cmd, cwd=TD,
                      stdin=open(os.devnull),
                      stderr=subprocess.PIPE, stdout=temp_name_fd)
   progresschar=0.0
@@ -1624,20 +1632,34 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       raise DebDeltaError('error in patch.sh.')
 
   #then we check for the conformance
-  if  'NEW/Size' in params:
-    newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
-    if newdebsize != int(params['NEW/Size']):
-      fore()
-      raise DebDeltaError('new deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
-
-  if DO_MD5:
-    if 'NEW/MD5sum' in params:
-      if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
-      m= compute_md5(open(TD+'NEW.file'))
-      if params['NEW/MD5sum'] != m :
+  if this_deb_format == 'deb':
+    if  'NEW/Size' in params:
+      newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
+      if newdebsize != int(params['NEW/Size']):
         fore()
-        raise DebDeltaError(' MD5 mismatch, '+repr()+' != ' + repr(m) )
-    else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
+        raise DebDeltaError('new deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
+  
+    if DO_MD5:
+      if 'NEW/MD5sum' in params:
+        if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
+        m= compute_md5(open(TD+'NEW.file'))
+        if params['NEW/MD5sum'] != m :
+          fore()
+          raise DebDeltaError(' MD5 mismatch, '+repr()+' != ' + repr(m) )
+      else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
+  elif this_deb_format == 'unzipped' :
+    if DO_MD5:
+      m=compute_md5(subprocess.Popen('ar p "%s" control.tar.gz | zcat' % (TD+'NEW.file'),
+                                     stdout=subprocess.PIPE,shell=True).stdout)
+      if params['NEW/control.tar'][:32] != m:
+        fore()
+        raise DebDeltaError('MD5 mismatch for control.tar' )
+      m=compute_md5(subprocess.Popen('ar p "%s" data.tar' % (TD+'NEW.file'),
+                                     stdout=subprocess.PIPE,shell=True).stdout)
+      if params['NEW/data.tar'][:32] != m:
+        fore()
+        raise DebDeltaError('MD5 mismatch for data.tar' )
+  else: assert('unimplemented'=='')
 
   os.unlink(temp_name)
   os.unlink(temp_err_name)
@@ -1645,7 +1667,10 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   runtime['patchprogress']=99
 
   if newdeb:
-      shutil.move(TD+'NEW.file',newdeb)
+    shutil.move(TD+'NEW.file',newdeb)
+    if DEB_FORMAT != this_deb_format:
+      #this should not be localized
+      print 'Warning, created as standard deb: ',newdeb
 
   end_sec = time.time()
   elaps=(end_sec - start_sec)
