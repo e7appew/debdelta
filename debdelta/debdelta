@@ -1605,9 +1605,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   ##then , really execute the patch
 
   if ret:
-    if ret == 2:
-      raise KeyboardInterrupt
-    elif localepurged:
+    if localepurged:
       raise DebDeltaError('"debdelta" is incompatible with "localepurge".')
     else:
       fore()
