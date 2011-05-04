@@ -1,4 +1,4 @@
-debdelta (0.42) UNRELEASED; urgency=low
+debdelta (0.42exp) experimental; urgency=low
 
   * Implemented streaming capabilities in patches;
     implemented new --format option for 'debdelta-upgrade', so that
@@ -6,7 +6,7 @@ debdelta (0.42) UNRELEASED; urgency=low
   * debdelta-upgrade bails out on a delta if locale files are missing,
     even if 'localepurge' is not used (see bug 619086)
 
- --
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 04 May 2011 11:04:55 +0200
 
 debdelta (0.41) unstable; urgency=low
 
