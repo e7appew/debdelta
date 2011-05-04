@@ -1234,7 +1234,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     TD = TD + '/'
   
   HAVE_PRELINK=os.path.exists('/usr/sbin/prelink')
-  HAVE_LOCALEPURGE=os.path.exists('/etc/locale.nopurge') or os.path.exists('/usr/sbin/localepurge')
+  # some people purge locales w/o using 'localepurge' , see e.g. http://bugs.debian.org/619086
+  #HAVE_LOCALEPURGE=os.path.exists('/etc/locale.nopurge') or os.path.exists('/usr/sbin/localepurge')
   
   delta=abspath(delta)
   newdebshortname='-'
@@ -1544,9 +1545,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif params[a] == True:
         print  'WARNING patch says "'+a+'" and this is unsupported. Get a newer debdelta.'
 
-  if localepurged and HAVE_LOCALEPURGE and not DEBUG:
+  if localepurged and not DEBUG:
     #actually we cannot be 100% sure that the delta really needs those files, but it is quite plausible
-    raise DebDeltaError('localepurge removed '+str(len(localepurged))+' files.')
+    raise DebDeltaError('Error, '+str(len(localepurged))+' locale files are absent.')
 
   runtime['patchprogress']=12
 
