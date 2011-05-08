@@ -1,0 +1,656 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+"http://www.docbook.org/xml/4.2/docbookx.dtd">
+<article>
+  <title>The debdelta suite</title>
+  <articleinfo>
+    <author><firstname>Andrea C. G.</firstname>
+    <surname>Mennucci</surname></author>
+    <date>April 5, 2005</date>
+    <abstract><para>debdelta is an application suite designed to compute
+    changes between Debian packages. These changes (that we will call
+    'deltas') are similar to the output of the "diff" program in that
+    they may be used to store and transmit only the changes between
+    Debian packages.  This suite contains 'debdelta-upgrade', that
+    downloads deltas and use them to create all Debian packages needed
+    for an 'apt-get upgrade'.  </para></abstract>
+    <copyright><year>2006-2011</year>
+    <holder></holder></copyright>
+  </articleinfo>
+
+  <section>
+    <title>Overview</title>
+    <para>
+      The debdelta application suite is really composed of different
+    applications.</para>
+    <section><title>debdelta</title>
+    <para>
+      <command>debdelta</command> computes the delta, that is, a file
+      that encodes the difference between two Debian packages.
+      
+      Example:
+      <programlisting>
+	$ a=/var/cache/apt/archives 
+	$ debdelta -v $a/emacs-snapshot-common_1%3a20060512-1_all.deb \
+	$a/emacs-snapshot-common_1%3a20060518-1_all.deb /tmp/emacs.debdelta
+      </programlisting>
+      the result is:
+      deb delta is  12.5% of deb ; that is, 15452kB would be saved
+    </para>
+    </section>
+    <section><title>debpatch</title>
+    <para>
+      <command>debpatch</command> 
+      can use the delta file and a copy of the old Debian package
+      to recreate the new Debian package.  (This process is called "applying
+      the delta file"). If the old Debian package is not available, but is
+      installed in the host, it can use the installed data; in this case,
+      '/' is used in lieu of the old .deb.
+    </para>
+    <para>
+      Example:
+      <programlisting>
+	$ debpatch -A  /tmp/emacs.debdelta / /tmp/emacs.deb
+      </programlisting>
+    </para>
+    </section>
+    <section><title>debdeltas</title>
+    <para>
+      <command>debdeltas</command>
+      can be used to generate deltas for many debs at once.
+      It will generate delta files with names such as
+      <filename>package_old-version_new-version_architecture.debdelta</filename>.
+      
+      If the delta exceeds ~70% of the deb, 'debdeltas' will delete it
+      and leave a stamp of the form
+      <filename>package_old-version_new-version_architecture.debdelta-too-big</filename>.
+
+      Example usages are in the man page; see also
+      the scripts <filename>/usr/share/debdelta/debmirror-delta-security</filename>
+      and  <filename>/usr/share/debdelta/debmirror-marshal-deltas</filename>
+    </para>
+    </section>
+    <section><title>debdelta-upgrade</title>
+    <para>
+      <command>debdelta-upgrade</command>
+      will download necessary deltas
+      and apply them to create debs for a
+      successive  <command>apt-get upgrade</command>.
+
+      The deltas are available for upgrades in
+      'stable' , 'stable-security' , 'testing', 'unstable' and 'experimental',
+      for i386 and amd64.
+
+      Example usage:
+      <programlisting>
+	# apt-get update && debdelta-upgrade && apt-get upgrade
+      </programlisting>
+      If run by a non-root user, debs are saved in /tmp/archives : do not
+      forget to move them in <filename>/var/cache/apt/archives</filename>
+    </para> 
+    <para>
+      debdelta-upgrade will also download .debs for which no delta is
+      available (this is done in parallel to patching, to maximize
+      speed). See the explanation of "debdelta-upgrade --deb-policy" in the
+      man page for more informations and customization on which debs get downloaded.
+    </para> 
+    <para>
+      More informations are in next sections.
+    </para>
+    </section>
+    <section><title>debforensic</title>
+    <para>
+      There is also another bunch of code that though was never distributed....
+    </para></section>
+  </section>
+
+  <section><title>a delta</title>
+    <para> The delta is 'ar' archive (see 'man ar').
+    The delta contains 'info', some data members (named by numbers), a script named 'patch.sh.xxx',
+    and optional gpg signatures.
+    The script recreates the new deb. See <function>do_delta_()</function> in the python code for more details.
+    </para>
+   <section><title>the info in a delta</title>
+   <para>a delta first 'ar' member is always named 'info', and is a text file containing some keywords and informations
+    regarding the delta itself. [TODO add details]</para>
+   </section>
+   <section><title>how to apply a delta</title>
+   <para> TODO WRITEME. You may look into <filename>/usr/share/debdelta/debpatch.sh</filename> to understand the basics.</para>
+   </section>
+  </section>
+
+
+  <section>
+    <title>debdelta-upgrade service</title>
+    <para>In June 2006  I set up a delta-upgrading framework, so that people
+    may upgrade their Debian box using <command>debdelta-upgrade</command> (that downloads
+    package 'deltas').
+
+    This section is an introduction to the framework that is behind
+    'debdelta-upgrade', and is also used by 'cupt'.
+
+    In the following, I will simplify (in places, quite a lot).
+    </para>
+    <section><title>The framework</title>
+    <para>
+      The framework is so organized: I keep up some servers where I use the
+      program 'debdeltas' to create all the deltas; whereas endusers use the
+      client 'debdelta-upgrade' to download the deltas and apply them to
+      produce the debs needed to upgrade their boxes.
+
+      In my server, I mirror some repositories, and then I invoke
+      'debdeltas' to make the deltas between them. I use the
+      scripts <filename>/usr/share/debdelta/debmirror-delta-security</filename>
+      and  <filename>/usr/share/debdelta/debmirror-marshal-deltas</filename> for this.
+      This generates any delta that may be needed for upgrades
+      in squeeze,squeeze-security,wheezy,sid,experimental,
+      for architectures i386 and amd64 (as of Mar 2011); the generated repository of deltas is
+      more or less 10GB.
+    </para></section>
+    <section><title>The goals</title>
+    <para>There are two ultimate goals in designing this framework:
+    <orderedlist>
+      <listitem><para>
+	SMALL) reduce the size of downloads
+	(fit for people that pay-by-megabyte);
+      </para></listitem>
+      <listitem><para>
+	FAST) speed up the upgrade.
+    </para></listitem></orderedlist>
+
+    The two goals are unfortunately only marginally compatible. An
+    example: bsdiff can produce very small deltas, but is quite slow (in
+    particular with very large files); so currently (2009 on) I use 'xdelta3'
+    as the backend diffing tool for 'debdeltas' in my server.
+
+    Another example is in debs that contain archives ( .gz, , tar.gz
+     etc etc): I have methods and code to peek inside them, so
+    the delta become smaller, but the applying gets slower.
+    </para></section>
+    <section><title>The repository</title>
+    <para>
+    The repository of deltas is just a HTTP archive; it is  similar to the pool of packages; that is, if 
+	  <filename>foobar_1_all.deb</filename>  is stored in
+	  <filename>pool/main/f/foobar/</filename> in the repository of debs, then the 
+    delta to upgrade it will be stored in    <filename>pool/main/f/foobar/foobar_1_2_all.debdelta</filename>
+    in the repository of deltas. Contrary to the repository of debs, a repository of deltas
+    has no indexes, see <xref linkend="no_indexes"/>. The delta repository is in 
+	  <filename>http://debdeltas.debian.net/debian-deltas</filename>.
+    </para></section>
+    <section id="delta_creation"><title>The repository creation</title>
+	<para>
+	  Suppose that the unstable archive, on 1st Mar, contains
+	  <filename>foobar_1_all.deb</filename> (and it is in
+	  <filename>pool/main/f/foobar/</filename> ) ; then on 2nd Mar,
+	  <filename>foobar_2_all.deb</filename> is uploaded; but this
+	  has a flaw (e.g. FTBFS) and so on 3rd Mar
+	  <filename>foobar_3_all.deb</filename> is uploaded.
+
+	  On 2nd Mar, the delta server generates
+	  <filename>pool/main/f/foobar/foobar_1_2_all.debdelta</filename>
+	  On 3rd Mar, the server generates both
+	  <filename>pool/main/f/foobar/foobar_1_3_all.debdelta</filename>
+	  <filename>pool/main/f/foobar/foobar_2_3_all.debdelta</filename>.
+
+	  So, if the end-user Ann upgrades the system on both 2nd and 3rd Mar,
+	  then she uses both foobar_1_2_all.debdelta (on 2nd) and
+	  <filename>foobar_2_3_all.debdelta</filename> (on 3rd Mar). If the end-user Boe has not
+	  upgraded the system on 2nd Mar, , and he upgrades on 3rd Mar, then on
+	  3rd Mar he uses <filename>foobar_1_3_all.debdelta</filename>.
+	</para>
+    </section>
+
+    <section><title>size limit</title>
+	<para>
+	  Note that currently the server rejects deltas that exceed 70% of the deb
+	  size: indeed the size gain would be too small, and the time would be
+	  wasted, if you sum the time to download the delta and the time to apply
+	  it (OK, these are run as much as possible in parallel, yet ....).
+	</para>
+	<para>
+	  Also, the server does not generate delta for packages that are smaller than 10KB.
+	</para>
+    </section>
+
+    <section><title>/etc/debdelta/sources.conf</title>
+    <para>
+      Consider a package that is currently installed. It is characterized by
+      <emphasis> name installed_version architecture</emphasis>
+      (unfortunately there is no way to tell from which archive it came
+      from, but this does not seem to be a problem currently)
+
+      Suppose now that a newer version is available somewhere in an archive,
+      and that the user wishes to upgrade to that version.
+
+      The archive Release file contain these info:
+      <quote>Origin , Label , Site, Archive</quote>. 
+      (Note that Archive is called Suite in the Release file).
+      Example for the security archive:
+      <programlisting>
+	Origin=Debian
+	Label=Debian-Security
+	Archive=stable
+	Site=security.debian.org
+      </programlisting>
+      The file <filename>/etc/debdelta/sources.conf</filename>
+      , given the above info, determines
+      the host that should contain the delta for upgrading the package. This
+      information is called "delta_uri" in that file.
+
+      The complete URL for the delta is built adding to the delta_uri a
+      directory path that mimicks the "pool" structure used in Debian
+      archives, and appending to it a filename of the form
+      <filename>name_oldversion_newversion_architecture.debdelta</filename>.
+
+      All this is implemented in the example script contrib/findurl.py .
+
+      If the delta is not available at that URL, and
+    <filename>name_oldversion_newversion_architecture.debdelta-too-big</filename>
+      is available, then the delta is too big to be useful.
+
+      If neither is present, then, either the delta has not yet been
+      generated, or it will never be generated... but this is difficult to
+      know.
+    </para></section>
+    <section>
+      <title>indexes</title>
+      <section>
+	<title>indexes of debs in APT</title>
+	<para>
+	  Let's start examining the situation for debs and APT.
+	  Using indexes for debs is a no-brainer decision: indeed, the client
+	  (i.e. the end user) does not know the list of available debs in the
+	  server, and, even knowing the current list, cannot foresee the future
+	  changes.
+	  So indexes provide needed informations: the packages' descriptions,
+	  versions, dependencies, etc etc; these info are used by apt and the
+	  other frontends.
+	</para>
+      </section>
+      <section id="no_indexes">
+	<title>no indexes of deltas in debdelta</title>
+	<para>
+	    If you then think of deltas, you realize that all requirements above
+	    fall. Firstly there is no description and no dependencies for deltas.
+	    <footnote><para>deltas have a "info" section, but that is, as to say, standalone</para></footnote>
+
+	    Of course 'debdelta-upgrade' needs some information to determine if a delta
+	    exists, and to download it; but these information are already	    available:
+	    <programlisting>
+	      the name of the package P
+	      the old version  O
+	      the new version  N
+	      the architecture A
+	    </programlisting>
+	    Once these are known, the URL of the file F can be algorithmically
+	    determined as
+	    <filename>URI/POOL/P_O_N_A.debdelta</filename>
+	    where URI is determined from
+	    <filename>/etc/debdelta/sources.conf</filename>
+	    and POOL is the directory in the pool of the package P .
+	    This algorithm is also implemented (quite verbosely) in
+	    contrib/findurl.py  in the sources of debdelta.
+
+	    This is the reason why currently there is no "index of deltas", and
+	    nonetheless 'debdelta-upgrade' works fine (and "cupt" as well).
+	    
+	    Adding an index of file would only increase downloads (time and size)
+	    and increase disk usage; with negligeable benefit, if any.
+	  </para>
+	</section>
+      </section>
+      <section id="no_incremental">
+	<title>no incremental deltas</title>
+	<para>
+	  Let me add another point that may be unclear. There are no incremental
+	  deltas (and IMHO never will be).
+	</para>
+	<section><title>What "incremental" would be, and why it is not</title>
+	<para>
+          Please recall <xref linkend="delta_creation"/>.
+
+	  What <emphasis>does not happen</emphasis> currently is what follows:
+	  on 3rd Mar , Boe decides to upgrade, and invokes 'debdelta-upgrade';
+	  then  'debdelta-upgrade' finds <filename>foobar_1_2_all.debdelta</filename> and
+	  <filename>foobar_2_3_all.debdelta</filename> , it uses the foremost to generate
+	  <filename>foobar_2_all.deb</filename>, and in turn it uses this and the second delta to
+	  <filename>generate foobar_3_all.deb</filename> .
+
+	  This is not implemented, and it will not, for the following reasons.
+	  <itemizedlist>
+	  <listitem><para> The delta size is, on average, 40% of the size of the deb (and this
+	  is getting worse, for different reasons, see <xref linkend="getting_worse"/>); so two deltas are 80% of the
+	  target deb, and this too much.
+	  </para></listitem>
+	  <listitem><para> It takes time to apply a delta; applying two deltas to produce one
+	  deb takes too much time.</para></listitem>
+	  <listitem><para> The server does generate the direct delta 
+	  <filename>foobar_1_3_all.debdelta</filename>
+	  :-) so why making things complex when they are easy?  :-)</para></listitem>
+	  <listitem><para> Note also that incremental deltas would
+	  need some index system to be implemented... indeed, Boe
+	  would have no way to know on 3rd Mar that the intermediate
+	  version of foobar between "1" and "3" is "2"; but since
+	  incremental deltas do not exist, then there is no need to
+	  have indexes).  </para></listitem>
+	  </itemizedlist>
+	</para>
+	</section>
+      </section>
+  </section>
+
+
+  <section>
+    <title>Goals, tricks, ideas and issues</title>
+    <section><title>exact patching</title>
+    <para>
+      When <command>debpatch</command>  or <command>debdelta-upgrade</command>
+      recreates a .deb, it will be identical to the desired
+      one (so it may be possible to check it using the 
+      <ulink url="http://wiki.debian.org/SecureApt">
+       security features in APT</ulink>
+      <footnote><para>note though that <command>debdelta-upgrade</command> saves the
+       recontructed debs in <filename>/var/cache/apt/archives</filename>, and APT does not check
+       them there, AFAICT</para></footnote>). See though <xref linkend="long_time"/>.
+    </para>
+    </section>
+    <section><title>exact recompression</title>
+    <para>
+      Suppose a .deb has inside a huge file
+      /usr/share/doc/foobar/document.info.gz
+      and this starts with a RCS tag ... then each time it
+      is released, the file will be different even though
+      just few bytes were changed. Another examples are manpages that start with the header
+      containing the version of the command.
+      So , to get good compression of the difference, I had
+      to be able to gunzip those files, diff them,
+      and gzip back them <emphasis>exactly identical</emphasis> (but possibly for headers
+      <footnote><para>the re-gzipped files are identical but for headers,
+       (indeed gzip headers contain sometimes a timestamp ); but this is not a problem
+       since the reconstructed gzipeed file is then piped again into 'xdelta3' or 'bsdiff' to rebuild the 'data.tar',
+       so the header is fixed at that stage
+      </para></footnote>)
+      For this reason, I studied gzip formats, and I wrote in debdelta
+      some python code that does the trick (90% of the times...).
+      <footnote><para>This is implemented in the python routine <function>delta_gzipped_files</function>.
+      </para></footnote>
+    </para>
+    </section>
+    <section><title>speed</title>
+      <section><title>some (old) numbers</title>
+      <para>
+      Warning: this section is referred to experiments done in 2006, and the backend for
+      delta encoding was 'xdelta'.
+
+      On a desktop with CPU  Athlon64 3000 and a average hard disk,
+      <programlisting>
+	$ debdelta mozilla-browser_1.7.8-1sarge3_i386.deb \
+	mozilla-browser_1.7.8-1sarge6_i386.deb /tmp/m-b.debdelta
+      </programlisting>
+      processes the 10Mb of mozilla-browser in ~11sec, 
+      that is a speed of ~900kB per second.
+
+      Then  debpatch applies the above delta in  16sec,
+      at a speed of  ~600kB per second.
+
+      Numbers drop in a old PC, or in a notebook (like mine, that has a
+      Athlon 1600MHz and slow disks), where data are chewed at ~200kB per
+      second. Still, since I have a ADSL line that downloads at
+      max 80kB per second, I have a benefit downloading deltas.
+
+      In a theoretical example, indeed, to download a 80MB package, it would
+      take 1000seconds; whereas to download a delta that is 20% of 80MB it
+      takes 200seconds, and then 80MB / (200kB/sec) = 400seconds to apply
+      it, for a total of 600seconds. So I may get a "virtual speed" of 80MB /
+      600sec = 130kB/sec .
+
+      Note that delta downloading and delta patching is done in parallel:
+      if 4 packages as above have to be downloaded, then the total
+      time for downloading of full debs would be 4000seconds, while the time
+      for  parallel-download-patch-apply-patch may be as low as 1400seconds.
+      </para> <para>
+      This is a real example of running 'debdelta-upgrade' :
+      <programlisting>
+	Looking for a delta for libc6 from 2.3.6-9 to 2.3.6-11
+	Looking for a delta for udev from 0.092-2 to 0.093-1
+	Patching done, time: 22sec, speed: 204kB/sec, result: libc6_2.3.6-11_i386.deb
+	Patching done, time: 4sec, speed: 57kB/sec, result: udev_0.093-1_i386.deb
+	Delta-upgrade download time 28sec speed 21.6k/sec
+	total time: 53sec; virtual speed: 93.9k/sec.
+      </programlisting>
+      (Note that the "virtual speed" of 93.9k/sec , while less than the 
+      130kB/sec of the theoretical example above, is still more than the
+      80kB that my ADSL line would allow).
+
+      Of course the above is even better for people with fast disks and/or
+      slow modems.
+
+      Actually, an apt delta method may do a smart decision of how many
+      deltas to download, and in which order, to optimize the result, (given
+      the deltas size, the packages size, the downloading speed and the
+      patching speed).
+      </para>
+      </section>
+      <section><title>speeding up</title>
+      <para>
+      The problem is that the process of applying a delta to create a new
+      deb is currently slow, even on very fast machines.
+
+      One way to overcome is to "parallelize as much as possible".
+
+      The best strategy that I can imagine is to keep both the CPU,
+      the hard disk, and the Internet connection, always maxed up.
+
+      This is why 'debdelta-upgrade' has two threads, the "downloading
+      thread" and the "patching thread". The downloading thread downloads
+      deltas (ordered by increasing size), and as soon as they are
+      downloaded, it queues them to be applied in the "patching thread";
+      whereas as soon as all available deltas are downloaded it starts
+      downloading some debs, and goes on for as long as the deltas are being
+      applied in the "patching thread".
+
+      Summarizing, the downloading thread keeps Internet busy while the
+      patching thread keeps the CPU and HDD busy.
+      </para>
+      <para>
+      Another speedup strategy is embedded inside the deltas
+      themselves: since bsdiff is a memory hog, when the backend is
+      bsdiff, I have to divide the data in chunks; this may lower the
+      compression ratio, but the good point is that the HDD accesses
+      and the calls to bsdiff can run "in parallel".  With newer
+      xdelta3, xdelta3 can read the original data from a pipe, so the
+      data are not divided in chunks, but rather continously piped
+      into xdelta3; so xdelta3 runs at the same time as when the data
+      are read from HDD.
+      </para>
+    </section>
+      <section><title>the 10kb trick</title>
+      <para>currently, roughly half of the generated deltas<footnote><para>that is, discarding those that 
+          are more than 70% of the corresponding deb</para></footnote>  are less than 10KB. 
+	  <command>debdelta-upgrade</command> downloads deltas in two passes,
+          <orderedlist><listitem><para>in the first pass it tries to download the first 10KB of a delta;
+             if it gets a complete delta, it immediatly pipes it in the "patching thread queue", otherwise if it gets
+             only a partial download,              it adds it to the download queue; if it gets HTTP404, it 
+              possibly checks for the "toobig" timestamp, and it possibly warns the user.
+	    </para></listitem>
+          <listitem><para>in the second pass, it downloads the rest of the deltas, and queues them for patching</para>
+	  </listitem></orderedlist>
+	  Why this complex method? because the first 10KBs of a delta contain the info, and those may be used
+          to actually decide not to download the rest of the delta (if a TODO predictor 
+	  decides that it is not worthwhile...<xref linkend="predictor"/>).
+      </para>
+      </section>
+     <section id="predictor"><title>the choice, the predictor</title>
+     <para>
+      Which deltas should be downloaded, VS which debs?
+
+      Currently there is a rule-of-thumb: the server immediately deletes any
+      delta that exceeds 70% of the original deb , and it replaces it with
+      an empty file ending in ".debdelta-too-big". In such cases,
+      "debdelta-upgrade" will download the deb instead.
+
+      See the explanation of "debdelta-upgrade --deb-policy" in the man page
+      for more info and customization on which debs get downloaded.
+    </para><para>
+      Some time ago I tried to do devise a better way to understand when to
+      download a delta w.r.t. a deb. The code is in the "Predictor" class
+      .... but I could not reliably predict the final speed of patching, so
+      currently it is not used.
+    </para></section>
+    <section><title>State of the art</title>
+    <para>
+      All in all, I still cannot obtain high speeds: so people that have a fast
+      ADSL Internet connection usually are better
+      downloading all the debs, and ignoring "debdelta-upgrade" alltogether.
+      Anyway, the best way to know is to try "debdelta-upgrade -v" and 
+      read the final statistics. See <xref linkend="format_unzipped"/> for recent developments.
+    </para></section>
+      <section id="format_unzipped"><title>--format=unzipped</title>
+      <para>The recently introduced
+       new <varname>--format=unzipped</varname>
+       may change all this. If you call
+       'debdelta-upgrade' with the option '--format=unzipped' , then in the
+       recreated deb the data.tar part will not be compressed. 
+       This may speedup the 'debdelta-upgrade' + 'apt-get upgrade' process. Indeed, writing
+       to hard disk is fast (let's say 5MB/sec, but usually much more); whereas
+       compressing random data with 'bzip2 -9' or 'lzma -9' is much slower
+       (let's say 2.0MB/sec and 1.5 MB/sec) ; and moreover the compressed data
+       is then decompressed by dpkg when installing; so avoiding the
+       compress/decompress should be a win/win (unless you run out of disk
+       space...).  Indeed I see that the creation of deltas is much faster; 
+        but I still do not have enough data collected....
+     </para></section>
+    </section>
+
+
+    <section id="the_enemy_within"><title>better deb compression is a worse delta</title>
+    <para>
+      'xdelta3' can reconstruct data at high speed: on nowadays processors, it can process up to 2MB per second;
+      but, when applying a delta, 'xdelta3' works on <emphasis>uncompressed data</emphasis>.
+      So if the data is then compressed at a ratio 1/3, then the resulting speed on <emphasis>compressed data</emphasis>
+      is 700KB/sec. Moreover, time is needed to actually compress the data.
+    </para><para>
+      In recent years, 'dpkg' has transitioned from 'data.tar.gz' to    'data.tar.bz2' to   'data.tar.lzma';
+      each method is better at compressing, but is also slower than the previous one; since it is better at
+      compressing, it also defeats the ability of 'debdelta' to produce small deltas (wrt the original deb, of course),
+      and indeed statistics show that deltas are getting larger; since it is slower, it slows down the applying of
+      deltas as well.</para>
+   </section>
+
+    <section id="long_time"><title>long time recovery</title>
+    <para>As aforementioned, deltas can rebuild the deb identically to the byte. But the patch.sh script
+       calls the standard tools 'tail','head','zgip','bzip2','lzma', etc etc to rebuild a delta; so 
+       if the argument calling or output of any of those tools changes, than a delta may become unusable.
+       As long as deltas are used for the debdelta-upgrade service, this is no big deal: if such a tool changes,
+       then we can adjust the deltas to it, and there is just some days disruption of the service 
+       <footnote><para>this actually already happened some years ago, with libzip</para></footnote>
+       (and people will download debs instead of deltas .... as we used to).</para>
+       <para>If anybody wants instead to use debdelta to archive debs for long time, (as the archive.debian.org service
+         was doing), then we should make sure that , at any moment in future, deltas can be applied. 
+         A possible solution would be that deltas should contain, in the info files, the versions of all tools that
+         are needed for applying. A second solution is that debdelta should keep a standard set of those tools inside the package.
+    </para></section>
+     <section><title>streaming</title>
+    <para>
+      Let me summarize. When 'debdelta-upgrade' (or 'debpatch') recreates a
+      deb, one step is reassembling the data.tar part inside it; this part
+      moreover is compressed (gzip, bzip2 or lately lzma). This
+      'reassembling and compressing' takes time (both for CPU and for HD),
+      and is moreover quite useless, since, in short time, 'apt' will call
+      'dpkg -i' that  decompresses and reopens the data.tar in the deb.
+      </para><para>
+      It is then reasonable to collapse this two parts, and this would
+      possibly speed up the upgrade a bit. A first step has been <emphasis>'--format=unzipped'</emphasis>,
+      </para><para>
+      Here is another idea. When  'debdelta-upgrade' is called in upgrading a
+      package 'foobar' it currently creates 'foobar_2.deb'. By an
+      appropriate cmdline switch <emphasis>'--format=preunpacked'</emphasis>,
+      instead of creating a 'foobar_2.deb' , it
+      would directly save all of its file to the filesystem, and it would
+      add an extension to all the file names, making sure that no file name
+      would conflict (=overwrite) with a preexisting file on the filesystem
+      ; then it would create a file 'foobar_2.deb_preunpacked' , that would be
+      a deb package were 'data.tar.lzma' is replaced with 
+      'data_list', just a text file specifying the list of files and  where they were unpacked.
+      </para><para>
+      I could change debdelta to accomplish that, it would not be a huge change. I already implemented it
+      in the deltas (when I implemented '--format=...') the capability of piping the uncompressed data somewhere.
+      </para><para>
+      Someone should help instead in changing 'dpkg' so that it would be
+      able to install starting from 'foobar_2.deb_preunpacked'. And change APT
+      so that it would interact with 'debdelta' to create the
+      'foobar_2.deb_unpacked' files, and pass them to dpkg .
+      </para><para>
+      Note that the above idea overlaps a lot with 
+      <ulink url="http://wiki.debian.org/SummerOfCode2010/StreamingPackageInstall">
+           the SummerOfCode2010 StreamingPackageInstall</ulink>
+    </para>
+    </section>
+
+    <section><title></title>
+    <para>
+    </para></section>
+      </section>
+
+
+
+    <section><title>Todo</title>
+    <section><title>todo list</title>
+    <orderedlist>
+      <listitem><para>
+	Prepare an APT method so that 
+	'apt-get upgrade' would actually use deltas.
+	Some code is already written. See also 2011 Google Summer of Code.
+      </para></listitem>
+      <listitem><para>
+	As in <xref linkend="predictor"/>. It would be nice if debdelta-upgrade would actually choose if
+	<itemizedlist><listitem><para>
+	  download a delta and use it to create the .deb
+	</para></listitem>
+	<listitem><para>
+	  download the deb
+	</para></listitem>
+	</itemizedlist>
+	depending on which one would be faster.
+	Unfortunately, this decision must depend on a good model
+	to predict the speed of patching... and this I still cannot
+	achieve.
+      </para></listitem>
+      <listitem><para>
+	in debdelta-upgrade, have as many  "patching thread" as there are cores
+      </para></listitem>
+      <listitem><para>
+        upgrade debdelta-upgrade to newer libapt
+      </para></listitem>
+      <listitem><para>
+         support multiarch
+       </para></listitem>
+      <listitem><para>
+	support long time exact recovery <xref linkend="long_time"/>: embed a copy of gzip, libzip, bzip2 and lzma in debdelta??
+      </para></listitem>
+    </orderedlist>
+    </section>
+    <section id="getting_worse"><title>things are getting worse</title>
+    <para>
+    W.r.t. to when I started deploying debdelta, things got worse, for two reasons,
+   <orderedlist>
+     <listitem><para> one problem is <xref linkend="the_enemy_within"/>     </para></listitem>
+     <listitem id="gcc_transition"><para> delta backends are bad at compressing a binary that 
+       was compiled from the same source but with twi different compilers; see in particular 
+       <ulink url="http://dev.chromium.org/developers/design-documents/software-updates-courgette">
+	 the Google Courgette project</ulink>, and compare it with 
+	<ulink url="http://debdelta.debian.net/run/tests/debs-newer-gcc/bibledit/">
+	the problems I encountered lately when Debian switched from GCC 4.4 to 4.5,</ulink>
+	when it happened that the binaries were so different that 
+	  the compression of the new binary with LZMA would be smaller than the BSDIFF of
+         the old and the new binary (!!).
+	 Unfortunately it seems that Google Courgette was hit with 
+	 <ulink url="http://www.h-online.com/open/news/item/Patent-action-over-Google-s-Courgette-845028.html">
+	 a patent infringment</ulink>
+   </para></listitem></orderedlist>
+    so we should study how to reduce the size of deltas, and/or making them faster (possibly implementing lzma in xdelta3;
+    or automatically choosing 'bsdiff' vs 'xdelta3' depending on the situation).
+    </para></section>
+
+    </section>
+</article>
