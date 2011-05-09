@@ -170,7 +170,7 @@ DEB_POLICY = ['b','s','e']
 DO_PROGRESS = terminalcolumns != None
 
 DEB_FORMAT='deb'
-DEB_FORMAT_LIST=('deb','unzipped') #not yet implemented on patching side :  ('unpacked','piped')
+DEB_FORMAT_LIST=('deb','unzipped','preunpacked') #not yet implemented on patching side :  (,'piped')
 
 #for debdeltas: test patches internally
 DO_TEST = False
@@ -1225,6 +1225,9 @@ def do_patch(delta,olddeb,newdeb, info=None, diversions=None, do_gpg=DO_GPG):
 
 def do_patch_(delta, olddeb, newdeb, TD, runtime,
               info=None, diversions=None, do_gpg=DO_GPG, do_progress=DO_PROGRESS):
+  
+  import thread, threading
+  
   if TD[-1] != '/':
     TD = TD + '/'
   
@@ -1555,31 +1558,139 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     #this patch does not support streaming
     this_deb_format='deb'
   
+  if this_deb_format == 'preunpacked' : #need a fifo
+    os.mkfifo(TD+'data.pipe')
+  
   temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
   temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
   cmd=[SHELL,'-v','-e','PATCH/patch.sh']
-  if this_deb_format != 'deb':
-    cmd+=[this_deb_format]
+  if this_deb_format == 'unzipped':
+    cmd+=['unzipped']
+  elif this_deb_format == 'preunpacked':
+    cmd+=['piped']
+
   F=subprocess.Popen(cmd, cwd=TD,
                      stdin=open(os.devnull),
                      stderr=subprocess.PIPE, stdout=temp_name_fd)
   progresschar=0.0
   progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
-  for j in F.stderr:
-    os.write(temp_err_name_fd, j)
-    progresschar+=len(j)
-    progress=(int(12.0 + 84.0 * progresschar / progresslen))
-    runtime['patchprogress']=progress
-    if do_progress:
-      sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
-  F.wait()
+  
+  ### data used by the preunpacked method
+  data_md5=None # md5 of uncompressed data.tar
+  tar_status=[] # should be [True] if 'preunpacked' went fine
+  md5_status=[] # idem
+  #this list contains tuples of (unpacked_temporary_filename, real_filename, owner, group, tartype, mode, mtime, linkname)
+  preunpacked_filelist=[]
+  def do_cleanup():
+    for a in preunpacked_filelist:
+      pass
+    ##CHEAT we are not (yet) writing anything to disk 
+    #if a[0]: os.unlink(a[0])
+
+  if this_deb_format == 'preunpacked' : #do progress reporting and unpacking in filesystem
+    def do_extension():
+      return '_'+str(random.randint(1,9999)).rjust(4,'0')+'_debdelta_preunpacked'
+
+    def do_pipe_md5(i,o,rm,ms,ts):
+      try:
+        a=i.read(1024)
+        while a and (ts == [] or ts == [True]) :
+          rm.update(a)
+          o.write(a)
+          a=i.read(1024)
+          #TODO implement progress reporting here as well
+        o.close()
+        ms.append(True)
+      except:
+        import sys
+        ms.append(sys.exc_info())
+        if DEBUG: print '  do_pipe_md5 crashed:'+repr(ms)
+    
+    def do_tar(i,fl,s):
+      try:
+        dt=tarfile.open(mode='r|',fileobj=i)
+        for tarmember in dt:
+          if tarmember.isreg():
+            n='/'+tarmember.name+do_extension()
+            while os.path.exists(n) : #wont overwrite existing stuff, never ever
+              n='/'+tarmember.name+do_extension()
+          else:
+            n=''
+          a=(n, tarmember.name, tarmember.uname, tarmember.gname,\
+             tarmember.type, tarmember.mode, tarmember.mtime, tarmember.linkname)
+          fl.append(a)
+          if n:
+            pass
+            ##CHEAT we are not writing anything today!
+            #datatar.extract(tarmember,path=n)
+        #successfully untarred!
+        s.append(True)
+      except:#catch problems such as "out of disk space" or corrupted data
+        import sys
+        s.append(sys.exc_info())
+        if DEBUG: print '  do_tar crashed:'+repr(s)
+        #flush input  (note that do_pipe_md5 will soon stop writing) no it seems useless #i.read()
+        
+    try:
+      datapipe=open(TD+'data.pipe')
+      rolling_md5=hashlib.md5()
+      (piper,pipew)=os.pipe()
+      md5_thread=threading.Thread(target=do_pipe_md5,
+                                  args=(open(TD+'data.pipe'),os.fdopen(pipew,'w'),rolling_md5,\
+                                        md5_status,tar_status))
+      tar_thread=threading.Thread(target=do_tar,
+                                  args=(os.fdopen(piper),preunpacked_filelist,tar_status))
+      #yeah maybe using two threads is more complex than strictly needed
+      md5_thread.daemon=True
+      md5_thread.start()
+      tar_thread.daemon=True
+      tar_thread.start()
+      #join back the md5
+      md5_thread.join()
+      data_md5=rolling_md5.hexdigest()
+      if md5_status == [True] and params['NEW/data.tar'][:32] == data_md5:
+        tar_thread.join()
+        if tar_status == [True]:
+          F.wait()
+          #write data_list
+          a=open(TD+'data_list','w')
+          a.write('Files:\n')
+          for (unpacked_temporary_filename, real_filename, owner,\
+               group, tartype, mode, mtime, linkname) in preunpacked_filelist:
+            ## to convert 'tar' type into 'ls' type
+            if tartype >= '0' and tartype <= '6' :
+              tartype="-hlcbdp"[ord(tartype) - ord('0')] 
+            else:
+              tartype='?'
+              print 'WARNING unsupported tar type '+repr(tartype)+' for: '+repr(real_filename)
+            #if tartype < '0' or tartype > '6' :
+            #  tartype='?'
+            #  print 'WARNING unsupported tar type '+repr(tartype)+' for: '+repr(real_filename)
+            mode=oct(mode).rjust(4,'0')
+            a.write(' %s %s %s %s %s\n %s\n %s\n %s\n' % (tartype,mode,owner,group,mtime,\
+                                                          unpacked_temporary_filename,real_filename,linkname))
+          a.close()
+          #append it into deb
+          system(['ar','q','NEW.file', 'data_list'],  TD)
+    except:
+      do_cleanup()
+      raise
+  else: #progress reporting for deb_format != 'preunpacked'
+    for j in F.stderr:
+      os.write(temp_err_name_fd, j)
+      progresschar+=len(j)
+      progress=(int(12.0 + 84.0 * progresschar / progresslen))
+      runtime['patchprogress']=progress
+      if do_progress:
+        sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
+    F.wait()
   if do_progress and terminalcolumns: #clean up
     sys.stderr.write(' ' * terminalcolumns + '\r')
   ret=F.returncode
   os.close(temp_err_name_fd)
   os.close(temp_name_fd)
 
-  script_time += time.time()
+  script_time += time.time() # for --format='preunpacked' this time also include data MD5
   runtime['patchprogress']=97
 
   #helper for debugging
@@ -1655,6 +1766,26 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       if params['NEW/data.tar'][:32] != m:
         fore()
         raise DebDeltaError('MD5 mismatch for data.tar' )
+  elif this_deb_format == 'preunpacked' :
+    if tar_status != [True]:
+      fore()
+      do_cleanup()
+      raise DebDeltaError("something bad happened in tar: "+repr(tar_status[0][1])) #todo format me better
+    if md5_status != [True]:
+      fore()
+      do_cleanup()
+      raise DebDeltaError("something bad happened in md5: "+repr(md5_status[0][1])) #todo format me better
+    #if DO_MD5: #actually we always do MD5
+    m=compute_md5(subprocess.Popen('ar p "%s" control.tar.gz | zcat' % (TD+'NEW.file'),
+                                   stdout=subprocess.PIPE,shell=True).stdout)
+    if params['NEW/control.tar'][:32] != m:
+      fore()
+      do_cleanup()
+      raise DebDeltaError('MD5 mismatch for control.tar' )
+    if params['NEW/data.tar'][:32] != data_md5:
+      fore()
+      do_cleanup()
+      raise DebDeltaError('MD5 mismatch for data.tar' )
   else: assert('unimplemented'=='')
 
   os.unlink(temp_name)
