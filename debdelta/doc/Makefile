@@ -4,6 +4,7 @@ html:
 	mkdir html
 
 html/index.html: html debdelta_suite.xml
+	rm html/*.html
 	docbook2html -o html debdelta_suite.xml
 
 debdelta_suite.pdf: debdelta_suite.xml
