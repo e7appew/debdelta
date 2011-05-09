@@ -65,9 +65,7 @@
       and leave a stamp of the form
       <filename>package_old-version_new-version_architecture.debdelta-too-big</filename>.
 
-      Example usages are in the man page; see also
-      the scripts <filename>/usr/share/debdelta/debmirror-delta-security</filename>
-      and  <filename>/usr/share/debdelta/debmirror-marshal-deltas</filename>
+      Example usages are in the man page; see also <xref linkend="repo_howto"/>.
     </para>
     </section>
     <section><title>debdelta-upgrade</title>
@@ -167,7 +165,7 @@
      etc etc): I have methods and code to peek inside them, so
     the delta become smaller, but the applying gets slower.
     </para></section>
-    <section><title>The repository</title>
+    <section><title>The repository structure</title>
     <para>
     The repository of deltas is just a HTTP archive; it is  similar to the pool of packages; that is, if 
 	  <filename>foobar_1_all.deb</filename>  is stored in
@@ -334,6 +332,68 @@
 	  incremental deltas do not exist, then there is no need to
 	  have indexes).  </para></listitem>
 	  </itemizedlist>
+	</para>
+	</section>
+      </section>
+
+      <section id="repo_howto"><title>Repository howto</title>
+      <para>There are (at least) two ways two manage a repository, and run a server that creates the deltas
+      </para>
+        <section><title>debmirror --debmarshal</title>
+	<para>
+        The first way is what I currently use. It is implemented in the script
+	<filename>/usr/share/debdelta/debmirror-marshal-deltas</filename>
+	(a simpler version, much primitive but more readable , is      
+	<filename>/usr/share/debdelta/debmirror-delta-security</filename>)
+   
+	Currently I use the complex script that creates deltas for amd64 and
+	i386, and for lenny squeeze sid experimental ; and the simpler one for
+	lenny-security.
+
+	Let me start outlining how the simple script generate deltas . It is a 3 steps
+	process.
+
+	Lets say that $secdebmir is the directory containg the mirror of the
+	repository security.debian.org.
+	
+	<orderedlist><listitem><programlisting>
+	--- 1st step
+	#make copy of current stable-security lists of packages
+	olddists=${TMPDIR:-/tmp}/oldsecdists-`date +'%F_%H-%M-%S'`
+	mkdir $olddists
+	cp -a $secdebmir/dists $olddists
+      </programlisting></listitem><listitem><para>
+	--- 2nd step
+	call 'debmirror' to update the mirror ; note that I apply a patch to
+	debmirror so that old debs are not deleted , but moved to a /old_deb
+	directory
+      </para></listitem><listitem><para>
+	--- 3rd step
+	call 'debdeltas' to generate deltas , from the state of packages in
+	$olddists to the current state in $secdebmir , and also wrt what is in
+	stable.
+	Note that,  for any package that was deleted from the archive, then
+	'debdeltas' will go fishing for it inside /old_deb .
+      </para></listitem></orderedlist>
+	The more complex script uses the new <emphasis>debmirror --debmarshal</emphasis>
+        so it keeps 40 old snapshots of the deb archives, and it generates deltas of the current
+        package version (the "new" version) to the versions in snapshots -10,-20,-30,-40.
+	</para>
+        </section>
+        <section><title>hooks and repository of old_debs</title>
+	<para>
+          <!-- (This is similar to what I was using up to 6months ago).  -->
+          I will write two commands (two hooks), 
+	  <cmdsynopsis><command>debdelta_sched</command><arg>filename</arg><arg>suite</arg><arg>section</arg><arg>arch...</arg></cmdsynopsis>
+	  <cmdsynopsis><command>debdelta_sos</command><arg>filename</arg></cmdsynopsis>
+	  The first one is to be called by the archive management tool (e.g. DAK) when a new package enters
+	  in a part of the archive (lets say, "pool/main/f/foobar/foobar_2_all.deb" just entered 
+	  "testing" "main" "amd64"). That command will add that to a delta queue, so 
+          appropriate deltas will be generated; the idea is that it will return almost immediatly, and process 
+	  the queue separately.
+	  The second one will be called by DAK when (before) it does delete a package from the archive; 
+          this command will save that old deb somewhere (indeed it may be needed to generate deltas somewhere in the future).
+          (It will be up to some piece of debdelta code to manage the repository of old debs).
 	</para>
 	</section>
       </section>
