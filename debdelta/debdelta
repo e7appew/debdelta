@@ -119,7 +119,7 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time, tarfile, stat
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time, tarfile, stat, hashlib, random
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath, expanduser
@@ -667,7 +667,6 @@ GPG_SIGN=GPG_BASE_CMD_LINE+["--batch","--armor","--clearsign","--default-key",GP
 
 def compute_md5(o):
   "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type"
-  import hashlib
   if type(o) in (StringType, UnicodeType):
     o = open(o)
   m=hashlib.md5()
@@ -680,8 +679,6 @@ def compute_md5(o):
 
 def _compute_hashes_(na):
   "hash the file"
-  #FIXME this is not present in older Python
-  import hashlib
   o = open(na)
   m=hashlib.md5()
   s=hashlib.sha1()
@@ -1096,8 +1093,6 @@ def tarinfo_to_ls(tartype,tarmode):
 
 
 def sha1_hash_file(f):
-    #FIXME this is not present in older Python
-    import hashlib
     s=hashlib.sha1()
     if type(f) == StringType:
       f=open(f)
@@ -2926,12 +2921,7 @@ def do_deltas(debs):
       raise DebDeltaError('python module "apt_pkg" is missing. Please install python-apt', retriable=True)
     
   f=my_popen_read('hostname -f')
-  try:
-    import hashlib
-    HOSTID=hashlib.md5( f.read() ).hexdigest()
-  except ImportError:
-    import md5
-    HOSTID=md5.new( f.read() ).hexdigest()
+  HOSTID=hashlib.md5( f.read() ).hexdigest()
   f.close()
   
   info_by_pack_arch={}
