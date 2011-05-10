@@ -382,7 +382,6 @@ def helper_hashes(i , m=multi_hash_p):
         else:
             return (None,sha1_hash_file(i),None)
     else:
-        assert 0
         return  (None,None,None)
 
 def tarinfo_to_ls(tartype,tarmode):
@@ -923,6 +922,7 @@ class hashdb:
 
     def scan_by_hash(self,a,hash):
         #FIXME no multi hash support here
+        assert str == type(hash[1])
         self.__cf.execute('SELECT name,package_id FROM file  WHERE other_data = ? ',(dbapi.Binary(hash[1]),))
         rf = self.__cf.fetchone()
         if rf == None: 
@@ -1035,6 +1035,7 @@ scan_result_codes = {
     'RM' : 'This file is listed in this package, but is not present in the filesystem.',
     'DIVERT' : 'This file was diverted.',
     'CANT_READ':'This file cannot be read.',
+    'NOT_REG':'This is not a regular file.', #this is used in scan() where we do not investigate further
     'DPKG-I' : 'This file is in a package that is here installed, but the package is not in the database(s).',
     'EQ' : 'This file is identical to a file in this package, according to the database(s), but this package is not installed.',
     'MAYBE' : 'This file is not in the database(s); it is here listed as being part of this package.',
@@ -1151,18 +1152,21 @@ def scan(a,DBs,root='/'):
     i =  root + a
     if not os.path.exists(i):
         return {'NOT_EXISTS':(a,)}
-    h=None
     if os.path.isfile(i) and not os.path.islink(i):
-    #    if not os.access(i, os.R_OK):
-    #        return {'CANT_READ':(i,)}
         h = helper_hashes(i)
+    else:
+        #here we do not investigate further ... --forensic instead does
+        return {'NOT_REG':(i,)}
     for db in DBs:
         c_r = db.scan(a,hashes=h,root=root)
         if  'U' not in c_r : return c_r
-    if h:
+    if h[1]:
         for db in DBs:
             c_r = db.scan_by_hash(a,h)
             if c_r: return c_r
+    elif h[1]== None:
+        return {'CANT_READ':(i,)}
+    else: assert(False)
     return {'U': (a,)}
 
 def recurse_scan(a,DBs,root='/'):
