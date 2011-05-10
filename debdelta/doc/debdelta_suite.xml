@@ -402,18 +402,22 @@
         <section><title>hooks and repository of old_debs</title>
 	<para>
           <!-- (This is similar to what I was using up to 6months ago).  -->
-          I will write two commands (two hooks), 
-	  <cmdsynopsis><command>debdelta_sched</command><arg>filename</arg><arg>suite</arg><arg>section</arg><arg>arch...</arg></cmdsynopsis>
-	  <cmdsynopsis><command>debdelta_sos</command><arg>filename</arg></cmdsynopsis>
-	  The first one is to be called by the archive management tool (e.g. DAK) when a new package enters
-	  in a part of the archive (lets say, "pool/main/f/foobar/foobar_2_all.deb" just entered 
-	  "testing" "main" "amd64"). That command will add that to a delta queue, so 
-          appropriate deltas will be generated; the idea is that it will return almost immediatly, and process 
-	  the queue separately.
-	  The second one will be called by DAK when (before) it does delete a package from the archive; 
-          this command will save that old deb somewhere (indeed it may be needed to generate deltas somewhere in the future).
-          (It will be up to some piece of debdelta code to manage the repository of old debs).
-	</para>
+          I  wrote the scheleton for some commands.
+	  <cmdsynopsis><command>debdelta_repo</command><arg>--add name version arch filename disttoken</arg></cmdsynopsis>
+	  This first one is to be called by the archive management tool (e.g. DAK) when a new package enters
+	  in a part of the archive (lets say, 
+	  package="foobar" version="2" arch="all" and filename="pool/main/f/foobar/foobar_2_all.deb" just entered 
+	  disttoken="testing/main/amd64"). That command will add that to a delta queue, so 
+          appropriate deltas will be generated; this command returns almost immediately.
+	  <cmdsynopsis><command>debdelta_repo</command><arg>--delta</arg></cmdsynopsis>
+	  This does create all the deltas.
+	  <cmdsynopsis><command>debdelta_repo</command><arg>--sos filename</arg></cmdsynopsis>
+	  This will be called by DAK when (before) it does delete a package from the archive; 
+          this command will save that old deb somewhere (indeed it may be needed to generate deltas sometimes in the future).
+          (It will be up to some piece of <emphasis>debdelta_repo</emphasis> code to manage the repository of old debs, and 
+	  delete excess copies).
+	  </para><para><emphasis>TODO that scheleton does not handle 'security', where some old versions of the packages are in
+           a different DISTTOKEN</emphasis></para>
 	</section>
       </section>
   </section>

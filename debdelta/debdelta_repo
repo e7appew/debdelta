@@ -1,0 +1,246 @@
+#!/usr/bin/python
+"""
+debdelta_repo
+
+Copyright (c) 2011 A. Mennucci
+License: GNU GPL v2 
+
+"""
+
+
+#TODO this scheleton does not handle 'security', where some old versions of the packages are in
+#  a different DISTTOKEN
+
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, stat, pwd, grp
+
+from stat    import ST_SIZE, ST_MTIME, ST_MODE, ST_INO, ST_DEV, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
+from os.path import abspath
+from copy    import copy
+from types import IntType, StringType, FunctionType, TupleType, ListType, DictType, BufferType
+
+
+
+
+__help__usage__ = "Usage: debdelta_repo [OPTION]... "
+__help__options__={
+    "verbose":"-v   --verbose\n       be verbose, print more informations",
+    "workspace":"-W WORKSPACE\n      directory were all the work is done",
+    "debrepo":"-D DEBREPO\n      directory of the repository of debs",
+}
+    #-R 
+   #--release RELEASE   
+      #is the Debian Release file,
+#-d   --debug
+#      print debugging info (not really useful but for the program author)
+
+
+__help__ = {
+    None : __help__usage__ +"""[COMMAND] [ARGS]..\n
+ [command]  may be one of --create --add --sos --deltas \n
+Use -h [command] for further help on commands""",
+    'create' : __help__usage__ +"""--create [ARGS]\n
+Creates the sqlite database SQL DB that is used to store packages' info.""",
+    'add' : __help__usage__ +"""--add name version arch filename disttoken
+or alternatively
+  --add STDIN  
+that reads from stdin lines with the above five arguments, tab separated
+
+    it stores in the database the fact that name,version,arch has entered disttoken,
+    and the package file is at filename (if nonabsolute, -D is used)""",
+    'sos' : __help__usage__ +"""--sos filename
+   saves the filename somewhere""",
+    'deltas' : __help__usage__ +"""
+   create all deltas""",
+}
+
+
+def help(cmd=None):
+    if cmd and cmd[:2] == '--': cmd = cmd[2:]
+    sys.stderr.write(__help__.get(cmd," UNKNOWN COMMAND ") + "\n")
+    if cmd:
+        sys.stderr.write("\nOptions:\n  " +string.join( __help__options__.values(),"\n  ")+"\n")
+
+
+
+try:
+    from pysqlite2 import dbapi2 as dbapi
+except ImportError:
+    dbapi = None
+
+if dbapi != None:
+    # ===== sqlite machinery
+    def convert_blob(s):
+        return s #this is always a string
+
+    # Register the adapter
+    #sqlite.register_adapter(StringType, adapt_blob)
+
+    # Register the converter
+    dbapi.register_converter("blob", convert_blob)
+    dbapi.register_converter("text", convert_blob)
+
+
+sql_scheme="""
+create table package ( 
+id integer unique primary key autoincrement,
+name text,
+version text,
+arch text,
+filename text,
+disttoken text,
+generated boolean,
+ownfile boolean,
+ctime integer
+) ;
+"""
+
+class theSQLdb:
+    dbname=None
+    sql_connection=None
+    sql_cursor=None
+    sql_cursor2=None
+    sql_cursor3=None
+
+    def __init__(self,dbname):
+        assert type(dbname) == StringType
+        assert os.path.exists(dbname)
+        self.dbname=dbname
+        self.sql_connection = dbapi.connect(dbname,
+                                            detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
+        self.sql_cursor = self.sql_connection.cursor()
+        self.sql_cursor2 = self.sql_connection.cursor()
+        self.sql_cursor3 = self.sql_connection.cursor()
+
+    def __del__(self):
+        self.sql_connection.close()
+
+    def commit(self):
+        self.sql_connection.commit()
+
+    def add_one(self,name,version,arch,filename,disttoken,generated=0,ownfile=0,ctime=None):
+        if ctime==None: ctime=int(time.time())
+        self.sql_cursor.execute('SELECT name,version,arch FROM package WHERE filename = ? AND disttoken = ? ',\
+                                (filename,disttoken))
+        a=self.sql_cursor.fetchone()
+        if a:
+            sys.stderr.write('Filename,disttoken already in database as: %s\n' % repr(a))
+            return
+        self.sql_cursor.execute('SELECT filename FROM package WHERE name = ? AND version = ? AND arch = ? AND disttoken = ? ',\
+                                (name,version,arch,disttoken))
+        a=self.sql_cursor.fetchone()
+        if a:
+            sys.stderr.write('Package,version,arch,disttoken already in database, by file: %s\n' % repr(a))
+            return
+        self.sql_cursor.execute('INSERT INTO package VALUES (null, ?, ?, ?, ?, ?, ?, ?, ?)',\
+                            (name,version,arch,filename,disttoken,generated,ownfile,ctime))
+    
+    def create_deltas(self):
+        namearchtokens=[]
+        self.sql_cursor.execute('SELECT name,arch,disttoken FROM package WHERE generated = 0 ')
+        for n in self.sql_cursor:
+            if n not in namearchtokens: namearchtokens.append(n)
+        for n in namearchtokens:
+            versions=[]
+            self.sql_cursor.execute('SELECT version,filename,id FROM package WHERE name = ? AND arch = ? AND disttoken = ?',n)
+            for v in self.sql_cursor:
+                if v not in versions: versions.append(v)
+                #TODO this is a very good place to delete extra, very old versions
+            if len(versions) == 1:
+                print 'Only one version for ',n,versions
+            else:
+                print ' Creating deltas for ',n
+                versions.sort()
+                new=versions.pop()
+                for a in versions:
+                    print '  Create delta from ',a[1],' to ',new[1]
+        #TODO mark all above as 'generated=1' when done, if successful
+
+
+def create(dbname):
+    if os.path.exists(dbname):
+        sys.stderr.write(sys.argv[0]+': will not overwrite already existing '+dbname+'\n')
+        sys.exit(1)
+    os.popen("sqlite3 '"+dbname+"'",'w').write(sql_scheme)
+
+def add(dbname, argv):
+    H=theSQLdb(dbname)
+    if len(argv)==1 and argv[0]=='STDIN':
+        for a in sys.stdin:
+            b=string.split(a,'\t')
+            if len(b) == 5:
+                H.add_one(*b)
+            else: sys.stderr.write('It is not a tab separated list of 5 elements: %s\n'%repr(a))
+    else:
+        if len(argv) == 5:
+            H.add_one(*argv)
+        else: sys.stderr.write('It was not given 5 arguments: %s\n'%repr(argv))
+    H.commit()
+
+def deltas(dbname):
+    H=theSQLdb(dbname)
+    H.create_deltas()
+
+def sos(dbname, workspace, argv):
+    H=theSQLdb(dbname)
+    if len(argv) != 1:
+        sys.stderr.write('It was not given 1 arguments: %s\n'%repr(argv))
+        sys.exit(1)
+    H.sql_cursor.execute('SELECT id,name,arch FROM package WHERE filename = ? ',argv)
+    a=H.sql_cursor.fetchone()
+    print 'WILL SAVE',a,'SOMEWHERE INSIDE',workspace,' AND UPDATE SQL ACCORDINGLY'
+    #in particular, will mark it as 'owned', so it will be deleted when it will be old
+
+if __name__ == '__main__':
+    #argv = debugging_argv or sys.argv
+    if len(sys.argv) <= 1:
+        help()
+        raise SystemExit(0)
+    DEBUG = 0
+    VERBOSE = 0
+    JUSTHELP=False
+    WORKSPACE=None
+    cmd=None
+    try: 
+        ( opts, argv ) = getopt.getopt(sys.argv[1:], 'hvdW:' ,
+                                       ('help','debug','verbose','workspace=','add','sos','create','deltas') )
+    except getopt.GetoptError,a:
+        sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
+        raise SystemExit(2)
+    for  o , v  in  opts :
+        if o == '-v' or o == '--verbose' :
+            VERBOSE += 1
+        elif o == '-d' or o == '--debug' : 
+            DEBUG += 1
+        elif o ==  '--help' or o ==  '-h': 
+            JUSTHELP = True
+        elif o == '-W' or o == '--workspace':
+            WORKSPACE=v
+        elif o[:2] == '--' and o[2:] in __help__.keys():
+            if cmd :
+                sys.stderr.write(' option ',o,'is unacceptable after',cmd)
+                raise SystemExit(1)
+            else:
+                cmd=o[2:]
+        else:
+            sys.stderr.write(' option '+o+'is unknown, try --help')
+            raise SystemExit(1)
+
+    if JUSTHELP:
+        help(cmd)
+        raise SystemExit(0)
+    
+    if not WORKSPACE:
+        sys.stderr.write('Need a workspace. Use -W  . Read --help .\n')
+        raise SystemExit(1)
+    dbname=os.path.join(WORKSPACE,'theSQLdb')
+    if cmd == "create":
+        create(dbname)
+    elif cmd == 'add':
+        add(dbname,argv)
+    elif cmd == 'sos':
+        sos(dbname,WORKSPACE,argv)
+    elif cmd == 'deltas':
+        deltas(dbname)
+    else:
+        sys.stderr.write("Sorry this command is yet unimplemented: "+cmd+'\n')
+        sys.exit(1)
