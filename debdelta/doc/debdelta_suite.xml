@@ -757,6 +757,10 @@ Files:
          support multiarch
        </para></listitem>
       <listitem><para>
+         collect data, benchmark! (some debdelta behaviours are coded in magic numbers that I got
+         from thumb reasoning on small datasets)
+       </para></listitem>
+      <listitem><para>
 	support long time exact recovery <xref linkend="long_time"/>: embed a copy of gzip, libzip, bzip2 and lzma in debdelta??
       </para></listitem>
     </orderedlist>
