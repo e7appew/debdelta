@@ -1,0 +1,1604 @@
+#!/usr/bin/python
+"""
+debforensic
+
+A program to create a database of hashes of files in Debian packages,
+and to check for file alterations in an installed host.
+
+Copyright (c) 2007 A. Mennucci
+License: GNU GPL v2 
+
+"""
+
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, stat, pwd, grp
+
+from stat    import ST_SIZE, ST_MTIME, ST_MODE, ST_INO, ST_DEV, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
+from os.path import abspath
+from copy    import copy
+from types import IntType, StringType, FunctionType, TupleType, ListType, DictType, BufferType
+
+try:
+    from pysqlite2 import dbapi2 as dbapi
+except ImportError:
+    dbapi = None
+
+try:
+    import hashlib
+    md5new = hashlib.md5
+    sha1new = hashlib.sha1
+    sha256new = hashlib.sha256
+except ImportError:
+    import sha
+    import md5
+    md5new=md5.new
+    sha1new=sha.sha
+    sha256new = None
+    
+
+#multi hash support 
+#it makes for *huge* databases, with
+#no clear benefit
+#It is the 'or' of the flag in all linked databases (see 'hashdb' class)
+multi_hash_p=False
+
+
+__help__usage__ = "Usage: debforensic [OPTION]... "
+__help__options__={
+    "db":"--db DB   -D  DB\nis the sqlite database file storing package file hashes (this option is mandatory!)",
+    "verbose":"-v   --verbose\nbe verbose, print more informations",
+    "recursive":"-r --recursive\nrecurse in directories",
+    "chroot":"--chroot ROOT\napply command to filesystem inside the ROOT",
+    "info":"-i --info\nexplain the return codes when each is first seen"
+}
+    #-R 
+   #--release RELEASE   
+      #is the Debian Release file,
+#-d   --debug
+#      print debugging info (not really useful but for the program author)
+
+
+__help__ = {
+    None : __help__usage__ +"""[COMMAND] [ARGS]..\n
+ [command]  may be one of --create --add --dump --scan --index --forensic \n
+Use -h [command] for further help on commands""" ,
+    
+    "create" : __help__usage__ +"""--create [ARGS]\n
+Creates the sqlite database file DB that is used to store packages' info.\n
+Example of ARGS are a list of Debian packages, or a `Packages' file, such as
+ dist/stable/main/binary-i386/Packages (that is found in a Debian mirror or CD).""",
+    
+    "scan" : __help__usage__ +"""--scan [files and directories]...\n
+Scans provided files and directories, for each match prints a line of the form
+return_code file some_optional_info (package, version, architecture)""",
+
+    "add" : __help__usage__ + """--add  [debian packages]\n\n
+Computes checksums for provided Debian packages and stores it in database""",
+
+    "forensic" : __help__usage__ + """--forensic\n
+Scans the entire filesystem tree, checks each file against
+the list of (supposedly) installed packages, and against
+the database.""",
+
+    "index" : __help__usage__ + """--index\n
+    Adds SQL indexes to the database DB. This speeds up 
+operations such as --scan and --forensic.\n
+Note that indexing requires a lot of time;
+and as much free space in your harddisk as the DB is large;
+and eventually it may double the size of the DB file.""",
+
+    "compress" : __help__usage__ +"""--compress\n
+Compress some data inside the database DB , to reduce its file size.\n
+Note that this operation requires a lot of time, 
+and as much free space in your harddisk as the DB is large.""",
+
+    "dump" : __help__usage__ +" --show\n\
+show the content of the whole database as a tab separated list.",
+    
+# these are actually not advertised in documentation
+        "select" : __help__usage__ +""" --select [SQL]
+Returns a SQL query to the database. Examples "select md5 = ..." """,
+    "test" : __help__usage__ +" --test\n perform a simple test"
+     }
+
+
+def help(cmd=None):
+    if cmd and cmd[:2] == '--': cmd = cmd[2:]
+    sys.stderr.write(__help__.get(cmd," UNKNOWN COMMAND ") + "\n")
+    if cmd:        
+        sys.stderr.write("\nOptions:\n  " +string.join( __help__options__.values(),"\n  ")+"\n")
+
+
+if dbapi != None:
+    # ===== sqlite machinery
+    def convert_blob(s):
+        return s #this is always a string
+
+    # Register the adapter
+    #sqlite.register_adapter(StringType, adapt_blob)
+
+    # Register the converter
+    dbapi.register_converter("blob", convert_blob)
+    dbapi.register_converter("text", convert_blob)
+
+
+
+def de_n(a):
+    if a and a[-1] ==  '\n' :
+        a = a[:-1]
+    return a
+
+# ============ code to compress filename prefixes
+# TODO adapt to the real data
+
+class CompressFilename:
+    common_file_prefixes=('', #null pathname, code=0 
+    'usr/',
+    'usr/share/',
+    'usr/share/doc/',
+    'usr/lib/',
+    'usr/share/locale/',
+    'usr/share/man/',
+    'usr/share/games/',
+    'usr/include/',
+    'usr/share/doc/kde/HTML/',
+    'usr/src/',
+    'usr/share/icons/',
+    'var/',
+    'var/lib/',
+    'usr/lib/openoffice/',
+    'usr/share/texmf/',
+    'lib/',
+    'lib/modules/',
+    'etc/',
+    'sbin/',
+    'bin/')
+    
+    excluded_file_prefixes=('proc/','sys/','home/','usr/local/','dev/')
+    
+    def compressor(self,pref,excl=(),startcode=0):
+        def recurse(code):#local recursive function
+            tree={}
+            p={}
+            for a,j in code:
+                if len(a) > 1:
+                    p[a[0]]=p.get(a[0],[])+[(a[1:],j),]
+                elif len(a) ==1:
+                    if a[0] == '':
+                        tree[a[0]]=j
+                    else:
+                        p[a[0]]=p.get(a[0],[])+[('',j),]
+                else: tree['']=j
+            for l,r in p.items():
+                #if len(r)==1:
+                #    a,j=r[0]
+                #    tree[l]=j#but this reduced efficency
+                #else:
+                tree[l]=recurse(r)
+            return tree
+        code_n=[]
+        for a in pref:
+            assert a =='' or a[-1]=='/'
+            code_n.append((a.split('/'),startcode))
+            startcode=startcode+1
+        self.last_code_n=startcode-1
+        tree=recurse(code_n)
+        for j in excl:
+            assert j[-1]=='/'
+            a=j[:-1].split('/')
+            b=tree
+            while len(a)>1 and  a[0] in b and  type(b[a[0]]) == DictType:
+                b=b[a[0]]
+                a=a[1:]
+            b[a[0]]=None
+        return tree
+        #embedded recursive function
+    
+    def __init__(self):
+        self.code_tree=self.compressor(self.common_file_prefixes,self.excluded_file_prefixes)
+        #assert self.last_code_n < 31 #should be non printable ascii
+    
+    def find_prefix(self,f,tree=None):
+        if tree==None: tree=self.code_tree
+        a=f.split('/')
+        res=tree.get('')#uncodable code result
+        while len(a) >0 :
+            res=tree.get('',res)
+            if a[0]=='':
+                assert len(a)==1 # I hate // in pathnames
+                return res
+            elif a[0] in tree:
+                tree=tree[a[0]]
+                a=a[1:]
+                if tree==None: return None #this filename is excluded
+            else: return res
+        return res
+
+    def compress(self,name):
+        assert type(name) == StringType
+        n=self.find_prefix(name)
+        if n == None:
+            print '# Warning , filename: '+repr(name)+' should not be present in a .deb'
+            return ('%c'%(1))+name
+        #if n != 0:
+        p=self.common_file_prefixes[n]
+        #avoid 0, may look like a null terminated string
+        f=('%c'%(n+1))+name[len(p):]        
+        return f
+
+    def decompress(self,name):
+        assert type(name) == StringType
+        #avoid 0, may look like a null terminated string
+        n=ord(name[0])-1
+        p=self.common_file_prefixes[n]
+        f=p+name[1:]            
+        return f
+    
+    def test(self):
+        for name in ('','initrd','etc','etc/','etc/conf','usr','usr/local/','sbin/gino',
+                     'usr/share/','usr/share/doc','usr/share/doc/',
+                     'usr/share/doc/kde/','usr/share/doc/kde/HTML'):
+            n=self.find_prefix(name)
+            c=self.compress(name)
+            d=self.decompress(c)
+            print 'Test compressing ',repr(name),n,repr(c),repr(d)
+            assert name == d
+
+
+
+# ===== code to convert 'stat() file info' <-> 'tar file info' <-> 'sqlite file info'
+
+
+#in base-passwd 3.5.11
+#/usr/share/base-passwd/passwd.master
+base_passwd="""root::0:0:root:/root:/bin/bash
+daemon:*:1:1:daemon:/usr/sbin:/bin/sh
+bin:*:2:2:bin:/bin:/bin/sh
+sys:*:3:3:sys:/dev:/bin/sh
+sync:*:4:65534:sync:/bin:/bin/sync
+games:*:5:60:games:/usr/games:/bin/sh
+man:*:6:12:man:/var/cache/man:/bin/sh
+lp:*:7:7:lp:/var/spool/lpd:/bin/sh
+mail:*:8:8:mail:/var/mail:/bin/sh
+news:*:9:9:news:/var/spool/news:/bin/sh
+uucp:*:10:10:uucp:/var/spool/uucp:/bin/sh
+proxy:*:13:13:proxy:/bin:/bin/sh
+www-data:*:33:33:www-data:/var/www:/bin/sh
+backup:*:34:34:backup:/var/backups:/bin/sh
+list:*:38:38:Mailing List Manager:/var/list:/bin/sh
+irc:*:39:39:ircd:/var/run/ircd:/bin/sh
+gnats:*:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/bin/sh
+nobody:*:65534:65534:nobody:/nonexistent:/bin/sh"""
+base_passwd_db={}
+base_passwd_anti_db={}
+for a in base_passwd.split('\n'):
+    a=a.split(':')
+    base_passwd_db[a[0]]=int(a[2])
+    base_passwd_anti_db[int(a[2])]=a[0]
+
+base_group="""root:*:0:
+daemon:*:1:
+bin:*:2:
+sys:*:3:
+adm:*:4:
+tty:*:5:
+disk:*:6:
+lp:*:7:
+mail:*:8:
+news:*:9:
+uucp:*:10:
+man:*:12:
+proxy:*:13:
+kmem:*:15:
+dialout:*:20:
+fax:*:21:
+voice:*:22:
+cdrom:*:24:
+floppy:*:25:
+tape:*:26:
+sudo:*:27:
+audio:*:29:
+dip:*:30:
+www-data:*:33:
+backup:*:34:
+operator:*:37:
+list:*:38:
+irc:*:39:
+src:*:40:
+gnats:*:41:
+shadow:*:42:
+utmp:*:43:
+video:*:44:
+sasl:*:45:
+plugdev:*:46:
+staff:*:50:
+games:*:60:
+users:*:100:
+nogroup:*:65534:"""
+
+base_group_db={}
+base_group_anti_db={}
+for a in base_group.split('\n'):
+    a=a.split(':')
+    base_group_db[a[0]]=int(a[2])
+    base_group_anti_db[int(a[2])]=a[0]
+
+# all code following return name,mode,tartype,uid,gid,uname,gname
+
+#adapted from tarfile.py, a Python module
+def stat_to_tar(name):
+    statres = os.lstat(name)
+    stmd = statres.st_mode
+    data = None
+    if stat.S_ISREG(stmd):
+        type = tarfile.REGTYPE
+        # here ideally we should SHA1 the file ; 
+        # but this is done elsewhere for performance, 
+        # and to have multi_hash in the future
+    elif stat.S_ISDIR(stmd):
+        type = tarfile.DIRTYPE
+    elif stat.S_ISFIFO(stmd):
+        type = tarfile.FIFOTYPE
+    elif stat.S_ISLNK(stmd):
+        type = tarfile.SYMTYPE
+        data = os.readlink(name)
+    elif stat.S_ISCHR(stmd):
+        type = tarfile.CHRTYPE
+    elif stat.S_ISBLK(stmd):
+        type = tarfile.BLKTYPE
+    elif stat.S_ISSOCK(stmd):
+        type = 'SOCKET'  #SOCKETs are not supported in tar files
+    else: raise TypeError
+    
+    if type in (tarfile.CHRTYPE, tarfile.BLKTYPE):
+        data = str(os.major(statres.st_rdev))+' '+str( os.minor(statres.st_rdev))
+
+    uid,gid = statres.st_uid, statres.st_gid 
+    
+    if uid in base_passwd_anti_db :
+        uname = base_passwd_anti_db[uid]
+    else:
+        try:
+            uname = pwd.getpwuid(uid)[0]
+        except KeyError:
+            uname = None
+
+    if gid in base_group_anti_db :
+        gname = base_group_anti_db[gid]
+    else:    
+        try:
+            gname = grp.getgrgid(gid)[0]
+        except KeyError:
+            gname = None
+
+    #07777 is used in tarfile.TarInfo.tobuf
+    return  name.lstrip('/'), stmd & 07777, type, uid, gid, uname, gname, data
+
+def helper_hashes(i , m=multi_hash_p):
+    "helper to compute hashes only once in scan() or forensic()"
+    assert type(i) == StringType
+    if os.path.isfile(i) and not os.path.islink(i):
+        if m:
+            return multi_hash_file(i)
+        else:
+            return (None,sha1_hash_file(i),None)
+    else:
+        assert 0
+        return  (None,None,None)
+
+def tarinfo_to_ls(tartype,tarmode):
+    "returns a string -rwxrwxrwx such as what ls -l prints "
+    if ord(tartype) == 0 :
+        a='_'
+    else:
+        if tartype >= '0' and tartype <= '6' :
+            a="-hlcbdp"[ord(tartype) - ord('0')] 
+        else:
+            a='?'
+    return a+tarfile.filemode(tarmode)[1:]
+
+
+
+def tarinfo_to_sqlite(tarinfo, CF,package_name=''):
+    tartype=tarinfo.type
+    mode=tarinfo.mode
+    B=dbapi.Binary
+    
+    if tartype == tarfile.AREGTYPE : tartype=tarfile.REGTYPE
+
+    if tartype == tarfile.SYMTYPE :
+        if ( mode == 0777 or mode == 0120777) : mode = None
+        else: print 'WEIRD_SYMLINK ',tarinfo.name,' WITH MODE = ','0%o' %  mode ,package_name
+ 
+    if (tartype == tarfile.REGTYPE  or tartype == tarfile.DIRTYPE ) \
+       and mode == 0755: 
+           mode = None 
+    
+    if tarinfo.uname in base_passwd_db and tarinfo.uid == base_passwd_db[tarinfo.uname] :
+        uname = None
+    else:
+        print 'NON_STANDARD uname ',repr(tarinfo.uname),' for ',tarinfo.name, package_name
+        uname=B(tarinfo.uname)
+
+    if tarinfo.gname in base_group_db and tarinfo.gid == base_group_db[tarinfo.gname] :
+        gname = None
+    else:
+        print 'NON_STANDARD gname ',repr(tarinfo.gname),' for ',tarinfo.name, package_name
+        gname=B(tarinfo.gname)
+
+    name=tarinfo.name
+    if name[:2]=='./' : name=name[2:]
+    
+    if CF:
+        name=CF.compress(name)
+    
+    return dbapi.Binary(name),mode,dbapi.Binary(tartype),tarinfo.uid,tarinfo.gid,uname,gname
+
+def sqlite_towards_tarinfo(r,CF):
+    "unpacks a  SELECT name,mode,tartype,uid,gid,uname,gname,other_data,package_id FROM file"
+    assert type(r) == TupleType  or type(r) == ListType
+    if len(r) == 9 :
+        name,mode,tartype,uid,gid,uname,gname,other_data,package_id = r
+    else:
+        assert Exception,'unimplemented'
+
+    if type(tartype) == BufferType:
+        tartype=str(tartype)
+       
+    #undo some simplifications done above    
+    if tartype == tarfile.SYMTYPE and mode == None:  mode = 0777
+
+    if (tartype == tarfile.REGTYPE  or tartype == tarfile.DIRTYPE ) \
+       and mode == None:
+           mode = 0755
+           
+    if tartype == tarfile.SYMTYPE and mode == None:
+        mode = 0777
+
+    assert type(mode) == IntType and type(uid) == IntType \
+           and type(gid) == IntType and type(package_id) == IntType
+       
+    if type(other_data) == BufferType:
+        other_data=str(other_data)
+        
+    if uname == None :
+        uname = base_passwd_anti_db[uid]
+    elif type(uname) == BufferType:
+        uname = str(uname)
+
+    if gname == None :
+        gname = base_group_anti_db[gid]
+    elif type(gname) == BufferType:
+        gname = str(gname)
+        
+    name=CF.decompress(str(name))
+        
+    return name,mode,tartype,uid,gid,uname,gname,other_data,package_id
+
+#########################################
+
+sql_scheme="""
+create table package ( 
+id integer unique primary key autoincrement,
+name text,
+version text,
+architecture text,
+hash data ) ;
+
+create table file (
+/* 'id' is  currently useless, but SQL would create it internally nonetheless*/
+id integer unique primary key autoincrement,
+name blob,
+mode integer,
+tartype integer,
+uid integer,
+gid integer,
+uname text,
+gname text,
+package_id integer ,
+other_data data) ;
+
+create table info(
+key text,
+data blob);
+"""
+
+sql_scheme_indexes="""
+CREATE INDEX IF NOT EXISTS package_hash ON package ( hash );
+CREATE INDEX IF NOT EXISTS file_package_id ON file ( package_id );
+CREATE INDEX IF NOT EXISTS file_data ON file ( other_data );
+CREATE INDEX IF NOT EXISTS file_name ON file (name);
+"""
+
+#if multi hash support 
+if multi_hash_p:
+    sql_scheme+="""
+create table hash (
+id integer unique primary key autoincrement,
+sha1 blob ,
+md5 blob ,
+sha256 blob ,
+len integer) ;
+CREATE INDEX sha1 ON hash ( sha1 );
+"""
+
+
+def scan_diversions():
+  f=open('/var/lib/dpkg/diversions')
+  diversions_from={}
+  diversions_to={}
+  while 1:
+    divert_from=f.readline()
+    if not divert_from: break
+    divert_from=divert_from.rstrip('\n').lstrip('/')
+    divert_to=f.readline().rstrip('\n').lstrip('/')
+    divert_package=f.readline().rstrip('\n')
+    diversions_from[divert_from]=(divert_to,  divert_package)
+    diversions_to  [divert_to]  =(divert_from,divert_package)
+  f.close()
+  return diversions_from,diversions_to
+
+def parse_status(ROOT,DBs):
+    installed_packages = {}
+    ok=False
+    local = 0
+    for l in open(ROOT + 'var/lib/dpkg/status'):
+        l=l.rstrip('\n')
+        if l[:9] == 'Package: ':
+            pack=l[9:]
+        elif l == 'Status: install ok installed':
+            ok = True
+        elif l[:14] == 'Architecture: ':
+            arch = l[14:]
+        elif l[:9] ==  'Version: ':
+            vers = l[9:]
+        elif l == '':
+            if ok:
+                db=None
+                for d in DBs:
+                    r = d.find_package_id(pack,vers,arch)
+                    if r != None:  
+                        db=d
+                        break
+                if r!= None:
+                    installed_packages[ (r[0],db.dbname) ] = (pack,vers,arch)
+                else:
+                    local = local + 1
+                    if DEBUG or VERBOSE : 
+                        print '# installed package not in databases: ',pack,vers,arch
+                    for a in open(ROOT + 'var/lib/dpkg/info/'+pack+'.list'):
+                        a=a.lstrip('/').rstrip('\n')
+                        installed_packages[a]=(pack,vers,arch)
+            ok = False
+    if local:
+        print '# there are %d installed package not in database(s)' % local
+    return installed_packages
+
+def parse_release(RELEASE_FILE):
+    hash=None
+    DB={}
+    for a in open(RELEASE_FILE):
+        a=de_n(a)
+        if ':' in a:
+            a=a.split(':')
+            if a[1]:
+                DB[a[0]]=a[1][1:]
+            else:
+                hash=a[0]
+        elif a[0]==' ':
+            a=[ i for i in a[1:].split(' ') if i ]
+            DB[a[-1]]=(hash,a[0])
+        else: print '(Did not parse',RELEASE_FILE,a
+    return DB
+
+def sha1_hash_file(f):
+    if type(f) == StringType:
+        try:
+            f=open(f)
+        except IOError:
+            return None
+    a=f.read(1024)
+    s1 = sha1new()
+    while a:
+        s1.update(a)
+        a=f.read(1024)
+    f.close()
+    return s1.digest()
+
+def sha1_to_hex(s):
+    a=''
+    for i in s:
+        a=a+ ( '%02x' % ord(i)  )
+    return a
+
+# this is used onl if multi hash
+def multi_hash_file_wo_sha256(f):
+    if type(f) == StringType:
+        f=open(f)
+    a=f.read(1024)
+    m = md5new()
+    s1 = sha1new()
+    while a:
+        m.update(a)
+        s1.update(a)
+        a=f.read(1024)
+    f.close()
+    return (m.digest(),s1.digest())
+# this is used onl if multi hash
+def multi_hash_file(f):
+    if type(f) == StringType:
+        try:
+            f=open(f)
+        except IOError:
+            return (None,None,None)
+    a=f.read(1024)
+    m = md5new()
+    s1 = sha1new()
+    if sha256new:
+        s256 = sha256new()
+    while a:
+        m.update(a)
+        s1.update(a)
+        if sha256new:
+            s256.update(a)
+        a=f.read(1024)
+    f.close()
+    if sha256new:
+        return (m.digest(),s1.digest(),s256.digest())
+    else:
+        return (m.digest(),s1.digest(),None)
+
+
+def scan_control(p):
+    if type(p) == StringType:
+        p = os.popen('env -i dpkg-deb -I '+p)
+    params={}
+    for a in p:
+        if a[:2] == '  ': continue
+        if a[0] == ' ': a=a[1:]
+        a=de_n(a)
+        if a[:4] in ('Pack','Vers','Arch','Stat','Inst','File'):
+            i=a.index(':')
+            assert(a[i:i+2] == ': ')
+            params[a[:i]] = a[i+2:]
+    return params
+
+
+
+
+# ==== this class manages connection to the sqlite db
+class hashdb:
+    dbname=None
+    sql_connection=None
+    sql_cursor=None
+    __cp=None
+    __cf=None
+    __cf=None
+    multi_hash_p=False
+    sql_master={}
+
+    #what to present of a package
+    package_info='name,version,architecture'
+
+    def __init__(self,dbname):
+        assert type(dbname) == StringType
+        assert os.path.exists(dbname)
+        self.dbname=dbname
+        self.sql_connection = dbapi.connect(dbname,
+                                            detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
+
+        self.sql_master={}
+
+        self.sql_cursor = self.sql_connection.cursor()
+    
+        self.sql_cursor.execute('SELECT * FROM SQLITE_MASTER ')
+        r=self.sql_cursor.fetchone()
+        while r:
+            self.sql_master[r[1]]=r
+            r=self.sql_cursor.fetchone()
+            
+        self.multi_hash_p = 'hash' in self.sql_master
+        global multi_hash_p
+        multi_hash_p = multi_hash_p or self.multi_hash_p
+        
+        self.__ch=self.sql_connection.cursor()
+        self.__cp=self.sql_connection.cursor()
+        self.__cf=self.sql_connection.cursor()
+        
+        self.CF=CompressFilename()
+        
+    def __del__(self):
+        self.sql_connection.close()
+
+    def commit(self):
+        self.sql_connection.commit()
+
+    def insert_info(self,A,B):
+        self.sql_cursor.execute('INSERT INTO info VALUES (?, ?)', (A,dbapi.Binary(B)) )
+        self.sql_connection.commit()
+        
+    def replace_info(self,A,B):
+        self.sql_cursor.execute('SELECT * FROM info WHERE key = ?',(A,))
+        r=self.sql_cursor.fetchone()
+        if r:
+            self.sql_cursor.execute('REPLACE INTO info VALUES (?, ?) WHERE key = ?',
+                                    (A,dbapi.Binary(B),A) )
+        else:
+            self.sql_cursor.execute('INSERT INTO info VALUES (?, ?)', (A,dbapi.Binary(B)) )
+        self.sql_connection.commit()
+    def get_info(self,A):
+        self.sql_cursor.execute('SELECT * FROM info WHERE key = ?',(A,))
+        r=self.sql_cursor.fetchone()
+        assert r[0] == A
+        return r[1]
+
+    def dump_flat_all(self):
+        if self.multi_hash_p:
+            return self.sql_cursor.execute('SELECT package.name, package.version, package.architecture, file.name, file.mode, file.tartype FROM package, file WHERE file.package_id = package.id ;')
+        else:
+            return self.sql_cursor.execute('SELECT package.name, package.version, package.architecture, file.name, file.mode, file.tartype, file.uid, file.gid, file.uname, file.gname, file.other_data, file.package_id FROM package, file WHERE file.package_id = package.id  ;')
+    
+
+    # this part is only used if the database is multihash
+    #   that is, there is a 'hash' table storing (md5,sha1,sha256,len)
+    #  in the following, m = (md5,sha1,sha256)
+    def select_by_hash_sha1_(self,m):
+        "returns the id of the row matching sha1. Checks only sha1 hash."
+        assert  self.multi_hash_p
+        self.sql_cursor.execute('SELECT id FROM hash WHERE sha1=? ',(dbapi.Binary(m[1]),))
+        r=self.sql_cursor.fetchall()
+        if r == None: return None
+        if len(r) > 1:
+            sys.write.stderr('INTERNAL ERROR in database ',self.filename,' multiple sha1 equal to row id=',r[0][0])
+        return r[0][0]
+
+    def select_hash_by_id(self,id):
+        assert  self.multi_hash_p
+        self.__ch.execute('SELECT md5,sha1,sha256 FROM hash WHERE id = ? ',(id,))
+        r=self.__ch.fetchone()
+        if r == None: 
+            sys.stderr.write('INTERNAL.PROBLEM.no.hash.for.id'+id) 
+            return (None,None,None)
+        return r
+        
+    def select_and_check_by_hashes(self,m):
+        "returns the id of row in the table 'hash' matching m. Checks all hashes. Works only with multi hash dbs"
+        md5,sha1,sha256=m
+        assert  self.multi_hash_p and md5 != None and sha256 != None
+        self.sql_cursor.execute('SELECT id,md5,sha256 FROM hash WHERE sha1=? ',(dbapi.Binary(sha1),))
+        r=self.sql_cursor.fetchall()
+        if r == None: return None
+        if len(r) > 1:
+            sys.write.stderr('INTERNAL ERROR in database ',self.filename,' multiple sha1 equal to row id=',r[0][0])
+        r=r[0]
+        assert md5 == r[1] and sha256 == r[2]
+        return r[0]
+
+    def insert_hash__(self,h,l):
+        self.sql_cursor.execute('INSERT INTO hash  VALUES (none,?,?,?,?)',(map(dbapi.Binary,h)+(l,)))
+        return self.sql_cursor.lastrowid
+    
+    def insert_hash(self,h,l):
+        "if the hash is already there, just return the (first) row id"
+        r = self.select_by_hash_sha1_(h)
+        if r != None:  return r
+        return  self.insert_hash__(h,l)
+    # end of section regarding multi hash db
+
+    def hash_deb(self,name, RELEASE_DB={}):
+        if self.multi_hash_p:
+            h = multi_hash_file(name)
+            deb_hash = self.select_by_hash_sha1_(h)
+            if deb_hash != None:
+                if VERBOSE > 1:
+                    print 'ALREADY_ADDED ', name
+                return deb_hash
+            else:
+                deb_hash = self.insert_hash( h , os.stat(name)[ST_SIZE] )
+        else:
+            #be sure to insert as blob!
+            deb_hash = dbapi.Binary(sha1_hash_file(name))
+            self.sql_cursor.execute('SELECT id FROM package WHERE hash=? ',(deb_hash,))
+            r=self.sql_cursor.fetchall()
+            if len(r) > 1 and VERBOSE > 1:
+                print 'MULTIPLY_ADDED ', name
+                return r[0]
+            if r :
+                if VERBOSE > 1:   print 'ALREADY_ADDED ', name
+                return r[0]
+        
+        c=scan_control(name)
+        self.sql_cursor.execute('INSERT INTO package VALUES (null, ?, ?, ?, ?)',
+                                (c['Package'],c['Version'],c['Architecture'], deb_hash ))
+        deb_id = self.sql_cursor.lastrowid
+        #f = os.open('ar p '+name+' data.tar.gz')
+        #system('ar p '+deb+' control.tar.gz | tar -x -z -p -f - -C '+TD+'OLD/CONTROL',TD)
+        f = os.popen('dpkg --fsys-tarfile '+name)
+        t=tarfile.open(name,'r|',f)
+        self.hash_tar(t,deb_id,name)
+        self.sql_connection.commit()
+        if VERBOSE : print 'ADDED ', name
+        return  deb_id
+
+    def hash_tar(self,tar,package_id,package_name):
+        B=dbapi.Binary
+        for tarinfo in tar:
+            #skip plain dirs
+            if tarinfo.isdir():
+                #p=tarinfo_to_ls(tarinfo.type,tarinfo.mode) +( '0%o'%tarinfo.mode)
+                if (tarinfo.mode  == 0755 or tarinfo.mode == 040755 ) and \
+                   tarinfo.uname == 'root' and tarinfo.gname == 'root' :
+                    if VERBOSE > 1:
+                        print  'SKIP', tarinfo_to_ls(tarinfo.type,tarinfo.mode),\
+                               tarinfo.uname , tarinfo.gname ,tarinfo.name,package_name
+                    continue
+                n=self.CF.find_prefix(tarinfo.name)
+                if n == None:
+                    print  'NON_POLICY_DIR', ( '0%o'%tarinfo.mode),\
+                           tarinfo.uname,tarinfo.gname,tarinfo.name,package_name
+                elif n != 0 and n!=None and tarinfo.name == self.CF.common_file_prefixes[n]:
+                    print  'SKIP_STRANGE_DIR', ( '0%o'%tarinfo.mode),\
+                           tarinfo.uname,tarinfo.gname,tarinfo.name,package_name
+                    continue
+            #prepare data
+            if tarinfo.isreg():
+                f=tar.extractfile(tarinfo)
+                if self.multi_hash_p:
+                    data=self.insert_hash(h,tarinfo.size)
+                else:
+                    data=B(sha1_hash_file(f))
+            elif tarinfo.issym() or tarinfo.islnk():
+                data=B(tarinfo.linkname)
+            elif tarinfo.ischr() or tarinfo.isblk():
+                data=B(str(tarinfo.devmajor)+' '+str(tarinfo.devminor))
+            else:
+                data=None
+            name,mode,tartype,uid,gid,uname,gname=tarinfo_to_sqlite(tarinfo,self.CF,package_name)
+            #insert regularized data
+            self.sql_cursor.execute('INSERT INTO file VALUES (null, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                         (name, mode, tartype, uid, gid, uname, gname,
+                          package_id, data))
+            if VERBOSE > 1:
+                a=str(data)
+                if tarinfo.isreg() and not self.multi_hash_p:
+                    a='SHA1:'+sha1_to_hex(data)
+                print  ' ' , tarinfo_to_ls(tarinfo.type,tarinfo.mode) , tarinfo.name, a
+
+    def add(self,i):
+        if type(i) == ListType:
+            for a in i:
+                self.add(a)
+        elif type(i) == StringType:
+            if os.path.isfile(i) and i[-4:] == '.deb':
+                self.hash_deb(i)
+            elif os.path.isdir(i):
+                for dirpath, dirnames, filenames in os.walk(i):
+                    for n in filenames:
+                        self.add(os.path.join(dirpath, n))
+        else: raise TypeError,'add accepts only strings (filenames) or lists of filenames'               
+                
+    
+    def select_package_by_id(self,id):
+        self.__cp.execute('SELECT '+self.package_info+' FROM package  WHERE id = ? ',(id,))
+        rp = self.__cp.fetchone()
+        if rp == None:
+            sys.stderr.write('INTERNAL.PROBLEM.no.package.for.'+id)
+        return rp
+
+    def find_package_id(self,pack,vers,arch):
+        self.__cp.execute("SELECT id FROM package  WHERE name = ? AND version = ? AND architecture = ? ",
+                          (pack,vers,arch))
+        #self.__cp.execute("SELECT id FROM package  WHERE name =  ?", (pack,))
+        rp = self.__cp.fetchone()
+        return rp
+
+    def find_by_sha1(self,s):
+        "returns a filename,package,version,arch matching the given sha1"
+        if self.multi_hash_p:
+            assert False
+            hash_id=self.select_by_hash_sha1_((None,s,None))
+        else:
+           self.__cf.execute('SELECT name,package_id FROM file  WHERE other_data = ? ',\
+                             (dbapi.Binary(s),))
+           rf = self.__cf.fetchone()
+           if rf == None: return None
+           return (rf[0],)+self.select_package_by_id(rf[1])
+
+    def iterate_on_select(self,select='',data=()):
+        self.__cf.execute('SELECT name,mode,tartype,uid,gid,uname,gname,other_data,package_id FROM file '\
+                          +select,data)
+        rf = self.__cf.fetchone()
+        while rf!=None:
+            rf = list(rf)
+            if type(rf[2]) == BufferType:
+                rf[2] = str(rf[2])
+            if rf[2] == tarfile.REGTYPE:
+                if self.multi_hash_p:
+                    rf[7]=db.select_hash_by_id(rf[7])
+                else:
+                    if type(rf[7]) == BufferType:
+                        rf[7]=str(rf[7])
+                    rf[7]=(None,rf[7],None)
+            yield rf
+            rf = self.__cf.fetchone()
+
+    def scan_by_hash(self,a,hash):
+        #FIXME no multi hash support here
+        self.__cf.execute('SELECT name,package_id FROM file  WHERE other_data = ? ',(dbapi.Binary(hash[1]),))
+        rf = self.__cf.fetchone()
+        if rf == None: 
+            return {}
+        else:
+            p=self.select_package_by_id(rf[1])+(self.dbname,)
+            return {'MV':(a,'<-',self.CF.decompress(rf[0]),':')+p}
+    
+    def scan(self,i,hashes=None,root='/'):
+        """scan file to see if it was modified in any way. Returns a dictionary (code,reason)"""
+        #if os.path.isfile(i) and (not os.path.islink(i)) and (not os.access(i, os.R_OK)):
+        #    return {'CANT_READ':(i,)}
+        
+        name, mode, tartype, uid, gid, uname, gname, data = stat_to_tar(root+i)
+        
+        if tartype == 'SOCKET': # it is a socket 
+            return {'SOCKET':(i,)}
+        
+        ls_l=tarinfo_to_ls(tartype,mode)
+        assert type(mode) == IntType
+        if tartype == tarfile.REGTYPE:
+            if hashes == None:
+                data = helper_hashes(root+i, m=self.multi_hash_p)
+            else: data = hashes
+        if DEBUG > 1: print '# scanning ',i,tartype,repr(data)
+
+        cname=self.CF.compress(name)
+        self.__cf.execute('SELECT name,mode,tartype,uid,gid,uname,gname,other_data,package_id FROM file  WHERE name = ? ',(dbapi.Binary(cname),))
+        rf = self.__cf.fetchone()
+        #did not find by pathname
+        if rf == None:
+            if tartype == tarfile.DIRTYPE:
+                if uid == 0 and gid == 0 and mode == 0755:
+                    #the database does not contain this kind of directories
+                    return {'DIR': (i,)}
+                else: return {'DIR_CHMOD': (ls_l,uname,gname)}
+            return {'U': (i,)}
+ 
+        #did find this pathname
+        #lets scan and see if we can find a good explanation
+        while rf:
+            rfname,rfm,rft,rfuid,rfgid,rfuname,rfgname,rfd,rfi=sqlite_towards_tarinfo(rf,self.CF)
+        
+            if rft == tarfile.REGTYPE:
+                if self.multi_hash_p:
+                    rfd=self.select_hash_by_id(rfd)
+                else:
+                    rfd=(None,str(rfd),None)
+                    
+            p=self.select_package_by_id(rfi)+(self.dbname,)
+                        
+            rf_ls_l=tarinfo_to_ls(rft,rfm)
+            
+            code_reason=compute_code_reason(
+                (name, mode, tartype, uid, gid, uname, gname, data),
+                (rfname,rfm,rft,rfuid,rfgid,rfuname,rfgname,rfd),
+                package=p, root=root )
+            assert code_reason
+
+            if DEBUG>1: print '#code_reason for pair', name,rfname,code_reason
+            
+            if 'OK' in code_reason:
+                return code_reason
+            
+            if rft == tarfile.REGTYPE and 'ED' not in code_reason:
+                return code_reason
+            
+            rf = self.__cf.fetchone()
+        return code_reason
+
+
+def iterate_sorted_names(DBs,select='ORDER BY name',data=()):
+    def c(a,b):
+        return -cmp(a[0][0],b[0][0])
+    its=[]
+    for f in DBs:
+        if type(f) == StringType:
+            db=hashdb(f)
+        else: db = f
+        i=db.iterate_on_select(select,data)
+        try:
+            r=i.next()
+            its.append((r,i,db))
+        except StopIteration: pass
+    while its:
+        its.sort(c)
+        r,i,db=its.pop()
+        yield r,db
+        try:
+            r=i.next()
+            its.append((r,i,db))
+        except StopIteration: pass
+
+
+
+#codes returned by hashdb.__scan
+scan_result_codes = {
+    'U' : 'This file is not in the database(s).' ,
+    'DIR' : 'This is a directory with standard ownership and permissions.',
+    'DIR_CHMOD' : 'This is a directory with strange ownership and permissions.' ,
+    'OK' :  'This file is identical to what is shipped inside the Debian package' , 
+    'TYPE' : 'There is a file with such name in a package, but it is a different filesystem object.',
+    'SOCKET': 'This file is a socket, and debforensic does not have a clue about sockets.',
+    'ED' : 'This is a regular file, and its content was modified.' , 
+    'CH' : 'This is a nonregular file, and it was modified.' , 
+    'CHMOD' : 'The permissions of this file were changed.',
+    'CHOWN' : 'The ownership of this file was changed.',
+    'CHGRP' : 'The group ownership of this file was changed.',
+    'MV' : 'This regular file was found in a package, but with another name.' ,
+    'RM' : 'This file is listed in this package, but is not present in the filesystem.',
+    'DIVERT' : 'This file was diverted.',
+    'CANT_READ':'This file cannot be read.',
+    'DPKG-I' : 'This file is in a package that is here installed, but the package is not in the database(s).',
+    'EQ' : 'This file is identical to a file in this package, according to the database(s), but this package is not installed.',
+    'MAYBE' : 'This file is not in the database(s); it is here listed as being part of this package.',
+    'NOT_EXISTS' : 'This file does not exists.',
+    'BROKEN_HARDLINK' : 'These two files are hardlinked in the package, but are not in the filesystem. This is though a minor problem.'
+}
+
+
+def compute_code_reason(
+    (name, mode, tartype, uid, gid, uname, gname, data),
+    (rfname,rfm,rft,rfuid,rfgid,rfuname,rfgname,rfd),
+    package=(), root='/', ls_l = None):
+    "compare two files, and explain what is different"
+
+    rf_ls_l=tarinfo_to_ls(rft,rfm)
+    if ls_l == None: ls_l=tarinfo_to_ls(tartype,mode)
+
+    p=package
+    if p != () and p[0][0] != ':':
+        p=(':',)+p
+
+    #if tartype == 'SOCKET': #actually this will never trigger
+    #    return {'SOCKET':(name,)}
+
+    if rft == tarfile.LNKTYPE:
+        code_reason = {'BROKEN_HARDLINK':(name,'<->',str(rfd),)+p}
+        try:
+            rfstat=os.stat(root+str(rfname))
+            linkstat=os.stat(root+str(rfd))
+            if rfstat[ST_DEV] == linkstat[ST_DEV] and rfstat[ST_INO] == linkstat[ST_INO]:  
+                return {'OK':(name,)+p}
+            a=open(root+str(rfname))
+            b=open(root+str(rfd))
+            c,d=1,1
+            while c==d and c:
+                c=a.read(1000)
+                d=b.read(1000)
+            if c or d:
+                code_reason['ED']=(name,)+p
+        except OSError,e:
+            code_reason['CANT_READ']=(str(e),)
+        except IOError,e:
+            code_reason['CANT_READ']=(str(e),)
+        return code_reason
+        
+    if rft == tartype and rfname == name and mode == rfm and data == rfd and uid == rfuid and gid == rfgid :
+        return {'OK':(name,)+p}
+    
+    code_reason = {}
+
+    if rfname != name:
+        code_reason['MV']=(name, '<-', rfname)+p
+     
+    if rft != tartype:
+        code_reason['TYPE'] = (name,ls_l,'<-',rf_ls_l)+p
+        return code_reason #not much point in checking uig and gid
+        
+    if rft == tarfile.REGTYPE:
+        assert type(data) == TupleType and len(data) ==3
+        assert type(rfd) == TupleType and len(rfd) ==3
+        if data[1] == None:
+            code_reason['CANT_READ']=(name,)
+        elif ( data[0] != None and rfd[0] != None  and data[0] != rfd[0] ) or\
+             ( data[2] != None and rfd[2] != None  and data[2] != rfd[2] ) or\
+             ( data[1] != rfd[1] ) :
+            if DEBUG:
+                code_reason['ED']=(name,'SHA1:'+sha1_to_hex(data[1]),'<-','SHA1:'+sha1_to_hex(rfd[1]))+p
+            else: code_reason['ED']=(name,)+p
+    else:
+        if data != rfd :
+            code_reason['CH']=(name,data,'<-',rfd)+p
+
+    if mode != rfm:
+        code_reason['CHMOD']=(name,ls_l, '<-',rf_ls_l)+p
+
+    if uname != None:#actually this is never None
+        if rfuname != uname:
+            code_reason['CHOWN']=(name, uname, '<-', rfuname)+p
+    else:
+        if rfuid != uid:
+            code_reason['CHOWN']=(name, uid, '<-', rfuid)+p
+
+    if gname != None:
+        if rfgname != gname:
+            code_reason['CHGRP']=(name, gname, '<-', rfgname)+p
+    else:
+        if rfgid != gid:
+            code_reason['CHGRP']=(name, gid, '<-', rfgid)+p
+    return code_reason
+
+
+
+explained=[]
+def explain_scan(code_reason, root='/'):
+    for code,reason in code_reason.items():
+        assert type(reason) == TupleType
+        if code not in ('OK','DIR') or VERBOSE:
+            if DEBUG:
+                #def f(x):
+                #    if x == ':' : return x
+                #    else: return repr(x)
+                print code+' '+string.join(map(repr,reason))
+            else:
+                print code+'  '+root+string.join(reason,'  ')
+            if (INFO or VERBOSE or DEBUG) and code  not in explained:
+                print '#',code,'=',scan_result_codes.get(code,'sorry, no help (yet).')
+                explained.append(code)
+        if code in ('OK','DIR'):
+            return False
+    return True
+
+def scan(a,DBs,root='/'):
+    "optimize scanning in multiple DBs by computing hashes only once"
+    i =  root + a
+    if not os.path.exists(i):
+        return {'NOT_EXISTS':(a,)}
+    h=None
+    if os.path.isfile(i) and not os.path.islink(i):
+    #    if not os.access(i, os.R_OK):
+    #        return {'CANT_READ':(i,)}
+        h = helper_hashes(i)
+    for db in DBs:
+        c_r = db.scan(a,hashes=h,root=root)
+        if  'U' not in c_r : return c_r
+    if h:
+        for db in DBs:
+            c_r = db.scan_by_hash(a,h)
+            if c_r: return c_r
+    return {'U': (a,)}
+
+def recurse_scan(a,DBs,root='/'):
+    assert type(a) == StringType
+    failures=0
+    i = root + a
+    if os.path.isdir(i):
+        code_reason=scan(a,DBs,root)
+        if explain_scan(code_reason,root):
+            failures+=1
+        for dirpath, dirnames, filenames in os.walk(i):
+            for n in filenames+dirnames:
+                f = os.path.join(dirpath, n)
+                code_reason=scan(f[len(root):],DBs,root)
+                if explain_scan(code_reason,root):
+                    failures+=1
+    elif os.path.exists(i):
+        code_reason=scan(a,DBs,root)
+        if explain_scan(code_reason,root):
+            failures+=1
+    else:  explain_scan({'NOT_EXISTS':(a,)},root)
+    return failures
+
+def add(pack,H):
+    pack=abspath(pack)
+    if os.path.isdir(pack):
+        pack=pack+'/Packages'
+    if os.path.basename(pack) == 'Packages':
+        assert os.path.isfile(pack)
+        dist=os.path.dirname(pack)
+        base=dist.split('/')
+        try:
+            a=base.index('dists')
+        except ValueError:
+            sys.stderr.write('Error: pathname "%s" does not contain "dists"\n' % pack)
+        base = string.join(base[:a],'/')
+        RELEASE_FILE=(dist+'/Release')
+        assert os.path.isfile(RELEASE_FILE)
+        RELEASE_DB=parse_release(RELEASE_FILE)
+        for A,B in RELEASE_DB.items():
+            H.insert_info('Release/'+A,B)
+        f=open(pack)
+        for a in f:
+            a=a.rstrip('\n')
+            if a[:10] == 'Filename: ':
+                a=base+'/'+a[10:]
+                if not os.path.isfile(a):
+                    sys.stderr.write('Package missing! '+a+'\n')
+                else:
+                    H.add(a)
+    elif pack[-4:] == '.deb' :
+        H.add(pack)
+    else: sys.stderr.write("debforensic: dont know how to add "+pack+"\n")
+
+def create(dbname):
+    if multi_hash_p and sha256new == None:
+        sys.stderr.write("When multi_hash_p is enabled, use python 2.5 or above\n")
+        sys.exit(1)
+    if os.path.exists(dbname):
+        sys.stderr.write(sys.argv[0]+': will not overwrite already existing '+dbname+'\n')
+        sys.exit(1)
+    os.popen("sqlite3 '"+dbname+"'",'w').write(sql_scheme)
+    H=hashdb(dbname)
+    if multi_hash_p:
+        H.insert_hash__((md5new().digest(),sha1new().digest(),sha256new().digest()), 0)
+    H.commit()
+
+def test(dbname):
+    if not os.path.exists(dbname):
+        create(dbname)
+    H=hashdb(dbname)    
+    print 'insert 0.20  as ', H.hash_deb('/home/debdev/debdelta/debdelta_0.20_i386.deb') 
+    print 'insert 0.22  as ', H.hash_deb('/home/debdev/debdelta/debdelta_0.22_i386.deb') 
+    print "scan('/usr/share/doc/debdelta/README.gz')"
+    print H.scan('/usr/share/doc/debdelta/README.gz')
+    print "scan('/usr/share/doc/debdelta/')"
+    r=H.scan('/usr/share/doc/debdelta/')
+    print 'result ',r
+    print "recurse_scan('/usr/share/doc/debdelta/')"
+    r=recurse_scan('/usr/share/doc/debdelta/',(H,))
+    print 'result ',r
+    s=sha.new(open("/usr/share/doc/debdelta/copyright").read()).digest()
+    print 'find by sha1 ' , H.find_by_sha1(s)
+    #print parse_release('/var/lib/apt/lists/www.debian-multimedia.org_dists_etch_Release')
+    #print parse_release('/var/lib/apt/lists/volatile.debian.net_debian-volatile_dists_etch_volatile_Release')
+
+def index(dbname):
+    os.popen("sqlite3 '"+dbname+"'",'w').write(sql_scheme_indexes)
+
+
+def forensic(DBs, root = '/'):
+    #import Queue
+    #import threading
+    #filesysqueue = Queue.Queue()
+    #danger Will Robinson! this works fine only if all DBs use the same CompressFilename
+    CF = CompressFilename()
+
+    def iterate_from_prefix(base,npref,filelist):
+        if not os.access(root+base, os.R_OK | os.X_OK ):
+            print '# cannot enter into dir ',repr(root+base)            
+            return            
+        for a in os.listdir(root+base):
+            a=base+a
+            i=root+a
+            if os.path.isdir(i) and not os.path.islink(i):
+                a = a + '/'
+                n=CF.find_prefix(a)
+                if n == False:
+                    print '# skipping directory tree ',repr(i)
+                elif n == npref:
+                    iterate_from_prefix(a,npref,filelist)
+            else:
+                r = list(stat_to_tar(i))
+                if r[2] == 'SOCKET':
+                    print '# ignoring socket ',i
+                    break
+                if os.path.isfile(i) and not os.path.islink(i):
+                    if not os.access(i, os.R_OK ):
+                        if DEBUG : print '# cannot scan file ',repr(i)
+                        r[-1] = (None,None,None)
+                    else:
+                        r[-1] = helper_hashes(i)
+                filelist.append( (CF.compress(a),r))
+    
+    def iterate_sorted_dirs():#this is not optimized, but it works fine
+        for pref in CF.common_file_prefixes:
+            if pref == '' : continue #avoid stuff in nonstandard directories
+            npref=CF.find_prefix(pref)
+            assert pref == CF.common_file_prefixes[npref]
+            filelist=[]
+            iterate_from_prefix(pref,npref,filelist)
+            filelist.sort()
+            for c,r in filelist:
+                yield c,r
+                
+    #t = threading.Thread(target=iterate_sorted_dirs)
+    #t.setDaemon(True)
+    #t.start()
+
+    diversions_from, diversions_to = scan_diversions()
+    diversions_candidates={} #files in the database that may explain diverted files
+    installed_packages = parse_status(root,DBs)
+
+    def express_package(package,db,installed_p=None):
+        if installed_p != False and (installed_p == True or (package,db.dbname) in installed_packages):
+            return (':',)+installed_packages[(package,db.dbname)]+(db.dbname,)
+        else:
+            return (':not-installed:',)+db.select_package_by_id(package)+(db.dbname,)
+
+    iterate_db = iterate_sorted_names(DBs)
+    iterate_sys = iterate_sorted_dirs()
+    def db_next():
+        try:
+            l,db = iterate_db.next()
+        except StopIteration:
+            return None, None, None, None
+        rf = sqlite_towards_tarinfo(l,db.CF)
+        return l[0], rf[:8], db, l[-1]
+    def sys_next():
+        try:
+            return iterate_sys.next()
+        except StopIteration:
+            return None,None
+    
+
+    #stuff that is outside the standard directory trees
+    if DEBUG : print '#files in non standard directories follow'
+    rfcn, rf, db, package  = db_next()
+    while rfcn != None and ord(rfcn[0][0]) == 1:
+        i=root+rf[0] 
+        if os.path.exists(i):
+            if rf[0] in diversions_from:
+                divert_to,divert_pack=diversions_from[rf[0]]
+                a=diversions_candidates.get(divert_to,[])
+                diversions_candidates[divert_to]=a.append((rf,db,package))
+            elif (package,db.dbname) in installed_packages:
+                rsys = list(stat_to_tar(i))
+                if os.path.isfile(i) and not os.path.islink(i):
+                    rsys[-1] = helper_hashes(i)
+                a=express_package(package,db,True)
+                code_reason = compute_code_reason(rsys,rf,a,root)
+                explain_scan(code_reason,root)
+        rfcn, rf, db, package  = db_next()
+
+    #stuff that is in the standard directory trees       
+    removed_files = {}
+    extra_files = {}
+    extra_sha1 = {}
+    if DEBUG : print '#files in standard directories follow'
+    did_prefix = None
+    rsyscn = True
+    while rsyscn != None and rfcn != None : #main loop, consumes both iterators
+        if DEBUG:
+            n=ord(rfcn[0])-1
+            if n != did_prefix:
+                print '# files in the directory tree ', CF.common_file_prefixes[n]
+                did_prefix = n
+        rsyscn, rsys = sys_next()
+        while rsyscn != None :
+            if rsys[0] in diversions_to:
+                divert_from,divert_pack=diversions_to[rsys[0]]
+                diversions_to[rsys[0]]=(divert_from,(divert_pack,rsys))
+                if DEBUG: explain_scan( {'DIVERT': (divert_from,'->',rsys[0],'by',divert_pack) })
+            elif rfcn > rsyscn:
+                if rsys[0] in installed_packages:
+                    explain_scan( {'MAYBE': (rsys[0],':local:')+installed_packages[rsys[0]] })
+                else:
+                    explain_scan( {'U': (rsys[0],)}) #fixme : maybe it was moved away
+                    extra_files[rsys[0]] = rsys
+                    if rsys[2] == tarfile.REGTYPE:
+                        extra_sha1[rsys[-1][1]] = rsys
+            else: break
+            rsyscn, rsys = sys_next()
+        #at this point, we know that rsys is not a diversion and that rfcn <= rsyscn
+        while rfcn != None:
+            if rf[0] in diversions_from:
+                divert_to,divert_pack=diversions_from[rf[0]]
+                if divert_to not in diversions_candidates:
+                    diversions_candidates[divert_to]=[]
+                diversions_candidates[divert_to].append((rf,db,package))
+            elif rfcn < rsyscn:
+                if (package, db.dbname) in installed_packages:
+                    a=express_package(package,db,True)
+                    #if rf[2] == tarfile.REGTYPE: #fixme: may track moved files by sha1
+                    explain_scan( {'RM': (rf[0],)+a})
+                    removed_files[rf[-1]] = rf
+            else: break
+            rfcn, rf , db , package  = db_next()
+        code_reason = None
+        best_code_reason = None
+        while rfcn != None and rfcn == rsyscn:
+            if (package,db.dbname) in installed_packages:
+                a=express_package(package,db,True)
+                code_reason = compute_code_reason(rsys,rf,a,root)
+                if 'OK' in code_reason: best_code_reason = code_reason
+            elif best_code_reason == None :
+                a=express_package(package,db,False)
+                code_reason = compute_code_reason(rsys,rf,a,root)
+                if 'OK' in code_reason:
+                    del code_reason['OK']
+                    code_reason['EQ']=(rsys[0],)+a
+                if rsys[0] in installed_packages:
+                    code_reason['DPKG-I']=(rsys[0],':local:')+installed_packages[rsys[0]]
+            rfcn, rf , db , package  = db_next()
+        if best_code_reason != None : explain_scan(best_code_reason,root)
+        elif code_reason != None : explain_scan(code_reason,root)
+
+    #check diversions
+    if DEBUG : print '# diversions follow'
+    for divert_to  in diversions_to:
+        divert_from,divert_info=diversions_to[divert_to]
+        if not os.path.exists(root+divert_to):
+            print "# non existent target '%s' , diverted from file '%s' package '%s'" % (divert_to,divert_from,divert_info)
+        elif type(divert_info) == StringType :
+            print "# out of debforensic scope, target '%s' , diverted from file '%s' package '%s'" % (divert_to,divert_from,divert_info)
+        else:
+            divert_pack,rsys = divert_info
+            if rsys[0] not in  diversions_candidates:
+                print "# target '%s' is diverted from file '%s' by package '%s' , but the file is not in the database(s)." % (divert_to,divert_from,divert_info)
+                explain_scan( {'U': (rsys[0],)},root)
+            else:
+                for rf,db,package in diversions_candidates[rsys[0]]:
+                    a=express_package(package,db)
+                    code_reason = compute_code_reason(rsys,rf,a,root)
+                    if 'MV' in code_reason:
+                        code_reason['DIVERT']=code_reason['MV']+('BY:'+divert_pack,)
+                        del code_reason['MV']
+                    if code_reason.keys() == 'DIVERT' : 
+                        break
+                if DEBUG: print "# target '%s' is a diverted from file '%s' package '%s'" % (divert_to,divert_from,divert_info)
+                explain_scan(code_reason,root)
+
+if __name__ == '__main__':
+    #argv = debugging_argv or sys.argv
+    if len(sys.argv) <= 1:
+        help()
+        raise SystemExit(0)
+    
+    RELEASE_FILE = None
+    RELEASE_DB = {}
+    DEBUG = 0
+    VERBOSE = 0
+    INFO = False
+    RECURSIVE = False
+    ACT = True
+    dbname = []
+    cmd = None
+    JUSTHELP = False
+    CHROOT = '/'
+ 
+    try: 
+        ( opts, argv ) = getopt.getopt(sys.argv[1:], 'hvdriD:R:' ,
+                                       ('help','debug','verbose','no-act','release=','db=',
+                                        'create','scan','add','dump','test','index','forensic',
+                                        'compress','info','recursive','chroot=') )
+    except getopt.GetoptError,a:
+        sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
+        raise SystemExit(2)
+
+    for  o , v  in  opts :
+        if o == '-v' or o == '--verbose' :
+            VERBOSE += 1
+        elif o == '-d' or o == '--debug' : 
+            DEBUG += 1
+        elif o == '-r' or o == '--recursive' : 
+            RECURSIVE = True
+        elif o == '-i' or o == '--info' : 
+            INFO = True
+        elif o == '--no-act': 
+            ACT = False
+        elif o == '-D' or o == '--db':
+            dbname.append(v)
+        elif o == '--chroot':
+            CHROOT = v
+        elif o == '-R' or o == '--release':
+            RELEASE_FILE = v
+            RELEASE_DB = parse_release(RELEASE_FILE)
+        elif o ==  '--help' or o ==  '-h': 
+            JUSTHELP = True            
+        elif o[:2] == '--' and o[2:] in __help__.keys():
+            if cmd :
+                sys.stderr.write(' option ',o,'is unacceptable after',cmd)
+                raise SystemExit(1)
+            else:
+                cmd=o[2:]
+        else:
+            sys.stderr.write(' option ',o,'is unknown, try --help')
+            raise SystemExit(1)
+
+    if JUSTHELP:
+        help(cmd)
+        raise SystemExit(0)
+
+    if not cmd and INFO:
+        print 'This is the list of result codes printed by --scan or --forensic :'
+        for a,b in scan_result_codes.items():
+            print a,' = ',b
+        raise SystemExit(0)
+
+    if not cmd:
+        sys.stderr.write('Need a command. Read --help.\n')
+        raise SystemExit(1)
+    
+    if not dbname:
+        sys.stderr.write('Need a database. Use --db DB . Read --help .\n')
+        raise SystemExit(1)
+    elif len(dbname) > 1 and not (  cmd == 'dump' or cmd == 'scan' or cmd == 'forensic'):
+        sys.stderr.write('Provide only one database for --'+cmd+'.\n')
+        raise SystemExit(1)
+
+    if argv and not (  cmd == 'scan' or  cmd == 'dump' or cmd == 'add' or cmd == 'create'):
+        sys.stderr.write('Do not provide arguments for --'+cmd+'.\n')
+        raise SystemExit(1)
+    
+    if dbapi == None:
+        sys.stderr.write("Please install the package 'python-pysqlite2'\n")
+        raise SystemExit(1)
+
+    if not ( cmd == 'dump' or cmd == 'scan' or cmd == 'forensic'):
+        dbname=dbname[0]
+        
+    if cmd == "test":
+        test(dbname)
+        sys.exit(0)
+
+    elif cmd == "index":
+        index(dbname)
+        sys.exit(0)
+
+    elif cmd == "create":
+        create(dbname)
+        if argv:
+            H=hashdb(dbname)
+            for i in argv:
+                add(i,H)
+        sys.exit(0)
+        
+    elif cmd == "add": 
+        assert os.path.isfile(dbname)
+        H=hashdb(dbname)
+        for i in argv:
+            add(i,H)
+            
+    elif cmd == "forensic":
+        H=map(hashdb,dbname)
+        forensic(H,CHROOT)
+        
+    elif cmd == "scan":
+        H=map(hashdb,dbname)
+        if RECURSIVE:
+            for i in argv:
+                recurse_scan(i.lstrip('/'),H,root=CHROOT)
+        else:
+            for i in argv:
+                code_reason=scan(i.lstrip('/'),H,root=CHROOT)
+                explain_scan(code_reason)
+
+    elif cmd == "dump_p":
+        assert os.path.isfile(dbname)
+        H=hashdb(dbname)
+        c=H.dump_flat_all()
+        for i in c:
+            j=list(i)
+            #j[4]=  tarinfo_to_ls(j[4] , j[5])
+            #j[4] = '0%o' & j[4] ???
+            r=list(sqlite_towards_tarinfo(i[3:],H.CF))
+            r.pop() #discard package_index
+            if r[2] == tarfile.REGTYPE and not H.multi_hash_p:
+                r.append('SHA1:'+sha1_to_hex(r.pop()))
+            ls_l=tarinfo_to_ls(r[2],r[1])
+            j=j[:3]+[r[0],ls_l]+r[5:]
+            print string.join(map(str,j),'\t')
+
+    elif cmd == "dump":
+        if argv:
+            assert len(argv) == 1
+            CF=CompressFilename()
+            select = ' WHERE name = ?'
+            data = ( dbapi.Binary( CF.compress(argv[0].lstrip('/'))) ,)
+            c = iterate_sorted_names(dbname,select,data)
+        else:
+            c = iterate_sorted_names(dbname)
+        for l,db in c:
+            r=list(sqlite_towards_tarinfo(l,db.CF))
+            pid=r.pop() #discard package_index
+            if r[2] == tarfile.REGTYPE:
+                m=r.pop()
+                assert type(m) == TupleType and len(m) == 3
+                r.append('SHA1:'+sha1_to_hex(m[1]))
+                if db.multi_hash_p:
+                    r.append('SHA256:'+sha1_to_hex(m[2]))
+                    r.append('MD5:'+sha1_to_hex(m[0]))
+            ls_l=tarinfo_to_ls(r[2],r[1])
+            r=[r[0],ls_l]+r[5:]+list(db.select_package_by_id(pid))+[db.dbname]
+            print string.join(map(repr,r),'\t')
+
+    else:
+        sys.stderr.write("Sorry this command is yet unimplemented: "+cmd+'\n')
+        sys.exit(1)
