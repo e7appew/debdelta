@@ -98,8 +98,27 @@
     </section>
     <section><title>debforensic</title>
     <para>
-      There is also another bunch of code that though was never distributed....
-    </para></section>
+      <emphasis> There is also another bunch of code 
+      (that though was never distributed.... it is available in the GIT repo).
+      </emphasis>. 
+      <command>debforensics</command> creates
+      and uses sqlite databases containing information regarding
+      debian binary packages. <command>debforensics --add</command>
+      will scan debian packages and add the list of files (and SHA1 hashes
+      of them) to the database. <command>debforensics --scan</command>
+      will check a file against multiple databases, to see if that file is part
+      of any package.  <command>debforensics --forensic</command>
+      will scan a filesystem and list files that are part of a package, and
+      files that are not (or are missplaced, or have strange permissions....).
+    </para>
+      <para>
+      If debdelta-upgrade fails to apply a delta, and '-d' is passed,
+      then a debug file is generated, and  then debforensic may be used
+      to understand what went wrong (theoretically).</para>
+      <important><para>Beware: a full database for main/amd64 is 
+       ~350MBs, without indexes. So in practice currently I cannot keep
+        a database in my host.</para></important>
+    </section>
   </section>
 
   <section><title>a delta</title>
