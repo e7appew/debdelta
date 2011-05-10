@@ -626,37 +626,17 @@
       'dpkg -i' that  decompresses and reopens the data.tar in the deb.
       </para><para>
       It is then reasonable to collapse this two parts, and this would
-      possibly speed up the upgrade a bit. A first step has been <emphasis>'--format=unzipped'</emphasis>, a next step may be
-      <xref linkend="format_preunpacked"/>
-      </para><para>
-      Here is another idea. When  'debdelta-upgrade' is called in upgrading a
-      package 'foobar' it currently creates 'foobar_2.deb'. By an
-      appropriate cmdline switch <emphasis>'--format=preunpacked'</emphasis>,
-      instead of creating a 'foobar_2.deb' , it
-      would directly save all of its file to the filesystem, and it would
-      add an extension to all the file names, making sure that no file name
-      would conflict (=overwrite) with a preexisting file on the filesystem
-      ; then it would create a file 'foobar_2.deb_preunpacked' , that would be
-      a deb package were 'data.tar.lzma' is replaced with 
-      'data_list', just a text file specifying the list of files and  where they were unpacked.
-      </para><para>
-      I could change debdelta to accomplish that, it would not be a huge change. I already implemented it
-      in the deltas (when I implemented '--format=...') the capability of piping the uncompressed data somewhere.
-      </para><para>
-      Someone should help instead in changing 'dpkg' so that it would be
-      able to install starting from 'foobar_2.deb_preunpacked'. And change APT
-      so that it would interact with 'debdelta' to create the
-      'foobar_2.deb_unpacked' files, and pass them to dpkg .
-      </para><para>
-      Note that the above idea overlaps a lot with 
-      <ulink url="http://wiki.debian.org/SummerOfCode2010/StreamingPackageInstall">
-           the SummerOfCode2010 StreamingPackageInstall</ulink>
-    </para>
+      possibly speed up the upgrade a bit. A first step is
+      <emphasis>'--format=unzipped'</emphasis>       <xref linkend="format_unzipped"/>
+      , a next step may be          <emphasis>'--format=preunpacked'</emphasis>
+      <xref linkend="format_preunpacked"/>.
+      </para>
      </section>
+
       <section id="format_unzipped"><title>--format=unzipped</title>
       <para>The recently introduced
        new <varname>--format=unzipped</varname>
-       may change all this. If you call
+       may speed up package upgrades. If you call
        'debdelta-upgrade' with the option '--format=unzipped' , then in the
        recreated deb the data.tar part will not be compressed. 
        This may speedup the 'debdelta-upgrade' + 'apt-get upgrade' process. Indeed, writing
@@ -668,21 +648,40 @@
        space...).  Indeed I see that the creation of deltas is much faster; 
         but I still do not have enough data collected....
      </para></section>
+
       <section id="format_preunpacked"><title>--format=preunpacked</title>
-      <para> <varname>--format=preunpacked</varname>
-       is a proof-of-concept.
-       <command>debdelta-upgrade --format=preunpacked</command>
-       writes the data part of the new deb directly
-       on the filesystem; the resulting deb contains
-       <emphasis>data_list</emphasis> instead of 
-       <emphasis>data.tar.xxx</emphasis>, that lists 
-       what was put where. The format of <emphasis>data_list</emphasis> is
+      <para>
+      Here is another idea. When  'debdelta-upgrade' is called in upgrading a
+      package 'foobar' it currently creates 'foobar_2.deb'. By an
+      appropriate cmdline switch <emphasis>'--format=preunpacked'</emphasis>,
+      instead of creating a 'foobar_2.deb' , it
+      directly saves all of its file to the filesystem, and it
+      adds an extension to all the file names, making sure that no file name
+      conflicts (=overwrite) with a preexisting file on the filesystem
+      ; then it creates a file 'foobar_2.deb_preunpacked' , that is 
+      a deb package were 'data.tar.xxx' is replaced with 
+      'data_list', just a text file specifying the contents of 'data.tar.xxx' 
+      and  where regular files  were temporarily unpacked.
+      </para><para>
+      Note that the above idea overlaps a lot with 
+      <ulink url="http://wiki.debian.org/SummerOfCode2010/StreamingPackageInstall">
+           the SummerOfCode2010 StreamingPackageInstall</ulink>
+     </para>
+      <para> 
+       <command>debdelta-upgrade --format=preunpacked</command> is now implemented as a proof-of-concept
+       (it does not really write temporary files to HD yet).
+       <!-- it writes the data part of the new deb directly -->
+       <!-- on the filesystem; the resulting deb contains -->
+       <!-- <emphasis>data_list</emphasis> instead of  -->
+       <!-- <emphasis>data.tar.xxx</emphasis>, that lists  -->
+       <!-- what was put where.  -->
+       The format of <emphasis>data_list</emphasis> is
        <programlisting>
 Files:
  TYPE MODE USER GROUP MTIME
  NAME_FILE_WAS_UNPACKED_TO (if regular file)
  ORIGINAL_FILENAME
- LINK_NAME (if symlink)
+ LINK_NAME (if link)
 [repeat]
        </programlisting>
        Example of data_list
@@ -700,7 +699,6 @@ Files:
  ./usr/share/man/man1/gtk-gnash.1.gz
  gnash.1.gz
        </programlisting> 
-      Note that no support is currently in dpkg to install that 'deb'.
       </para><para> PROS: (1) may be faster; (2) if you need to
       upgrade a 100MB package, you do not need to save both the deb
       and (while 'dpkg --unpack') the whole new deb data : so there is
@@ -714,16 +712,15 @@ Files:
       good idea to use ".deb_preunpacked" as extension for them.  And
       I would recommend using '--format=unzipped' for essential
       packages such as the kernel.</emphasis>
-    </para>   
+     </para>   
+      <para>
+      If you like the idea, someone should help in changing 'dpkg' so that it would be
+      able to install starting from 'foobar_2.deb_preunpacked'. And change APT
+      so that it would interact with 'debdelta' to create the
+      'foobar_2.deb_unpacked' files, and pass them to dpkg (and clean them properly).
+      </para>
       </section>
-
-
     </section>
-
-    <section><title></title>
-    <para>
-    </para>
-  </section>
 
 
 
