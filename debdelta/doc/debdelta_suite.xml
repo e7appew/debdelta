@@ -582,7 +582,9 @@
       ADSL Internet connection usually are better
       downloading all the debs, and ignoring "debdelta-upgrade" alltogether.
       Anyway, the best way to know is to try "debdelta-upgrade -v" and 
-      read the final statistics. See <xref linkend="format_unzipped"/> for recent developments.
+      read the final statistics. See 
+      <xref linkend="format_unzipped"/>
+      and <xref linkend="format_preunpacked"/> for recent developments.
     </para></section>
       <section id="format_unzipped"><title>--format=unzipped</title>
       <para>The recently introduced
@@ -599,6 +601,54 @@
        space...).  Indeed I see that the creation of deltas is much faster; 
         but I still do not have enough data collected....
      </para></section>
+      <section id="format_preunpacked"><title>--format=preunpacked</title>
+      <para> <varname>--format=preunpacked</varname>
+       is a proof-of-concept.
+       <command>debdelta-upgrade --format=preunpacked</command>
+       writes the data part of the new deb directly
+       on the filesystem; the resulting deb contains
+       <emphasis>data_list</emphasis> instead of 
+       <emphasis>data.tar.xxx</emphasis>, that lists 
+       what was put where. The format of <emphasis>data_list</emphasis> is
+       <programlisting>
+Files:
+ TYPE MODE USER GROUP MTIME
+ NAME_FILE_WAS_UNPACKED_TO (if regular file)
+ ORIGINAL_FILENAME
+ LINK_NAME (if symlink)
+[repeat]
+       </programlisting>
+       Example of data_list
+       <programlisting>
+Files:
+ d 0755 root root 1304626623
+ 
+ ./etc
+ 
+ - 0644 root root 1304626594
+ /./etc/gnashrc_1956_debdelta_preunpacked
+ ./etc/gnashrc
+ l 0777 root root 1304626629
+ 
+ ./usr/share/man/man1/gtk-gnash.1.gz
+ gnash.1.gz
+       </programlisting> 
+      Note that no support is currently in dpkg to install that 'deb'.
+      </para><para> PROS: (1) may be faster; (2) if you need to
+      upgrade a 100MB package, you do not need to save both the deb
+      and (while 'dpkg --unpack') the whole new deb data : so there is
+      less risk of running our of disk space.  
+      </para><para> CONS: (1)
+      you cannot install that "preunpacked deb" twice (so dpkg should
+      probably remove it once it has installed it); (2) you cannot
+      move it to another host; (3) when "apt-get clean", all temporary
+      files have to be removed as well.
+      </para><para>  <emphasis> So it may be a
+      good idea to use ".deb_preunpacked" as extension for them.  And
+      I would recommend using '--format=unzipped' for essential
+      packages such as the kernel.</emphasis>
+    </para>   
+      </section>
     </section>
 
 
