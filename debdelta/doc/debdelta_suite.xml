@@ -586,6 +586,73 @@
       <xref linkend="format_unzipped"/>
       and <xref linkend="format_preunpacked"/> for recent developments.
     </para></section>
+    </section>
+
+
+    <section id="the_enemy_within"><title>better deb compression is a worse delta</title>
+    <para>
+      'xdelta3' can reconstruct data at high speed: on nowadays processors, it can process up to 2MB per second;
+      but, when applying a delta, 'xdelta3' works on <emphasis>uncompressed data</emphasis>.
+      So if the data is then compressed at a ratio 1/3, then the resulting speed on <emphasis>compressed data</emphasis>
+      is 700KB/sec. Moreover, time is needed to actually compress the data.
+    </para><para>
+      In recent years, 'dpkg' has transitioned from 'data.tar.gz' to    'data.tar.bz2' to   'data.tar.lzma';
+      each method is better at compressing, but is also slower than the previous one; since it is better at
+      compressing, it also defeats the ability of 'debdelta' to produce small deltas (wrt the original deb, of course),
+      and indeed statistics show that deltas are getting larger; since it is slower, it slows down the applying of
+      deltas as well.</para>
+   </section>
+
+    <section id="long_time"><title>long time recovery</title>
+    <para>As aforementioned, deltas can rebuild the deb identically to the byte. But the patch.sh script
+       calls the standard tools 'tail','head','zgip','bzip2','lzma', etc etc to rebuild a delta; so 
+       if the argument calling or output of any of those tools changes, than a delta may become unusable.
+       As long as deltas are used for the debdelta-upgrade service, this is no big deal: if such a tool changes,
+       then we can adjust the deltas to it, and there is just some days disruption of the service 
+       <footnote><para>this actually already happened some years ago, with libzip</para></footnote>
+       (and people will download debs instead of deltas .... as we used to).</para>
+       <para>If anybody wants instead to use debdelta to archive debs for long time, (as the archive.debian.org service
+         was doing), then we should make sure that , at any moment in future, deltas can be applied. 
+         A possible solution would be that deltas should contain, in the info files, the versions of all tools that
+         are needed for applying. A second solution is that debdelta should keep a standard set of those tools inside the package.
+    </para></section>
+     <section><title>streaming</title>
+    <para>
+      Let me summarize. When 'debdelta-upgrade' (or 'debpatch') recreates a
+      deb, one step is reassembling the data.tar part inside it; this part
+      moreover is compressed (gzip, bzip2 or lately lzma). This
+      'reassembling and compressing' takes time (both for CPU and for HD),
+      and is moreover quite useless, since, in short time, 'apt' will call
+      'dpkg -i' that  decompresses and reopens the data.tar in the deb.
+      </para><para>
+      It is then reasonable to collapse this two parts, and this would
+      possibly speed up the upgrade a bit. A first step has been <emphasis>'--format=unzipped'</emphasis>, a next step may be
+      <xref linkend="format_preunpacked"/>
+      </para><para>
+      Here is another idea. When  'debdelta-upgrade' is called in upgrading a
+      package 'foobar' it currently creates 'foobar_2.deb'. By an
+      appropriate cmdline switch <emphasis>'--format=preunpacked'</emphasis>,
+      instead of creating a 'foobar_2.deb' , it
+      would directly save all of its file to the filesystem, and it would
+      add an extension to all the file names, making sure that no file name
+      would conflict (=overwrite) with a preexisting file on the filesystem
+      ; then it would create a file 'foobar_2.deb_preunpacked' , that would be
+      a deb package were 'data.tar.lzma' is replaced with 
+      'data_list', just a text file specifying the list of files and  where they were unpacked.
+      </para><para>
+      I could change debdelta to accomplish that, it would not be a huge change. I already implemented it
+      in the deltas (when I implemented '--format=...') the capability of piping the uncompressed data somewhere.
+      </para><para>
+      Someone should help instead in changing 'dpkg' so that it would be
+      able to install starting from 'foobar_2.deb_preunpacked'. And change APT
+      so that it would interact with 'debdelta' to create the
+      'foobar_2.deb_unpacked' files, and pass them to dpkg .
+      </para><para>
+      Note that the above idea overlaps a lot with 
+      <ulink url="http://wiki.debian.org/SummerOfCode2010/StreamingPackageInstall">
+           the SummerOfCode2010 StreamingPackageInstall</ulink>
+    </para>
+     </section>
       <section id="format_unzipped"><title>--format=unzipped</title>
       <para>The recently introduced
        new <varname>--format=unzipped</varname>
@@ -649,77 +716,15 @@ Files:
       packages such as the kernel.</emphasis>
     </para>   
       </section>
-    </section>
 
 
-    <section id="the_enemy_within"><title>better deb compression is a worse delta</title>
-    <para>
-      'xdelta3' can reconstruct data at high speed: on nowadays processors, it can process up to 2MB per second;
-      but, when applying a delta, 'xdelta3' works on <emphasis>uncompressed data</emphasis>.
-      So if the data is then compressed at a ratio 1/3, then the resulting speed on <emphasis>compressed data</emphasis>
-      is 700KB/sec. Moreover, time is needed to actually compress the data.
-    </para><para>
-      In recent years, 'dpkg' has transitioned from 'data.tar.gz' to    'data.tar.bz2' to   'data.tar.lzma';
-      each method is better at compressing, but is also slower than the previous one; since it is better at
-      compressing, it also defeats the ability of 'debdelta' to produce small deltas (wrt the original deb, of course),
-      and indeed statistics show that deltas are getting larger; since it is slower, it slows down the applying of
-      deltas as well.</para>
-   </section>
-
-    <section id="long_time"><title>long time recovery</title>
-    <para>As aforementioned, deltas can rebuild the deb identically to the byte. But the patch.sh script
-       calls the standard tools 'tail','head','zgip','bzip2','lzma', etc etc to rebuild a delta; so 
-       if the argument calling or output of any of those tools changes, than a delta may become unusable.
-       As long as deltas are used for the debdelta-upgrade service, this is no big deal: if such a tool changes,
-       then we can adjust the deltas to it, and there is just some days disruption of the service 
-       <footnote><para>this actually already happened some years ago, with libzip</para></footnote>
-       (and people will download debs instead of deltas .... as we used to).</para>
-       <para>If anybody wants instead to use debdelta to archive debs for long time, (as the archive.debian.org service
-         was doing), then we should make sure that , at any moment in future, deltas can be applied. 
-         A possible solution would be that deltas should contain, in the info files, the versions of all tools that
-         are needed for applying. A second solution is that debdelta should keep a standard set of those tools inside the package.
-    </para></section>
-     <section><title>streaming</title>
-    <para>
-      Let me summarize. When 'debdelta-upgrade' (or 'debpatch') recreates a
-      deb, one step is reassembling the data.tar part inside it; this part
-      moreover is compressed (gzip, bzip2 or lately lzma). This
-      'reassembling and compressing' takes time (both for CPU and for HD),
-      and is moreover quite useless, since, in short time, 'apt' will call
-      'dpkg -i' that  decompresses and reopens the data.tar in the deb.
-      </para><para>
-      It is then reasonable to collapse this two parts, and this would
-      possibly speed up the upgrade a bit. A first step has been <emphasis>'--format=unzipped'</emphasis>,
-      </para><para>
-      Here is another idea. When  'debdelta-upgrade' is called in upgrading a
-      package 'foobar' it currently creates 'foobar_2.deb'. By an
-      appropriate cmdline switch <emphasis>'--format=preunpacked'</emphasis>,
-      instead of creating a 'foobar_2.deb' , it
-      would directly save all of its file to the filesystem, and it would
-      add an extension to all the file names, making sure that no file name
-      would conflict (=overwrite) with a preexisting file on the filesystem
-      ; then it would create a file 'foobar_2.deb_preunpacked' , that would be
-      a deb package were 'data.tar.lzma' is replaced with 
-      'data_list', just a text file specifying the list of files and  where they were unpacked.
-      </para><para>
-      I could change debdelta to accomplish that, it would not be a huge change. I already implemented it
-      in the deltas (when I implemented '--format=...') the capability of piping the uncompressed data somewhere.
-      </para><para>
-      Someone should help instead in changing 'dpkg' so that it would be
-      able to install starting from 'foobar_2.deb_preunpacked'. And change APT
-      so that it would interact with 'debdelta' to create the
-      'foobar_2.deb_unpacked' files, and pass them to dpkg .
-      </para><para>
-      Note that the above idea overlaps a lot with 
-      <ulink url="http://wiki.debian.org/SummerOfCode2010/StreamingPackageInstall">
-           the SummerOfCode2010 StreamingPackageInstall</ulink>
-    </para>
     </section>
 
     <section><title></title>
     <para>
-    </para></section>
-      </section>
+    </para>
+  </section>
+
 
 
 
