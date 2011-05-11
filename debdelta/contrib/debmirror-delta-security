@@ -127,3 +127,8 @@ trap "" 0
 rm  $VERBOSE -f /tmp/$b.lock
 rm -r $olddists
 find $deltamir/old_debs -type f -mtime +80 | xargs -r rm
+
+find $deltamir/pool \
+   \( -name '*debdelta-fails' -or -name '*debdelta-too-big' \
+      -or -name  '*debdelta' \) -mtime +80 -type f |\
+       xargs -r rm || true
