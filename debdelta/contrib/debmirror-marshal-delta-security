@@ -1,0 +1,110 @@
+#!/bin/bash
+
+set -e
+
+# A better simple script that will create a repository of deltas, that may be
+# used by debdelta-upgrade for upgrading packages in stable-security
+
+# This works with mirrors created by 'debmirror --debmarshal', that keep older versions
+# of the repositories
+
+# Copyright (C) 2011 Andrea Mennucci.
+# With a contribution by Torsten Spindler.
+# License: GNU Library General Public License, version 2 or later
+
+#who I am
+b=`basename $0`
+
+TMPDIR=/mirror/tmp
+export TMPDIR
+
+DEBUG=''
+VERBOSE=''
+[ "$1" = '-v'  ] && { VERBOSE='-v' ; shift ; }
+[ "$1" = '-d'  ] && { DEBUG='--debug' ; }
+[ "$1" = '-v'  ] && { VERBOSE='-v' ; shift ; }
+if [ "$1" = ''  ] || test ! -r "$1" ; then 
+  echo please provide the configuration file as argument
+  exit 1
+fi
+. "$1"
+
+# set gpg-agent variables, test it
+gpgagentcmd="gpg-agent --homedir \"${GNUPGHOME}\" --daemon --write-env-file \"$GNUPGAGENTINFO\" "
+if test "$GNUPGAGENTINFO"  ; then 
+ if test ! -r "$GNUPGAGENTINFO"  ; then 
+  echo ERROR no agent info, please start the agent with
+  echo $gpgagentcmd
+  exit 1
+ else
+  . "$GNUPGAGENTINFO" 
+  export GPG_AGENT_INFO
+  if test ! "${GPG_AGENT_INFO}" -o  ! -e "${GPG_AGENT_INFO/:*/}" -o ! -O "${GPG_AGENT_INFO/:*/}" ; then
+     echo ERROR agent info is not OK, please run the command
+     echo $gpgagentcmd
+     exit 1
+  elif ! echo | gpg-connect-agent --homedir ${GNUPGHOME} ; then
+     echo ERROR agent is not responding, please run the command
+     echo $gpgagentcmd
+     exit 1
+  fi
+ fi
+fi
+
+
+#test that we can sign, possibly loading the password in the agent
+if test  "$GNUPGSEC" ; then
+ t=`tempfile`
+ echo pippo > $t
+ if  ! gpg2 --quiet --batch --homedir "${GNUPGHOME}"  -o /dev/null --default-key $GNUPGSEC --sign $t  ;
+ then
+  echo signature test FAILED
+  rm $t
+  exit 1
+ fi
+ rm $t
+fi
+
+
+#do mirror security
+trap "rm  $VERBOSE -f $secdebmirlock ; echo MIRRORING FAILED " 0
+#this needs a version of 'debmirror' >= 2.5
+debmirror  $secdebmir  --debmarshal $DEBUG $VERBOSE  \
+ --nosource -h $sechost --method=http --diff=none \
+ -r $release -d ${secstable} -s main,contrib,non-free --arch=$ARCHc
+
+#do create deltas
+lockfile -r 1  /tmp/$b.lock || exit 1
+trap "rm  $VERBOSE -f /tmp/$b.lock; echo DELTA CREATION FAILED " 0
+cd $secdebmir
+for arch in $ARCHs ; do
+ for sec in main contrib non-free ; do
+   wfo="--old $fulldebmir/dists/${origstable}/$sec/binary-$arch/Packages.gz"
+   #add all older versions of "origstable"  (they are not a lot)
+   c=0
+   while test -r  "$fulldebmir/dists/${origstable}/$c/$sec/binary-$arch/Packages.gz" ; do 
+    wfo="$wfo --old $fulldebmir/dists/${origstable}/$c/$sec/binary-$arch/Packages.gz"
+    let c=c+1
+   done
+   #add all older versions of "secstable", different from the actual one  (they are not a lot)
+   c=0
+   while test -r  "dists/${secstable}/$c/$sec/binary-$arch/Packages.gz" && \
+         ! cmp   "dists/${secstable}/$c/$sec/binary-$arch/Packages.gz" \
+                "dists/${secstable}/$sec/binary-$arch/Packages.gz"  ; do 
+    wfo="$wfo --old dists/${secstable}/$c/$sec/binary-$arch/Packages.gz"
+    let c=c+1
+   done
+   ##
+   echo $debdeltas $VERBOSE -v --test $debdelta_opt  $wfo  \
+     --dir $deltamir//   dists/${secstable}/$sec/binary-$arch/Packages.gz
+  done
+done
+
+#do clean up a bit
+trap "" 0
+rm  $VERBOSE -f /tmp/$b.lock
+
+find $deltamir/pool \
+   \( -name '*debdelta-fails' -or -name '*debdelta-too-big' \
+      -or -name  '*debdelta' \) -mtime +80 -type f |\
+       xargs -r rm || true
