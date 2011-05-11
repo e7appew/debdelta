@@ -94,7 +94,7 @@ trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 # see in /usr/share/debdelta
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
  --nosource -h $sechost \
- -r $release -d ${stable}/updates  --arch=$DISTc
+ -r $release -d ${secstable}  --arch=$DISTc
 
 #do create deltas
 lockfile -r 1  /tmp/$b.lock || exit 1
@@ -106,7 +106,7 @@ for arch in $DISTs ; do
      --old $fulldebmir/dists/${origstable}/$sec/binary-$arch/Packages.gz \
      --old $olddists/dists/${secstable}/$sec/binary-$arch/Packages.gz \
      --alt $deltamir/old_debs  \
-     --dir $deltamir//   dists/${secstable}/updates/$sec/binary-$arch/Packages.gz
+     --dir $deltamir//   dists/${secstable}/$sec/binary-$arch/Packages.gz
   done
 done
 
