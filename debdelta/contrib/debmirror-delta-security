@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -8,6 +8,8 @@ set -e
 
 # Copyright (C) 2006-11 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
+
+# With a change by Torsten Spindler for use with Ubuntu
 
 #who I am
 b=`basename $0`
@@ -28,7 +30,13 @@ secdebmirlock=$secdebmir/Archive-Update-in-Progress-`hostname  -f`
 #where is the full mirror of debian stable
 fulldebmir=/mirror/debian
 #the name by which "stable" is known in that mirror
-stable="squeeze"
+origstable="squeeze"
+#the corresponding path snippet for the security archive
+secstable="squeeze/updates"
+
+##for ubuntu it may be
+#origstable="lucid"
+#secstable="lucid-security"
 
 #where the gnupg stuff specific to debdelta resides
 GNUPGHOME=/var/lib/debdelta/gnupg
@@ -115,10 +123,10 @@ cd $secdebmir
 for arch in i386 amd64 ; do
  for sec in main contrib non-free ; do
    $debdeltas $VERBOSE -v --test $debdelta_opt  \
-     --old $fulldebmir/dists/${stable}/$sec/binary-$arch/Packages.gz \
-     --old $olddists/dists/${stable}/updates/$sec/binary-$arch/Packages.gz \
+     --old $fulldebmir/dists/${origstable}/$sec/binary-$arch/Packages.gz \
+     --old $olddists/dists/${secstable}/$sec/binary-$arch/Packages.gz \
      --alt $deltamir/old_debs  \
-     --dir $deltamir//   dists/${stable}/updates/$sec/binary-$arch/Packages.gz
+     --dir $deltamir//   dists/${secstable}/updates/$sec/binary-$arch/Packages.gz
   done
 done
 
