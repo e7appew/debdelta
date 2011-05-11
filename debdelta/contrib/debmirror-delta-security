@@ -79,7 +79,7 @@ trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 # see in /usr/share/debdelta
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
  --nosource -h $sechost \
- -r debian-security -d ${stable}/updates  --arch=$DISTc
+ -r $release -d ${stable}/updates  --arch=$DISTc
 
 #do create deltas
 lockfile -r 1  /tmp/$b.lock || exit 1
