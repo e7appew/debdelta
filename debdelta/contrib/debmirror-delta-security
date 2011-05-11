@@ -114,7 +114,7 @@ done
 trap "" 0
 rm  $VERBOSE -f /tmp/$b.lock
 rm -r $olddists
-find $deltamir/old_debs -type f -mtime +80 | xargs -r rm
+find $deltamir/old_debs -type f -mtime +80 | xargs -r rm || true
 
 find $deltamir/pool \
    \( -name '*debdelta-fails' -or -name '*debdelta-too-big' \
