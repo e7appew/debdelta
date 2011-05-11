@@ -22,6 +22,14 @@ VERBOSE=''
 [ "$1" = '-v'  ] && { VERBOSE='-v' ; shift ; }
 [ "$1" = '-d'  ] && { DEBUG='--debug' ; }
 
+
+#where the security archive is
+sechost=security.debian.org
+
+#list of architecture (space separated, comma separated)
+DISTs="i386 amd64"
+DISTc="i386,amd64"
+
 #where to download the full mirror of debian stable security
 secdebmir=/mirror/debian-security
 #the lock used by debmirror
@@ -113,14 +121,14 @@ trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 #this version of 'debmirror' is patched to support the '--trash' option,
 # see in /usr/share/debdelta
 ~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
- --nosource -h security.debian.org \
- -r debian-security -d ${stable}/updates  --arch=i386,amd64
+ --nosource -h $sechost \
+ -r debian-security -d ${stable}/updates  --arch=$DISTc
 
 #do create deltas
 lockfile -r 1  /tmp/$b.lock || exit 1
 trap "rm  $VERBOSE -f /tmp/$b.lock; echo FAILED , please delete $olddists " 0
 cd $secdebmir
-for arch in i386 amd64 ; do
+for arch in $DISTs ; do
  for sec in main contrib non-free ; do
    $debdeltas $VERBOSE -v --test $debdelta_opt  \
      --old $fulldebmir/dists/${origstable}/$sec/binary-$arch/Packages.gz \
