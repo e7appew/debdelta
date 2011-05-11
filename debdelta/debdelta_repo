@@ -18,8 +18,7 @@ from os.path import abspath
 from copy    import copy
 from types import IntType, StringType, FunctionType, TupleType, ListType, DictType, BufferType
 
-
-
+from apt import VersionCompare
 
 __help__usage__ = "Usage: debdelta_repo [OPTION]... "
 __help__options__={
@@ -87,19 +86,26 @@ name text,
 version text,
 arch text,
 filename text,
-disttoken text,
-generated boolean,
 ownfile boolean,
 ctime integer
 ) ;
+create table dist ( 
+id integer unique primary key autoincrement,
+disttoken text,
+package_id integer,
+generated boolean,
+ctime integer
+) ;
+CREATE INDEX IF NOT EXISTS package_name ON package ( name );
+CREATE INDEX IF NOT EXISTS package_name_arch ON package ( name,arch );
+CREATE INDEX IF NOT EXISTS package_filename ON package ( filename );
+CREATE INDEX IF NOT EXISTS dist_package_id ON dist ( package_id );
 """
 
 class theSQLdb:
     dbname=None
     sql_connection=None
     sql_cursor=None
-    sql_cursor2=None
-    sql_cursor3=None
 
     def __init__(self,dbname):
         assert type(dbname) == StringType
@@ -108,8 +114,6 @@ class theSQLdb:
         self.sql_connection = dbapi.connect(dbname,
                                             detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
         self.sql_cursor = self.sql_connection.cursor()
-        self.sql_cursor2 = self.sql_connection.cursor()
-        self.sql_cursor3 = self.sql_connection.cursor()
 
     def __del__(self):
         self.sql_connection.close()
@@ -119,40 +123,76 @@ class theSQLdb:
 
     def add_one(self,name,version,arch,filename,disttoken,generated=0,ownfile=0,ctime=None):
         if ctime==None: ctime=int(time.time())
-        self.sql_cursor.execute('SELECT name,version,arch FROM package WHERE filename = ? AND disttoken = ? ',\
-                                (filename,disttoken))
-        a=self.sql_cursor.fetchone()
-        if a:
-            sys.stderr.write('Filename,disttoken already in database as: %s\n' % repr(a))
+        self.sql_cursor.execute('SELECT name,version,arch,id FROM package WHERE filename = ? ',\
+                                (filename,))
+        tp=self.sql_cursor.fetchone()
+        if tp:
+            if ( tp[0] != name or tp[1] != version or tp[2] != arch):
+                sys.stderr.write('Filename already in package database as: %s\n' % repr(tp))
+                return
+            tpid=tp[3]
+        else:
+            self.sql_cursor.execute('INSERT INTO package VALUES (null, ?, ?, ?, ?, ?, ?)',\
+                                    (name,version,arch,filename,ownfile,ctime))
+            tpid=self.sql_cursor.lastrowid
+        z=self.sql_cursor.fetchone()
+        if z:
+            sys.stderr.write('Warning two entries with same filename?\n')
+        self.sql_cursor.execute('SELECT id FROM dist WHERE package_id = ? AND disttoken = ? ', (tpid,disttoken))
+        td=self.sql_cursor.fetchone()
+        if td:
+            sys.stderr.write('Package,version,arch already in dist database for this disttoken\n')
+            #FIXME we may have added a package and no dist? 
             return
-        self.sql_cursor.execute('SELECT filename FROM package WHERE name = ? AND version = ? AND arch = ? AND disttoken = ? ',\
-                                (name,version,arch,disttoken))
-        a=self.sql_cursor.fetchone()
-        if a:
-            sys.stderr.write('Package,version,arch,disttoken already in database, by file: %s\n' % repr(a))
-            return
-        self.sql_cursor.execute('INSERT INTO package VALUES (null, ?, ?, ?, ?, ?, ?, ?, ?)',\
-                            (name,version,arch,filename,disttoken,generated,ownfile,ctime))
+        self.sql_cursor.execute('INSERT INTO dist VALUES (null, ?, ?, ?, ?)',\
+                            (disttoken,tpid,generated,ctime))
     
+    def package_versions(self,name,disttoken,arch=None,generated=None):
+        "returns a list of id,name,arch,version"
+        sql_cursor1 = self.sql_connection.cursor()
+        sql_cursor2 = self.sql_connection.cursor()
+        if generated==None:
+            sql_cursor1.execute('SELECT package_id FROM dist WHERE disttoken = ? ',(disttoken,))
+        elif generated:
+            sql_cursor1.execute('SELECT package_id FROM dist WHERE disttoken = ? AND generate = 1',(disttoken,))
+        else:
+            sql_cursor1.execute('SELECT package_id FROM dist WHERE disttoken = ? AND generate = 0',(disttoken,))
+        z=[]
+        for a in sql_cursor1:
+            if arch:
+                sql_cursor2.execute('SELECT id,name,arch,version FROM package WHERE id = ? AND arch = ?',\
+                                         (a[0],arch))
+            else:
+                sql_cursor2.execute('SELECT id,name,arch,version FROM package WHERE id = ?',(a[0]))
+            a=sql_cursor2.fetchall()
+            z=z+a
+        return z
+        
     def create_deltas(self):
         namearchtokens=[]
-        self.sql_cursor.execute('SELECT name,arch,disttoken FROM package WHERE generated = 0 ')
-        for n in self.sql_cursor:
-            if n not in namearchtokens: namearchtokens.append(n)
+        sql_cursor1 = self.sql_connection.cursor()
+        sql_cursor2 = self.sql_connection.cursor()
+        sql_cursor1.execute('SELECT package_id,disttoken FROM dist WHERE generated = 0 ')
+        for n in sql_cursor1:
+            #TODO use joins
+            sql_cursor2.execute('SELECT name,arch FROM package WHERE id = ? ',(n[0],))
+            for z in sql_cursor2:
+                a=list(z)+[n[1]] #name,arch,disttoken
+                if a not in namearchtokens:
+                    namearchtokens.append(a)
         for n in namearchtokens:
-            versions=[]
-            self.sql_cursor.execute('SELECT version,filename,id FROM package WHERE name = ? AND arch = ? AND disttoken = ?',n)
-            for v in self.sql_cursor:
-                if v not in versions: versions.append(v)
-                #TODO this is a very good place to delete extra, very old versions
+            versions=self.package_versions(n[0],n[2],n[1])
+            #TODO this is a very good place to delete extra, very old versions
             if len(versions) == 1:
                 print 'Only one version for ',n,versions
             else:
                 print ' Creating deltas for ',n
-                versions.sort()
+                def _cmp_(a,b): 
+                    return VersionCompare(a[3],b[3])
+                versions.sort(cmp=_cmp_)
                 new=versions.pop()
                 for a in versions:
-                    print '  Create delta from ',a[1],' to ',new[1]
+                    print '  Create delta from ',a[3],' to ',new[3]
         #TODO mark all above as 'generated=1' when done, if successful
 
 
@@ -185,8 +225,11 @@ def sos(dbname, workspace, argv):
     if len(argv) != 1:
         sys.stderr.write('It was not given 1 arguments: %s\n'%repr(argv))
         sys.exit(1)
-    H.sql_cursor.execute('SELECT id,name,arch FROM package WHERE filename = ? ',argv)
+    H.sql_cursor.execute('SELECT id,name,version,arch FROM package WHERE filename = ? ',argv)
     a=H.sql_cursor.fetchone()
+    if not a:
+        sys.stderr.write('Filename not found: %s\n'%repr(argv))
+        return
     print 'WILL SAVE',a,'SOMEWHERE INSIDE',workspace,' AND UPDATE SQL ACCORDINGLY'
     #in particular, will mark it as 'owned', so it will be deleted when it will be old
 
