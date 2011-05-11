@@ -41,7 +41,7 @@ Use -h [command] for further help on commands""",
 Creates the sqlite database SQL DB that is used to store packages' info.""",
     'add' : __help__usage__ +"""--add name version arch filename disttoken
 or alternatively
-  --add STDIN  
+  --add --stdin  
 that reads from stdin lines with the above five arguments, tab separated
 
     it stores in the database the fact that name,version,arch has entered disttoken,
@@ -202,10 +202,12 @@ def create(dbname):
         sys.exit(1)
     os.popen("sqlite3 '"+dbname+"'",'w').write(sql_scheme)
 
-def add(dbname, argv):
+def add(dbname, argv, stdin=None):
     H=theSQLdb(dbname)
-    if len(argv)==1 and argv[0]=='STDIN':
+    if stdin:
         for a in sys.stdin:
+            if not a or a[0] == '#' :
+                continue
             b=string.split(a,'\t')
             if len(b) == 5:
                 H.add_one(*b)
@@ -242,10 +244,11 @@ if __name__ == '__main__':
     VERBOSE = 0
     JUSTHELP=False
     WORKSPACE=None
+    STDIN=False
     cmd=None
     try: 
         ( opts, argv ) = getopt.getopt(sys.argv[1:], 'hvdW:' ,
-                                       ('help','debug','verbose','workspace=','add','sos','create','deltas') )
+                                       ('help','debug','verbose','workspace=','add','stdin','sos','create','deltas') )
     except getopt.GetoptError,a:
         sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
         raise SystemExit(2)
@@ -258,6 +261,8 @@ if __name__ == '__main__':
             JUSTHELP = True
         elif o == '-W' or o == '--workspace':
             WORKSPACE=v
+        elif o == '--stdin':
+            STDIN=True
         elif o[:2] == '--' and o[2:] in __help__.keys():
             if cmd :
                 sys.stderr.write(' option ',o,'is unacceptable after',cmd)
@@ -279,7 +284,7 @@ if __name__ == '__main__':
     if cmd == "create":
         create(dbname)
     elif cmd == 'add':
-        add(dbname,argv)
+        add(dbname,argv,STDIN)
     elif cmd == 'sos':
         sos(dbname,WORKSPACE,argv)
     elif cmd == 'deltas':

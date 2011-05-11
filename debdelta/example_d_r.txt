@@ -1,0 +1,9 @@
+#name	version	arch	filename	disttoken
+foobar	14	all	pool/foobar_14.deb	unstable
+foobar	15	all	pool/foobar_15.deb	unstable
+foobar	16	all	pool/foobar_16.deb	unstable
+foobar	16	all	pool/foobar_16.deb	testing
+foobar	17	all	pool/foobar_17.deb	unstable
+foobar	18	all	pool/foobar_18.deb	unstable
+foobar	18	all	pool/foobar_18.deb	testing
+foobar	19	all	pool/foobar_19.deb	unstable
