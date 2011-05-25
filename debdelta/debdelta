@@ -1433,9 +1433,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
               stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
           out=proc.stdout.read().strip()
           proc.wait()
-          if proc.returncode==2:
-            raise KeyboardInterrupt
-          elif proc.returncode:
+          if proc.returncode:
             if not os.path.exists(a):
               if VERBOSE > 4 : print '     (prelink failed, symlinking ',divert,' to ',a,')'
               os.symlink(divert, a)
