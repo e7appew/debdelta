@@ -3737,7 +3737,14 @@ def delta_upgrade_(args):
     print _('upgrading...'),
 
   cache=apt.Cache()
-  cache.upgrade(True)
+  try:
+    cache.upgrade(True)
+  except:
+    if DO_PROGRESS:
+      sys.stderr.write(string.ljust(_('Failed! Safe upgrading APT cache...'),terminalcolumns)+'\r')
+    elif VERBOSE:
+      print _('failed! trying safe-upgrade...')
+    cache.upgrade(False)
 
   if DO_PROGRESS:
     sys.stderr.write(string.ljust(_('Upgraded APT cache.'),terminalcolumns)+'\r')

@@ -1,3 +1,13 @@
+debdelta (0.43) unstable; urgency=low
+
+  * add code to support python-apt 0.8 API,
+    thanks to Julian Andres Klode (Closes: #572059).
+  * Add a fallback in case of upgrade errors,
+    thanks to Nelson A. de Oliveira (Closes: #612423)
+    and thanks to Ritesh Raj Sarraf    (Closes: #592053).
+
+ --
+
 debdelta (0.42exp) experimental; urgency=low
 
   * Implemented streaming capabilities in patches;
