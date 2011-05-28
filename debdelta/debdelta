@@ -3039,18 +3039,22 @@ def do_deltas(debs):
   
   original_cwd = os.getcwd()
   start_time = time.time()
-  import warnings
-  warnings.simplefilter("ignore",FutureWarning)
+
   try:
-    from apt import VersionCompare
-  except ImportError:
-    try:
-      import apt_pkg
+    import apt_pkg
+    if 'init_system' in dir(apt_pkg):
+      apt_pkg.init_system()
+    elif 'InitSystem' in dir(apt_pkg):
       apt_pkg.InitSystem()
+    else: assert 'fegrwq' == 0
+    if 'VersionCompare' in dir(apt_pkg):
       from apt_pkg import VersionCompare
-    except ImportError:
-      raise DebDeltaError('python module "apt_pkg" is missing. Please install python-apt', retriable=True)
-    
+    elif 'version_compare' in dir(apt_pkg):
+      from apt_pkg import version_compare as VersionCompare
+    else: assert 'lopadf' == 0
+  except ImportError:
+    raise DebDeltaError('python module "apt_pkg" is missing. Please install python-apt', retriable=True)
+
   f=my_popen_read('hostname -f')
   HOSTID=hashlib.md5( f.read() ).hexdigest()
   f.close()
