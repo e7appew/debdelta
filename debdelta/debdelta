@@ -4147,9 +4147,6 @@ def delta_upgrade_(args):
 
   not_available_deltas=[]
 
-  #distinguish python-apt version 0.7.7 from 0.7.10
-  newer_python_apt = hasattr(apt.package,'Version')
-
   if hasattr(apt.package.Package,'is_installed'):
     is_installed=lambda p : p.is_installed
   elif hasattr(apt.package.Package,'isInstalled'):
@@ -4176,35 +4173,20 @@ def delta_upgrade_(args):
     if is_installed(p) and marked_upgrade(p) :
       if args and p.name not in args:
         continue
-      if newer_python_apt:
-        #thanks a lot to Julian Andres Klode
-        candidate=p.candidate
-        origin = p.candidate.origins[0]
-        arch=candidate.architecture
-        deb_uri=candidate.uri
-        installed_version=p.installed.version
-        candidate_version=p.candidate.version
-        deb_path=string.split(deb_uri,'/')
-        try:
-          thepoolindex=deb_path.index('pool')
-        except ValueError:
-          sys.stderr.write('! Package "%s" (version %s) does not have "pool" in the uri %s \n' % (p.name, candidate_version, deb_uri))
-          continue
-        deb_path=string.join(deb_path[(thepoolindex):],'/')
-      else:
-        #thanks a lot to Michael Vogt
-        p._lookupRecord(True)
-        dpkg_params = apt_pkg.ParseSection(p._records.Record)
-        arch = dpkg_params['Architecture']
-        origin = p.candidateOrigin[0]
-        candidate_version = p.candidateVersion
-        installed_version = p.installedVersion
-        deb_path = dpkg_params['Filename']
-        for (packagefile,i) in p._depcache.GetCandidateVer(p._pkg).FileList:
-          indexfile = cache._list.FindIndex(packagefile)
-          if indexfile:
-            deb_uri=indexfile.ArchiveURI(deb_path)
-            break
+      #thanks a lot to Julian Andres Klode
+      candidate=p.candidate
+      origin = p.candidate.origins[0]
+      arch=candidate.architecture
+      deb_uri=candidate.uri
+      installed_version=p.installed.version
+      candidate_version=p.candidate.version
+      deb_path=string.split(deb_uri,'/')
+      try:
+        thepoolindex=deb_path.index('pool')
+      except ValueError:
+        sys.stderr.write('! Package "%s" (version %s) does not have "pool" in the uri %s \n' % (p.name, candidate_version, deb_uri))
+        continue
+      deb_path=string.join(deb_path[(thepoolindex):],'/')
       
       #try all possible variants of the filename
       newdebs=[p.name+'_'+candidate_version+'_'+arch+'.deb',
