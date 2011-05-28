@@ -5,8 +5,9 @@ debdelta (0.43) unstable; urgency=low
   * Add a fallback in case of upgrade errors,
     thanks to Nelson A. de Oliveira (Closes: #612423)
     and thanks to Ritesh Raj Sarraf    (Closes: #592053).
+  * New package 'debdelta-doc' contains the documentation.
 
- --
+ -- A Mennucc1 <mennucc1@debian.org>  Sat, 28 May 2011 18:58:05 +0200
 
 debdelta (0.42exp) experimental; urgency=low
 

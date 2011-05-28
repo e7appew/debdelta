@@ -13,6 +13,7 @@ Depends: python, bzip2, binutils, ${shlibs:Depends}
 Recommends: python-apt, xdelta3, xdelta, lzma, xdelta, bsdiff, gnupg2, gnupg-agent
 Conflicts: xdelta3 (<< 0y.dfsg-1)
 Enhances: cupt
+Suggests: debdelta-doc
 Description: diff and patch utilities which work with Debian packages
  debdelta is a program suite designed to compute changes between
  Debian packages. These changes (deltas) are similar to the output of the
@@ -26,3 +27,14 @@ Description: diff and patch utilities which work with Debian packages
  .
  Similarly, when this package is installed, the 'cupt' package manager will
  use deltas to upgrade the host.
+
+Package: debdelta-doc
+Architecture: all
+Recommends: debdelta
+Description: diff and patch utilities which work with Debian packages
+ debdelta is a program suite designed to compute changes between
+ Debian packages. These changes (deltas) are similar to the output of the
+ "diff" program in that they may be used to store and transmit only the
+ changes between Debian packages.
+ .
+ This package contains the documentation.
