@@ -3429,6 +3429,8 @@ def do_deltas(debs):
           deltadirname=delta_dirname(os.path.dirname(new['File']),DIR)
         else:
           assert(0)
+        if deltadirname == '' :
+          deltadirname = '.'
         if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
           os.makedirs(deltadirname)
         
