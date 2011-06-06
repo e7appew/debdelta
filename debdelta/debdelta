@@ -2230,9 +2230,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
       if infifo : o = infifo #use fifo as input
       if outpiped:
         this_delta_outpiped=True
-        script.write('xdelta3 -d -c -s '+o+' '+p+'\n')
+        script.write('xdelta3 -d -R -D -c -s '+o+' '+p+'\n')
       else:
-        script.write('xdelta3 -d -s '+o+' '+p+' '+n+'\n')
+        script.write('xdelta3 -d -R -D -s '+o+' '+p+' '+n+'\n')
     ## according to the man page,
     ## bsdiff uses memory equal to 17 times the size of oldfile
     ## but , in my experiments, this number is more like 12.
