@@ -27,6 +27,7 @@ DO_MIRROR=true
 DO_CLEAN_DELTAS=''
 DO_CLEAN_DEBS=''
 CONF=''
+STARTAGENT=''
 while [ "$1" ] ; do
  case "$1" in
   -h|--help)
@@ -62,19 +63,7 @@ EOF
   --clean-deltas) DO_CLEAN_DELTAS=true ;;
   --clean-debs)   DO_CLEAN_DEBS=true ;;
   --snapshot) echo $0 does not use its own snapshots any more ; exit ;;
-  --start-gpg-agent)
-     echo ------  start agent
-     startgpgagent
-     . "$GNUPGAGENTINFO" 
-     export GPG_AGENT_INFO
-     #force loading of the private key (I know no better way)
-     echo ------ sign dummy file, to load the key
-     t=`tempfile`
-     echo pippo > $t
-     gpg2 --quiet --homedir "${GNUPGHOME}" -o /dev/null --sign $t
-     rm $t
-     exit 0
-    ;;
+  --start-gpg-agent) STARTAGENT=true  ;;
   *) echo "$0: Unknown option $1 , try --help" ;  exit 1 ;;
  esac
  shift
@@ -93,10 +82,27 @@ fi
 
 . "$CONF"
 
+#################
+
+if test "$STARTAGENT" ; then
+     echo ------  start agent
+     startgpgagent
+     . "$GNUPGAGENTINFO" 
+     export GPG_AGENT_INFO
+     #force loading of the private key (I know no better way)
+     echo ------ sign dummy file, to load the key
+     t=`tempfile`
+     echo pippo > $t
+     gpg2 --quiet --homedir "${GNUPGHOME}" -o /dev/null --sign $t
+     rm $t
+     exit 0
+fi
+
 #################### set gpg stuff, test it
 
 
-gpgagentcmd="$0 --start-gpg-agent"
+
+gpgagentcmd="$0 -c $CONF --start-gpg-agent"
 
 # set gpg-agent variables, test it
 if test "$GNUPGAGENTINFO"  ; then 
@@ -173,6 +179,8 @@ run_debmirror () {
   exit 1
  fi
 
+ echo -n "---start mirroring at " >> $log ; date --utc >> $log
+
  tm=`tempfile`
  tme=`tempfile`
 
@@ -191,10 +199,12 @@ run_debmirror () {
    #sometimes the temporary directory of debmirror is messed up
    #rm -r $debmir/.temp
    clean_old_deltas
+   rm $log
    exit 1
  else
    $RM $VERBOSE $tm $tme
  fi
+ echo -n "---end mirroring at " >> $log ; date --utc >> $log
 }
 
 
@@ -202,64 +212,101 @@ run_debmirror () {
 findmelog () {
  date=`date +'%F-%H'`
  log=$deltamir/log/$yyyymm/${date}.log
- err=$deltamir/log/$yyyymm/${date}.err
- if test -r $log -o -r $log.gz -o -r $err -o -r $err.gz ; then 
+ if test -r $log -o -r $log.gz ; then 
   for i in 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z ; do 
-   if test -r $log -o -r $log.gz -o -r $err -o -r $err.gz ; then 
+   if test -r $log -o -r $log.gz  ; then 
      log=$deltamir/log/$yyyymm/${date}.$i.log
-     err=$deltamir/log/$yyyymm/${date}.$i.err
    fi
   done
  fi
 }
 
-created_deltas=""
+created_deltas=0
 
 run_debdeltas  () {
- findmelog
- (
-  exec >> $log
-  exec 2>> $err
-  echo -n --------------oldnew pass----   ; date   ;
-  echo  "---- options to debdelta -- $debdelta_opt "
-
-  for dist in $DISTs ; do
-   echo -------------- $dist ----
+ debdeltas_errors=0
+ echo -n "--------- running debdeltas ------"  >> $log  ; date --utc  >> $log  ;
+ echo  "---- options ---- $debdelta_opt " >> $log
+ for dist in $DISTs ; do
+   dist_created_deltas=0
+   distlog=`tempfile`
+   #find latest
+   pushd $debmir/dists/$dist/ > /dev/null
+   latest=$(echo [0-9] [0-9][0-9] [0-9][0-9][0-9] [0-9][0-9][0-9][0-9] \
+            | tr ' ' '\n' |  sort -n | tail -n 1)
+   let prev=latest || true
+   while test "$prev" -gt 1 && cmp -s Release $prev/Release ; do
+     let prev=prev-1 || true
+   done
+   popd > /dev/null
+   echo -------------- $dist ---- >> $distlog
+   echo -n "---Release " >> $distlog ; grep ^Date $debmir/dists/$dist/Release >> $distlog
+   echo -n "---Start at " >> $distlog ; date --utc >> $distlog
    #lenny contains debdelta 0.27, that does not understand lzma
    if test "$dist" = lenny ; then x="--disable-feature lzma" ; else x="" ; fi
    for sec in $SECTIONs ; do  for arch in $ARCHs ; do
-    if test "$dist" = squeeze-updates ; then
-      wo="--old  $debmir/dists/squeeze/$sec/binary-$arch/Packages.gz" 
-    else  wo="" ; fi
-    for OV in 0 10 20 30 ; do
-     if test -r   $debmir/dists/$dist/$OV/$sec/binary-$arch/Packages.gz  ; then
-       wo="$wo --old  $debmir/dists/$dist/$OV/$sec/binary-$arch/Packages.gz"
+     sec_arch_dist_log=`tempfile`
+     sec_arch_dist_err=`tempfile`
+     wo="--old $debmir/dists/$dist/$prev/$sec/binary-$arch/Packages.gz"
+     if test "$dist" = squeeze-updates ; then
+       wo="$wo --old  $debmir/dists/squeeze/$sec/binary-$arch/Packages.gz" 
      fi
-    done
-    echo "------ $sec $arch --  (debdelta options  +=   $x $wo )"
-    $debdeltas $VERBOSE $debdelta_opt   $x $wo \
-     --old $debmir/dists/$dist/latest/$sec/binary-$arch/Packages.gz \
-     --dir $deltamir// \
-     $debmir/dists/$dist/$sec/binary-$arch/Packages.gz
+     OV=0 ; while test $OV -lt $prev ; do 
+      if test -r   $debmir/dists/$dist/$OV/$sec/binary-$arch/Packages.gz  ; then
+        wo="$wo --old  $debmir/dists/$dist/$OV/$sec/binary-$arch/Packages.gz"
+      fi
+      let OV=OV+10
+     done
+     echo "------ $sec $arch --  (debdelta options  +=   $x $wo )" >> $sec_arch_dist_log
+     if $debdeltas $VERBOSE $debdelta_opt   $x $wo --dir $deltamir// \
+        $debmir/dists/$dist/$sec/binary-$arch/Packages.gz >> $sec_arch_dist_log 2>> $sec_arch_dist_err ; then
+      #todo, only write if something happened
+      cat $sec_arch_dist_log >> $distlog
+     else
+      debdeltas_errors=$?
+      cat $sec_arch_dist_log >> $distlog
+      echo "--- debdeltas failed above, ret = ${debdeltas_errors}" >> $distlog
+      echo "--- debdeltas failed on $dist $sec $arch"
+     fi
+     if test -s "$sec_arch_dist_err" ; then
+        debdeltas_errors=11111 #make sure we keep this log
+        echo "--- debdeltas stderr " >> $distlog
+        cat $sec_arch_dist_err >> $distlog
+        echo "--- end of debdeltas stderr " >> $distlog
+        echo "--- debdeltas produced stderr on $dist $sec $arch"
+     fi
+     rm  $sec_arch_dist_log   $sec_arch_dist_err
    done ; done
-  done
- )
-
- #uncomment for added verbosity
- #egrep -3 -i 'error|warning' $log || true
-
- if test -s $err || grep -iq 'error' $log ; then
+   
+   if  grep -v '^ Total running time'  $distlog |  grep -v '^---' | grep  -q '.' ; then
+     let created_deltas=created_deltas+1
+     dist_created_deltas=1
+   fi
+   if test  "${debdeltas_errors}" -gt 0 -o "${dist_created_deltas}" -gt 0 ; then
+     #only log distributions stanzas when some deltas were generated, or errors occourred
+     cat $distlog >> $log
+     if test "${publish_deltas}" ; then
+       echo -n "--- publishing starts at "  >> $log ; date --utc >> $log
+       if ${publish_deltas} ; then
+         echo -n "--- publishing ends at "  >> $log ; date --utc >> $log
+       else
+         echo -n "--- publishing FAILS, at " >> $log  ; date --utc >> $log
+         echo "--- publishing FAILS"
+       fi
+     fi
+   #else
+   #  echo SKIPPED THIS STANZA ; cat $distlog
+   fi
+   rm $distlog
+ done
+ gzip -9 $log
+ if test "$debdeltas_errors" -gt 0  ; then
   #some error occurred
-  test ! -r "$log".gz && { gzip -9 $log ; log=${log}.gz ; }
-  echo "-----ERRORS--- full log is in $log or ...err.gz "
+  echo "-----ERRORS--- full log is in $log.gz "
  else
-  rm $err # it is empty
   #no error occurred, clean up
-  if grep -v '^---' $log | grep -v '^ Total running time' |  grep  -q '.' ; then
-   test ! -r "$log".gz && gzip -9 $log
-   created_deltas=1
-  else
-    $RM $log
+  if test "$created_deltas" = 0 ; then
+    $RM $log.gz
   fi
  fi
 }
@@ -337,7 +384,7 @@ clean_old_debs () {
   n=$(wc -l < $z)
   if test $n -lt $max_delete ; then
    echo "--- delete $n debs"
-   tr '\n' '\000' < $z | xargs -0 $RM
+   tr '\n' '\000' < $z | xargs -r0 $RM
    rm $z
   else
    echo "--- will not delete $n debs (too many!), the list is in $z"
@@ -368,10 +415,13 @@ fi
 
 test -d $deltamir/log/$yyyymm ||  mkdir $deltamir/log/$yyyymm
 
+findmelog
+
 if [ "${DO_MIRROR}" ] ; then
  run_debmirror
 else
  echo ---------- skipped mirror step
 fi
 
+#the mirror was updated, so we check the difference 
 run_debdeltas
