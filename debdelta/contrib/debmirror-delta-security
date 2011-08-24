@@ -31,9 +31,6 @@ set -e
 #who I am
 b=`basename $0`
 
-TMPDIR=/mirror/tmp
-export TMPDIR
-
 DEBUG=''
 VERBOSE=''
 [ "$1" = '-v'  ] && { VERBOSE='-v' ; shift ; }
@@ -44,6 +41,10 @@ if [ "$1" = ''  ] || test ! -r "$1" ; then
   exit 1
 fi
 . "$1"
+
+if [ -n "$TMPDIR" ]; then
+    export TMPDIR
+fi
 
 # set gpg-agent variables, test it
 gpgagentcmd="gpg-agent --homedir \"${GNUPGHOME}\" --daemon --write-env-file \"$GNUPGAGENTINFO\" "
@@ -92,7 +93,7 @@ cp -a $secdebmir/dists $olddists
 trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 #this version of 'debmirror' is patched to support the '--trash' option,
 # see in /usr/share/debdelta
-~/bin/debmirror.mine $DEBUG $VERBOSE $secdebmir --trash $deltamir/old_debs  \
+$DEBMIRROR $DEBUG $VERBOSE $secdebmir $DEBMIRROR_TRASH  \
  --nosource -h $sechost \
  -r $release -d ${secstable}  --arch=$ARCHc
 
