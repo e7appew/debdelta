@@ -1765,7 +1765,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         m= compute_md5(open(TD+'NEW.file'))
         if params['NEW/MD5sum'] != m :
           fore()
-          raise DebDeltaError(' MD5 mismatch, '+repr()+' != ' + repr(m) )
+          raise DebDeltaError(' MD5 mismatch, '+repr(params['NEW/MD5sum'])+' != ' + repr(m) )
       else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
   elif this_deb_format == 'unzipped' :
     if DO_MD5:
