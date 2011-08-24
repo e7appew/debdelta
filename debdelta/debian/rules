@@ -26,11 +26,11 @@ endif
 
 
 minibzip2: minigzip.c
-	$(CC) -DBZIP $(CFLAGS) -lbz2  minigzip.c -o minibzip2 
+	$(CC) -DBZIP $(CFLAGS) minigzip.c -o minibzip2 -lbz2
 
 build: minibzip2
 	$(checkdir)
-	$(MAKE) CC="$(CC)" CFLAGS="$(CFLAGS)" LDFLAGS="-lz" minigzip
+	$(CC) $(CFLAGS) minigzip.c -o minigzip -lz
 	touch build
 
 clean:
