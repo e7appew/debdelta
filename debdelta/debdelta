@@ -3937,14 +3937,14 @@ def delta_upgrade_(args):
   #################### manage connections
   #keeps a cache of all connections, by URL
   http_conns={}
-  
+
   def conn_by_url(url):
     url=urlparse(url)[1]
     if url not in http_conns:
       if VERBOSE > 1 : print '  Opening connection to: ',url
-      http_conns[url] = httplib.HTTPConnection(url)
+      http_conns[url] = httplib.HTTPConnection(url, timeout=15)
     return http_conns[url]
-  
+
   def conn_close(url,fatal=False):
     url=urlparse(url)[1]
     conn=http_conns.get(url)
