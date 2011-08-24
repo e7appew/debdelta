@@ -77,3 +77,13 @@ needs-lzma
  '--disable-feature lzma' (and such option provides compatibility with
  debdelta in Debian/lenny).
 
+needs-xz
+ this delta needs the program 'xz' that is available in package 'xz-utils'.
+ 'xz' is needed if the new or old deb contains data.tar.xz , and this
+ is allowed in the Debian archives since Jul 2011.
+ Moreover, 'xz' may be used to compress the internal file 'patch.sh' in the
+ delta file, if this provides a shorter file than 'bzip2' and
+ 'gzip' or 'lzma'. This latter usage can be disabled by setting
+ '--disable-feature xz' (and such option provides compatibility with
+ debdelta in Debian/squeeze).
+

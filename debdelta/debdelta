@@ -194,7 +194,7 @@ CLEAN_ALT    = False
 DO_PREDICTOR = False
 
 #see README.features
-DISABLEABLE_FEATURES=['lzma', 'xdelta3-fifo']
+DISABLEABLE_FEATURES=['xz', 'lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
@@ -827,6 +827,10 @@ def _info_patch_unzip_(TD):
     if not os.path.exists('/usr/bin/unlzma'):
       raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
     system(('unlzma','PATCH/patch.sh.lzma'),TD)
+  elif os.path.exists(TD+'PATCH/patch.sh.xz'):
+    if not os.path.exists('/usr/bin/unxz'):
+      raise DebDeltaError('This patch needs xz. Please install the Debian package "xz-utils".',retriable=True)
+    system(('unxz','PATCH/patch.sh.xz'),TD)
 
 def get_info_slow(delta,T=None):
   if T:
@@ -836,7 +840,7 @@ def get_info_slow(delta,T=None):
   if TD[-1] != '/':
     TD = TD + '/'
   delta=abspath(expanduser(delta))
-  system(('ar','x',delta,'info','info.gz','patch.sh','patch.sh.gz','patch.sh.bz2','patch.sh.lzma'),
+  system(('ar','x',delta,'info','info.gz','patch.sh','patch.sh.gz','patch.sh.bz2','patch.sh.lzma','patch.sh.xz'),
          TD+'/PATCH', ignore_output=True)
   _info_patch_unzip_(TD)
   info = _scan_delta_info_(TD)
@@ -1509,6 +1513,10 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           if not os.path.exists('/usr/bin/lzma'):
             raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
           system(('ar','p',TD+'OLD.file','data.tar.lzma','|','unlzma','-c','|','tar','-xpf','-','-C',TD+'OLD/DATA'), TD)
+        elif 'data.tar.xz' in ar_list_old:
+          if not os.path.exists('/usr/bin/xz'):
+            raise DebDeltaError('This patch needs xz. Please install the Debian package "xz-utils".',retriable=True)
+          system(('ar','p',TD+'OLD.file','data.tar.xz','|','unxz','-c','|','tar','-xpf','-','-C',TD+'OLD/DATA'), TD)
         else: assert(0)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
@@ -1538,6 +1546,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif 'needs-lzma' == a:
       if not os.path.exists('/usr/bin/lzma'):
         raise DebDeltaError('This patch needs lzma. Please install the Debian package "lzma".',retriable=True)
+    elif 'needs-xz' == a:
+      if not os.path.exists('/usr/bin/xz'):
+        raise DebDeltaError('This patch needs xz. Please install the Debian package "xz-utils".',retriable=True)
     elif 'needs-minibzip2' == a:
       pass #its your lucky day
     elif a[:6] == 'needs-':
@@ -1962,6 +1973,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
       elif cn == '.lzma' :
         info_append('needs-lzma')
         self.fd.write('lzma -9')
+      elif cn == '.xz' :
+        info_append('needs-xz')
+        self.fd.write('xz')
       else: assert(0)
   
     def start_member(self, ar_line, newname, extrachar):
@@ -2193,6 +2207,11 @@ def do_delta_(olddeb,newdeb,delta,TD):
       system(('unlzma',f),TD)
       f=f[:-5]
       c='.lzma'
+    elif f[-3:] == '.xz' :
+      info_append('needs-xz')
+      system(('unxz',f),TD)
+      f=f[:-3]
+      c='.xz'
     else: raise NotImplementedError(' dont know how to decompress '+repr(f))
     return (f,c)
 
@@ -2994,6 +3013,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
   if 'lzma' not in DISABLED_FEATURES and os.path.exists('/usr/bin/lzma'):
     system(('lzma','-q','-9','-k','PATCH/patch.sh'), TD)
     patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.lzma'), 'lzma', 'patch.sh.lzma'))
+  if 'xz' not in DISABLED_FEATURES and os.path.exists('/usr/bin/xz'):
+    system(('xz','-q','-9','-k','PATCH/patch.sh'), TD)
+    patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.xz'), 'xz', 'patch.sh.xz'))
   system(('bzip2','-q','--keep','-9','PATCH/patch.sh'), TD)
   patch_files.append((os.path.getsize(TD+'PATCH/patch.sh.bz2'), 'bzip2', 'patch.sh.bz2'))
   system(('gzip','-q','-9','-n','PATCH/patch.sh'), TD)
@@ -3004,6 +3026,8 @@ def do_delta_(olddeb,newdeb,delta,TD):
   if VERBOSE > 1 : print '  '+patch_files[0][1]+' wins on patch.sh'
   if patch_files[0][1] == 'lzma':
     info_append('needs-lzma')
+  if patch_files[0][1] == 'xz':
+    info_append('needs-xz')
   patch_append(patch_files[0][2])
   del patch_files
   

@@ -243,7 +243,9 @@ run_debdeltas  () {
    echo -n "---Release " >> $distlog ; grep ^Date $debmir/dists/$dist/Release >> $distlog
    echo -n "---Start at " >> $distlog ; date --utc >> $distlog
    #lenny contains debdelta 0.27, that does not understand lzma
-   if test "$dist" = lenny ; then x="--disable-feature lzma" ; else x="" ; fi
+   if test "$dist" = lenny ; then x="--disable-feature lzma,xz" ;
+   #squeeze contains debdelta 0.39trl, that does not understand xz
+   elif test "$dist" = squeeze ; then x="--disable-feature xz" ; else x="" ; fi
    for sec in $SECTIONs ; do  for arch in $ARCHs ; do
      sec_arch_dist_log=`tempfile`
      sec_arch_dist_err=`tempfile`
