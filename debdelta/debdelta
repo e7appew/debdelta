@@ -569,6 +569,8 @@ def die(s):
 def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
   "a must be a tuple, TD the temporary directory ; if return_output , it will return (stdout,stderr,exitcode) regardless"
   assert type(a) in (ListType, TupleType)
+  # mvo: compat with python2.5 where tuple does not have index
+  a = list(a)
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
     print ' Warning "system()" in ',TD,' for ',a
   (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_out_system")
