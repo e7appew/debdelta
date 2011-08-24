@@ -1,5 +1,5 @@
 --- debmirror-2.6/debmirror	2009-12-19 22:21:28.000000000 +0100
-+++ /home/debdev/bin/debmirror_2.6_mine	2010-01-19 11:29:40.000000000 +0100
++++ debmirror	2010-01-19 11:29:40.000000000 +0100
 @@ -62,6 +62,7 @@
            [--di-dist=foo[,bar,..] ...] [--di-arch=foo[,bar,..] ...]
            [--source|--nosource] [--i18n] [--getcontents] [--md5sums]
