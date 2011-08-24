@@ -34,7 +34,7 @@ b=`basename $0`
 DEBUG=''
 VERBOSE=''
 [ "$1" = '-v'  ] && { VERBOSE='-v' ; shift ; }
-[ "$1" = '-d'  ] && { DEBUG='--debug' ; }
+[ "$1" = '-d'  ] && { DEBUG='--debug' ; shift; }
 [ "$1" = '-v'  ] && { VERBOSE='-v' ; shift ; }
 if [ "$1" = ''  ] || test ! -r "$1" ; then 
   echo please provide the configuration file as argument
@@ -94,7 +94,7 @@ trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 #this version of 'debmirror' is patched to support the '--trash' option,
 # see in /usr/share/debdelta
 $DEBMIRROR $DEBUG $VERBOSE $secdebmir $DEBMIRROR_TRASH  \
- --nosource -h $sechost \
+ --method=$DEBMIRROR_METHOD --nosource -h $sechost \
  -r $release -d ${secstable}  --arch=$ARCHc
 
 #do create deltas
