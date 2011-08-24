@@ -1,3 +1,9 @@
+debdelta (0.44) unstable; urgency=low
+
+  * support xz compression for data.tar part in .deb
+
+ --
+
 debdelta (0.43) unstable; urgency=low
 
   * add code to support python-apt 0.8 API,
