@@ -102,7 +102,7 @@ lockfile -r 1  /tmp/$b.lock || exit 1
 trap "rm  $VERBOSE -f /tmp/$b.lock; echo FAILED , please delete $olddists " 0
 cd $secdebmir
 for arch in $ARCHs ; do
- for sec in main contrib non-free ; do
+ for sec in $SECTIONS; do
    $debdeltas $VERBOSE -v --test $debdelta_opt  \
      --old $fulldebmir/dists/${origstable}/$sec/binary-$arch/Packages.gz \
      --old $olddists/dists/${secstable}/$sec/binary-$arch/Packages.gz \
