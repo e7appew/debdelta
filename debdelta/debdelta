@@ -575,23 +575,24 @@ def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
     print ' Warning "system()" in ',TD,' for ',a
   (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_out_system")
   (temp_err_fd, temp_err_name) = tempfile.mkstemp(prefix="debdelta_err_system")
-  if not '|' in a:
-    if VERBOSE > 3 : print '   system(',a,')=',
-    pro = subprocess.Popen(args=a,stdin=open(os.devnull),stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
-    pro.wait()
-    ret = pro.returncode
-    del pro
-  else:
-    #special code for pipes http://docs.python.org/library/subprocess.html#replacing-shell-pipeline
-    l=a.index('|'); a1=a[:l]; a2=a[l+1:]
-    if VERBOSE > 3 : print '    system(',a1,' piped in ',a2,')=',
-    pro1 = subprocess.Popen(args=a1,stdin=open(os.devnull),stdout=subprocess.PIPE,stderr=temp_err_fd,cwd=TD)
-    pro2 = subprocess.Popen(args=a2,stdin=pro1.stdout,stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
-    pro1.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits.
-    pro1.wait()
-    pro2.wait()
-    ret = pro1.returncode | pro2.returncode
-    del pro1, pro2, a1, a2, l
+  
+  if VERBOSE > 3 : print '   system(',a,')=',
+  #special code for pipes http://docs.python.org/library/subprocess.html#replacing-shell-pipeline
+  old_stdin=open(os.devnull)
+  pros=[]
+  while '|' in a:
+    l=a.index('|') ; a1=a[:l] ; a=a[l+1:]
+    p=subprocess.Popen(args=a1,stdin=old_stdin,stdout=subprocess.PIPE,stderr=temp_err_fd,cwd=TD)
+    pros.append( p )
+    old_stdin=p.stdout
+  final_pro= subprocess.Popen(args=a,stdin=old_stdin,stdout=temp_fd,stderr=temp_err_fd,cwd=TD)
+  for p in pros:
+    p.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits.
+  pros.append(final_pro)
+  for p in pros:
+    p.wait()
+  ret = max([ p.returncode for p in pros])
+  
   os.close(temp_fd)
   os.close(temp_err_fd)
   if VERBOSE > 3 : print ret
