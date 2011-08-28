@@ -29,6 +29,7 @@ Description: diff and patch utilities which work with Debian packages
  use deltas to upgrade the host.
 
 Package: debdelta-doc
+Section: doc
 Architecture: all
 Recommends: debdelta
 Description: diff and patch utilities which work with Debian packages
