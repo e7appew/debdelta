@@ -1,12 +1,13 @@
 debdelta (0.44) unstable; urgency=low
 
   * support xz compression for data.tar part in .deb
+    (only when defult compression is used)
   * Bug fix: "FTBFS with binutils-gold", thanks to Angel Abad (Closes:
     #633467).
   * Bug fix: "Do not wait forever the connection to server", thanks to
     Rodolphe Pelloux-Prayer (Closes: #636022).
 
- --
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 28 Aug 2011 10:17:40 +0200
 
 debdelta (0.43) unstable; urgency=low
 
