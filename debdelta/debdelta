@@ -1122,18 +1122,18 @@ def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
   o.write('Architecture: '+db['OLD/Architecture']+'\n')
   if diverted:
     o.write("Diversions:\n")
-    for a in diverted:
+    for a in sorted(diverted):
       b,p = diversions[a]
       o.write(" From: "+a+'\n')
       o.write(" To: "+b+'\n')
       o.write(" By: "+p+'\n')
   if conffiles:
     o.write("Conffiles:\n")
-    for a in conffiles:
+    for a in sorted(conffiles):
       o.write(' '+a+'\n')
   for L,N in ((controlfiles,"Control"),(files,"Files")):
     o.write(N+":\n")
-    for a,b in L:
+    for a,b in sorted(L):
       if not os.path.exists(b):
         o.write(' NONEXISTENT\n '+b+'\n \n')
         continue
