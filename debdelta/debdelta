@@ -1583,9 +1583,10 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   elif this_deb_format == 'preunpacked':
     cmd+=['piped']
 
+  env={'PATH':os.getenv('PATH')}
   F=subprocess.Popen(cmd, cwd=TD,
                      bufsize=4096,close_fds=True,
-                     stdin=open(os.devnull),
+                     stdin=open(os.devnull),env=env,
                      stderr=temp_err_name_fd, stdout=temp_name_fd)
   
   ### data used by the preunpacked method
