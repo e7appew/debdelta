@@ -1584,10 +1584,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     cmd+=['piped']
 
   F=subprocess.Popen(cmd, cwd=TD,
+                     bufsize=4096,close_fds=True,
                      stdin=open(os.devnull),
-                     stderr=subprocess.PIPE, stdout=temp_name_fd)
-  progresschar=0.0
-  progresslen=float(os.path.getsize(os.path.join(TD,'PATCH/patch.sh')))
+                     stderr=temp_err_name_fd, stdout=temp_name_fd)
   
   ### data used by the preunpacked method
   data_md5=None # md5 of uncompressed data.tar
@@ -1690,13 +1689,19 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       do_cleanup()
       raise
   else: #progress reporting for deb_format != 'preunpacked'
-    for j in F.stderr:
-      os.write(temp_err_name_fd, j)
-      progresschar+=len(j)
-      progress=(int(12.0 + 84.0 * progresschar / progresslen))
-      runtime['patchprogress']=progress
-      if do_progress:
-        sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
+    runtime['patchprogress']=12
+    if 'NEW/Size' in params:
+      NEW_size=int(params['NEW/Size'])
+      while None == F.poll():
+        if os.path.exists(TD+'NEW.file'):
+          a=os.path.getsize(TD+'NEW.file')
+          progress=(int(12.0 + 84.0 * a / NEW_size))
+        else:
+          progress=12
+        runtime['patchprogress']=progress
+        time.sleep(0.1)
+        if do_progress:
+          sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
     F.wait()
   if do_progress and terminalcolumns: #clean up
     sys.stderr.write(' ' * terminalcolumns + '\r')
