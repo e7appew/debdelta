@@ -95,7 +95,8 @@ trap "rm  $VERBOSE -f $secdebmirlock ; echo FAILED , please delete $olddists" 0
 # see in /usr/share/debdelta
 $DEBMIRROR $DEBUG $VERBOSE $secdebmir $DEBMIRROR_TRASH  \
  --method=$DEBMIRROR_METHOD --nosource -h $sechost \
- -r $release -d ${secstable}  --arch=$ARCHc
+ -r $release -d ${secstable}  --arch=$ARCHc \
+ $DEBMIRROR_OPTIONS
 
 #do create deltas
 lockfile -r 1  /tmp/$b.lock || exit 1
