@@ -3932,7 +3932,8 @@ def delta_upgrade_(args):
     # synopsis lockf(   fd, operation, [length, [start, [whence]]])
     fcntl.lockf(a, fcntl.LOCK_EX | fcntl.LOCK_NB, 0,0,0)
   except IOError, s:
-    if s.errno == 11 :
+    from errno import EAGAIN
+    if s.errno == EAGAIN :
       a=' already locked!'
     else:
       a=str(s)
