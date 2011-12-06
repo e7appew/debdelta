@@ -6,6 +6,8 @@ debdelta (0.45) unstable; urgency=low
      to store hashes to check above reports
   * do not use hardcoded errno values,
     thanks to Pino Toscano (Closes: #640627).
+  * typo in Recommends: xz -> xz-utils,
+    thanks to Eugene V. Lyubimkin (Closes: #641189).
 
  --
 

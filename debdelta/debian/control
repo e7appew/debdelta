@@ -10,7 +10,7 @@ Vcs-git: http://debdelta.debian.net/debdelta-suite.git
 Package: debdelta
 Architecture: any
 Depends: python, bzip2, binutils, ${shlibs:Depends}
-Recommends: python-apt, xdelta3, xdelta, lzma, xz, xdelta, bsdiff, gnupg2, gnupg-agent
+Recommends: python-apt, xdelta3, xdelta, lzma, xz-utils, xdelta, bsdiff, gnupg2, gnupg-agent
 Conflicts: xdelta3 (<< 0y.dfsg-1)
 Enhances: cupt
 Suggests: debdelta-doc
