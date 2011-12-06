@@ -1642,8 +1642,6 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   runtime['patchprogress']=12
 
-  a=''
-  if DEBUG: a='-v'
   script_time = - time.time()
 
   this_deb_format=DEB_FORMAT
