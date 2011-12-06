@@ -1357,11 +1357,11 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   #this is not needed in preparing the patch, but may help in forensic
   conf_files=[]
-  a='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
-  if DEBUG and os.path.isfile(a):
+  z='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
+  if DEBUG and os.path.isfile(z):
     #note that filenames do not have leading /
-    conf_files=[de_bar(p) for p in open(a).read().split('\n') if p]
-  del a
+    conf_files=[de_bar(p) for p in open(z).read().split('\n') if p]
+  del z
   
   ###
   s=patch_check_tmp_space(params,olddeb)
@@ -1405,6 +1405,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           elif  params[a] != dpkg_params[a] :
             die( 'Error : in delta , '+a+' = ' +params[a] +\
                  '\nin old/installed deb, '+a+' = ' +dpkg_params[a])
+      del b,p  #cannot delete 'a', python raise a SyntaxError
 
   runtime['patchprogress']=5
 
@@ -1603,10 +1604,11 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
             os.mkdir(TD+'OLD/CONTROL')
           p=params['OLD/Package']
           for  b in dpkg_keeps_controls :
-            a='/var/lib/dpkg/info/' + p +'.'+b
-            if os.path.exists(a):
-              os.symlink(a,TD+'OLD/CONTROL/'+b)
-              control_file_pairs.append((b,a))
+            z='/var/lib/dpkg/info/' + p +'.'+b
+            if os.path.exists(z):
+              os.symlink(z,TD+'OLD/CONTROL/'+b)
+              control_file_triples.append((b,z,None))
+          del z,p #cannot delete 'a', python raise a SyntaxError
         #else... we always unpack the control of a .deb
     elif 'needs-xdelta3' == a:
       if not os.path.exists('/usr/bin/xdelta3'):
