@@ -169,6 +169,21 @@ DO_MD5  = True
 DEB_POLICY = ['b','s','e']
 DO_PROGRESS = terminalcolumns != None
 
+#where/how debpatch/debdelta-upgrade will send forensic data, when patching fails
+#possible values:
+#  False                 : do not send them
+#  True                  : compute forensic but not send them, just list them
+#  mail                  : automatically send by email to default address
+#  user@domain           : automatically send by email to address
+#  mailto:user@domain    : as above
+#  mutt:user@domain      : as above, but use 'mutt', so the user can customize it
+#  http://domain/cgi     : send them automatically thru a CGI script
+#Warning: the above is mostly TODO
+FORENSIC=False
+
+#directory tree where forensic info are stored by 'debdeltas'
+FORENSICDIR=None
+
 DEB_FORMAT='deb'
 DEB_FORMAT_LIST=('deb','unzipped','preunpacked') #not yet implemented on patching side :  (,'piped')
 
@@ -219,7 +234,7 @@ else:
   try: 
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
                  ('help','info','needsold','dir=','no-act','alt=','old=','delta-algo=',
-                    'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug',
+                    'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug','forensicdir=','forensic=',
                     'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test", "format=") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
@@ -260,6 +275,21 @@ else:
       if not os.path.isdir(DIR):
         sys.stderr.write( _("Error: argument of --dir is not a directory:") +' '+ DIR +'\n')
         raise SystemExit(3)
+
+    elif o == '--forensicdir'  :
+      FORENSICDIR = abspath(expanduser(v))
+      if v[-2:] == '//':
+        FORENSICDIR += '//'
+      if not os.path.isdir(FORENSICDIR):
+        sys.stderr.write( _("Error: argument of --forensicdir is not a directory:") +' '+ FORENSICDIR +'\n')
+        raise SystemExit(3)
+
+    elif o == '--forensic'  :
+      if v in ('1','do'):
+        FORENSIC = True
+      else:
+        FORENSIC = v
+
     elif o == '--alt'  :
       if not (os.path.isfile(v)  or  os.path.isdir(v)) :
         sys.stderr.write(_('Error: argument of --alt is not a directory or a regular file:')+' '+v +'\n')
@@ -1735,9 +1765,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     if os.path.getsize(temp_err_name):
       sys.stderr.write('!! '+temp_err_name+'\n')
 
-  if DEBUG == 0:
+  if not FORENSIC:
     def fore():
-      sys.stderr.write(_('(Faulty delta. Please consider retrying with the option "-d" ).')+'\n')
+      sys.stderr.write(_('(Faulty delta. Please consider retrying with the option "--forensic=do" ).')+'\n')
   elif olddeb != '/':
     def fore():
       sys.stderr.write('!!'+_('Faulty delta. Please send by email to %s the following files:') % EMAIL +\
