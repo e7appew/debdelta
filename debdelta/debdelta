@@ -1148,8 +1148,9 @@ def hash_to_hex(s):
         a=a+ ( '%02x' % ord(i)  )
     return a
 
-def forensics_rfc(o,db,bytar,controlfiles,files,diverted,diversions,conffiles):
+def forensics_rfc(o,db,bytar,controlfiles,files,conffiles,diverted=[],diversions={},localepurged=[],prelink_u_failed=[]):
   " this is invoked by do_patch_() as well as do_delta_() ; in the former case, by_tar=False"
+  assert type(diversions) == dict
   if type(db) == dict:
     for a in sorted(db.keys()):
       if a[:3] == 'OLD':
@@ -1175,13 +1176,16 @@ def forensics_rfc(o,db,bytar,controlfiles,files,diverted,diversions,conffiles):
       if bytar:
         name,mode,tartype,uid,gid,uname,gname,data=l
       else:
-        name,b=l
-        if not os.path.exists(b):
-          o.write(' NONEXISTENT\n '+b+'\n \n')
-          continue
-        fullname,mode,tartype,uid,gid,uname,gname,data=stat_to_tar(b)
+        name,divert,tmpcopy=l
+        if os.path.exists(divert):
+          fullname,mode,tartype,uid,gid,uname,gname,data=stat_to_tar(divert)
+        else:
+          fullname,mode,tartype,uid,gid,uname,gname,data='',0,'?',0,0,'?','?','?'
         if tartype == tarfile.REGTYPE:
-          data=hash_to_hex(sha1_hash_file(b))
+          if tmpcopy and os.path.exists(tmpcopy):
+            data=hash_to_hex(sha1_hash_file(tmpcopy))
+          elif os.path.exists(divert):
+            data=hash_to_hex(sha1_hash_file(divert))
       if name in ('.', '/', './', '/.') and tartype == tarfile.DIRTYPE: #skip root
         continue
       if uname == None: uname=str(uid)
@@ -1189,10 +1193,16 @@ def forensics_rfc(o,db,bytar,controlfiles,files,diverted,diversions,conffiles):
       name=de_bar(name)
       o.write(' '+tarinfo_to_ls(tartype,mode)+" "+uname+' '+gname)
       if N == "Files" and tartype == tarfile.REGTYPE and name in conffiles:
-        o.write(" [conffile]\n")
-      else:
-        o.write("\n")
-      o.write(" "+name+"\n")
+        o.write(" [conffile]")
+      if N == "Files" and tartype == tarfile.REGTYPE and name in localepurged:
+        o.write(" [localpurged]")
+      if N == "Files" and tartype == tarfile.REGTYPE and name in prelink_u_failed:
+        o.write(" [prelink-u failed]")
+      if not os.path.exists(divert):
+        o.write(" [missing file %r]" % divert)
+      if tmpcopy:
+        o.write(" [prelink-u]")
+      o.write("\n "+name+"\n")
       if data!=None:
         o.write(" "+data+"\n")
       else:
@@ -1444,9 +1454,10 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     p.close()
     return s, diverted
 
-  localepurged=[]
-  prelink_u_failed=[]
   def _symlink_data_tree(pa,TD,diversions,runtime):
+    localepurged=[]
+    prelink_u_failed=[]
+    file_triples=[]
     prelink_time = 0
     prelink_datasize = 0
     if diversions:
@@ -1462,8 +1473,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       if do_progress:
         sys.stderr.write('P %2d%% %s\r' % (progress, newdebshortname))
       if os.path.isfile(divert) and not os.path.islink(divert) :
-        a=TD+'OLD/DATA'+orig
-        d=os.path.dirname(a)
+        tmpcopy=TD+'OLD/DATA'+orig
+        d=os.path.dirname(tmpcopy)
         if not os.path.exists(d):
           os.makedirs(d)
         #the following code idea was provided by roman@khimov.ru
@@ -1478,40 +1489,54 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           prelink_time -=  time.time()
           prelink_datasize += os.path.getsize(divert)
           if VERBOSE > 3 :
-            print '    copying/unprelinking ',divert,' to ',a
+            print '    copying/unprelinking ',divert,' to ', tmpcopy
           #unfortunately 'prelink -o' sometimes alters files, see http://bugs.debian.org/627932
-          shutil.copy2(divert,a)
-          proc=subprocess.Popen(["/usr/sbin/prelink","-u",a],stdin=open(os.devnull),\
+          shutil.copy2(divert, tmpcopy)
+          proc=subprocess.Popen(["/usr/sbin/prelink","-u",tmpcopy],stdin=open(os.devnull),\
               stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
           out=proc.stdout.read().strip()
           proc.wait()
           if proc.returncode:
-            if not os.path.exists(a):
-              if VERBOSE > 4 : print '     (prelink failed, symlinking ',divert,' to ',a,')'
-              os.symlink(divert, a)
+            if not os.path.exists(tmpcopy):
+              if VERBOSE > 4 : print '     (prelink failed, symlinking ',divert,' to ',tmpcopy,')'
+              os.symlink(divert, tmpcopy)
+              prelink_u_failed.append(de_bar(orig))
+              unprelink=False
             elif VERBOSE > 4 : print '     (prelink failed, but file was copied)'
-            thestat = os.statvfs(a)
+            thestat = os.statvfs(tmpcopy)
             if out[-39:] == 'does not have .gnu.prelink_undo section':
               if DEBUG:
                 sys.stderr.write('!!'+repr(out)+'\n')
             elif (thestat.f_bsize * thestat.f_bavail / 1024) < 50000 : 
               sys.stderr.write('!!Prelink -u failed, it needs at least 50000KB of free disk space\n')
-              prelink_u_failed.append(a)
+              prelink_u_failed.append(de_bar(orig))
+              unprelink=False
             else:
-              sys.stderr.write('!!Prelink -u failed on %s : %s\n' % (a,out))
-              prelink_u_failed.append(a)
+              sys.stderr.write('!!Prelink -u failed on %s : %s\n' % (tmpcopy,out))
+              prelink_u_failed.append(de_bar(orig))
+              unprelink=False
           prelink_time +=  time.time()
         else:
           if VERBOSE > 3 : print '    symlinking ',divert,' to ',a
-          os.symlink(divert, a)
+          os.symlink(divert, tmpcopy)
+        if unprelink and FORENSIC:
+          #unfortunately the script will delete the 'tmpcopy', so we hardlink it
+          z=tempfile.mktemp(prefix=TD)
+          os.link(tmpcopy,z)
+          file_triples.append((orig,divert,z))
+        else:
+          file_triples.append((orig,divert,None))
       elif not os.path.exists(divert):
+        file_triples.append((orig,divert,None))
         if VERBOSE : print ' Disappeared file? ',divert
         for z in ('locale','man','gnome/help','omf','doc/kde/HTML'):
           w='/usr/share/'+z
           if orig[:len(w)] == w:
-            localepurged.append(orig)
-      elif VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
-    return s,diverted, prelink_time, prelink_datasize
+            localepurged.append(de_bar(orig))
+      else:
+        file_triples.append((orig,divert,None))
+        if VERBOSE > 3 : print '    not symlinking ',divert,' to ',orig
+    return file_triples, localepurged, prelink_u_failed, diverted, prelink_time, prelink_datasize
 
   def chmod_add(n,m):
     "same as 'chmod ...+...  n '"
@@ -1532,8 +1557,14 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         i=os.path.join(dirpath,i)
         chmod_add(i,  S_IRUSR | S_IWUSR| S_IXUSR  )
 
-  control_file_pairs=[]
-  linked_file_pairs,diverted=[],[]
+  #initialize, just in case
+  control_file_triples=[]
+  file_triples=[]
+  localepurged=[]
+  prelink_u_failed=[]
+  diverted=[]
+  prelink_time=0
+  prelink_datasize=0
   
   ###see into parameters: the patch may need extra info and data
 
@@ -1548,7 +1579,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
-        linked_file_pairs,diverted,prelink_time,prelink_datasize=_symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
+        file_triples, localepurged, prelink_u_failed, diverted, prelink_time, prelink_datasize=\
+          _symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
@@ -1785,8 +1817,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.write('PrelinkUFailedN: '+str(len(prelink_u_failed))+'\n')
         if ret:
           temp_file.write('PatchExitCode: '+str(ret)+'\n')
-        forensics_rfc(temp_file,params,False,control_file_pairs,
-                      linked_file_pairs,diverted,diversions,conf_files)
+        forensics_rfc(temp_file,params,False,control_file_triples,file_triples,conf_files,
+                      diverted,diversions,localepurged,prelink_u_failed)
         temp_file.close()
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
