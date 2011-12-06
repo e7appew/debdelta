@@ -410,7 +410,9 @@ def de_n(a):
 def de_bar(a):
   if a and a[:2] == './' :
     a=a[2:]
-  if a and a[0] == '/' :
+  elif a == '/.' :
+      a=''
+  elif a and a[0] == '/' :
     a=a[1:]
   return a
 
