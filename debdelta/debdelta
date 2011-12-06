@@ -285,10 +285,13 @@ else:
         raise SystemExit(3)
 
     elif o == '--forensic'  :
-      if v in ('1','do'):
-        FORENSIC = True
-      else:
-        FORENSIC = v
+      FORENSIC = v
+      if FORENSIC[:4] == 'http':
+        try:
+          import poster
+        except:
+          print 'To use the http forensic, you must install the package "python-poster".'
+          raise SystemExit(3)
 
     elif o == '--alt'  :
       if not (os.path.isfile(v)  or  os.path.isdir(v)) :
@@ -578,7 +581,7 @@ def tempo():
 class DebDeltaError(Exception):  #should derive from (Exception):http://docs.python.org/dev/whatsnew/pep-352.html
   # Subclasses that define an __init__ must call Exception.__init__
   # or define self.args.  Otherwise, str() will fail.
-  def __init__(self,s,retriable=False,exitcode=None):
+  def __init__(self,s,retriable=False,exitcode=None,logs=None):
     assert(type(s) == StringType)
     self.retriable = retriable
     if retriable:
@@ -591,6 +594,7 @@ class DebDeltaError(Exception):  #should derive from (Exception):http://docs.pyt
       else:
         exitcode = 2
     self.exitcode=exitcode
+    self.logs=logs
 
 def die(s):
   #if s : sys.stderr.write(s+'\n')
@@ -1210,6 +1214,70 @@ def forensics_rfc(o,db,bytar,controlfiles,files,conffiles,diverted=[],diversions
       else:
         o.write(" \n")
 
+def forensic_send(f,forensic=FORENSIC):
+  " note that f must be a list of lists (or None)"
+  assert type(f) == list
+  if not forensic :
+    if f:
+      sys.stderr.write(_('(Faulty delta. Please consider retrying with the option "--forensic=http" ).')+'\n')
+    return
+  if not f:
+    return
+  if all([(z == None) for z in f]):
+    print 'Sorry, no forensic logs were generated'
+    return
+  if forensic[:4] in ('mutt','mail') or forensic[:7] == 'icedove' or forensic[:10]=='thunderbird':
+    email=EMAIL
+    if ':' in forensic:
+      a=forensic.find(':')
+      email == forensic[a:]
+      forensic=forensic[:a]
+    print _("There were faulty deltas.")+' '+_("Now invoking the mail sender to send the logs.")
+    if forensic in ('mutt','mail'):
+      raw_input( _('(hit any key)') )
+      args=[]
+      for z in f:
+        if z:
+          for j in z:
+            args+=['-a',j]
+      subprocess.call(['mutt',email,'-s','delta_failures']+args)
+    else:
+      temptar=tempfile.mktemp(suffix='.tgz')
+      tar=tarfile.open(name=temptar,mode='w:gz')
+      for z in f:
+        if z:
+          for j in z:
+            tar.add(j,arcname=os.path.basename(j))
+      tar.close()
+      args="to=%s,subject=delta_failures,attachment='file:///%s'" % (email,temptar)
+      subprocess.call([forensic,'-compose',args])
+    return
+  elif forensic[:4] == 'http':
+    print _("There were faulty deltas.")+' '+_('Sending logs to server.')
+    temptar=tempfile.mktemp(suffix='.tgz')
+    tar=tarfile.open(name=temptar,mode='w:gz')
+    for z in f:
+      if z:
+        for j in z:
+          tar.add(j,arcname=os.path.basename(j))
+    tar.close()
+    #http://atlee.ca/software/poster
+    import urllib, urllib2, httplib, poster
+    poster.streaminghttp.register_openers()
+    datagen, headers = poster.encode.multipart_encode({'auth_userid':'debdelta','auth_password':'slartibartfast',"thefile": open(temptar, "rb")})
+    # Create the Request object
+    request = urllib2.Request("http://debdelta.debian.net:7890/receive", datagen, headers)
+    # Actually do the request, and get the response
+    print ' '+_('Server answers:'),repr(urllib2.urlopen(request).read())
+    return
+  else:
+    sys.stderr.write(_('Faulty delta. Please send by email to %s the following files:\n') % EMAIL)
+    for z in f:
+      if z:
+        sys.stderr.write(' '+string.join(z,' ')+'\n')
+    return
+  sys.stderr.write(_('(Faulty delta. Please consider retrying with the option "--forensic=http" ).')+'\n')
+
 def elf_info(f):
   "returns (is_elf, ei_class, ei_data, ei_osabi, e_type)"
   import struct
@@ -1793,23 +1861,25 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   runtime['patchprogress']=97
 
   #helper for debugging
-  def tempos():
+  def tempos(f):
     if os.path.getsize(temp_name):
-      sys.stderr.write('!! '+temp_name+'\n')
+      f.append(temp_name)
     if os.path.getsize(temp_err_name):
-      sys.stderr.write('!! '+temp_err_name+'\n')
+      f.append(temp_err_name)
 
   if not FORENSIC:
     def fore():
-      sys.stderr.write(_('(Faulty delta. Please consider retrying with the option "--forensic=do" ).')+'\n')
+      return None
   elif olddeb != '/':
     def fore():
-      sys.stderr.write('!!'+_('Faulty delta. Please send by email to %s the following files:') % EMAIL +\
-                         '\n!! '+delta+'\n!! '+olddeb+'\n')
-      tempos()
+      f=[delta,olddeb]
+      tempos(f)
+      return f
   else:
     def fore():
       temp_fore_name=''
+      f=[]
+      tempos(f)
       try:
         (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
         temp_file=os.fdopen(temp_fd,'w')
@@ -1817,6 +1887,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
         temp_file.write('LocalePurgedFilesN: '+str(len(localepurged))+'\n')
         temp_file.write('PrelinkUFailedN: '+str(len(prelink_u_failed))+'\n')
+        for i in f:
+          temp_file.write('PatchLogFile: '+str(i)+'\n')
         if ret:
           temp_file.write('PatchExitCode: '+str(ret)+'\n')
         forensics_rfc(temp_file,params,False,control_file_triples,file_triples,conf_files,
@@ -1824,67 +1896,64 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.close()
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
-      sys.stderr.write('!!'+_('Faulty delta. Please send by email to %s the following files:') % EMAIL +\
-                         '\n!! ' + temp_fore_name + '\n')
-      tempos()
-
-  ##then , really execute the patch
+      f.append(temp_fore_name)
+      return f
 
   if ret:
     if localepurged:
       raise DebDeltaError('"debdelta" is incompatible with "localepurge".')
     else:
-      fore()
-      raise DebDeltaError('error in patch.sh.')
+      f=fore()
+      raise DebDeltaError('error in patch.sh.',logs=f)
 
   #then we check for the conformance
   if this_deb_format == 'deb':
     if  'NEW/Size' in params:
       newdebsize = os.stat(TD+'NEW.file')[ST_SIZE]
       if newdebsize != int(params['NEW/Size']):
-        fore()
-        raise DebDeltaError('new deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'])
+        f=fore()
+        raise DebDeltaError('new deb size is '+str(newdebsize)+' instead of '+params['NEW/Size'],logs=f)
   
     if DO_MD5:
       if 'NEW/MD5sum' in params:
         if VERBOSE > 1 : print '  verifying MD5  for ',os.path.basename(newdeb or delta)
         m= compute_md5(open(TD+'NEW.file'))
         if params['NEW/MD5sum'] != m :
-          fore()
-          raise DebDeltaError(' MD5 mismatch, '+repr(params['NEW/MD5sum'])+' != ' + repr(m) )
+          f=fore()
+          raise DebDeltaError(' MD5 mismatch, '+repr(params['NEW/MD5sum'])+' != ' + repr(m) , logs=f)
       else: print ' Warning! no MD5 was verified for ',os.path.basename(newdeb or delta)
   elif this_deb_format == 'unzipped' :
     if DO_MD5:
       m=compute_md5(subprocess.Popen('ar p "%s" control.tar.gz | zcat' % (TD+'NEW.file'),
                                      stdout=subprocess.PIPE,shell=True).stdout)
       if params['NEW/control.tar'][:32] != m:
-        fore()
-        raise DebDeltaError('MD5 mismatch for control.tar' )
+        f=fore()
+        raise DebDeltaError('MD5 mismatch for control.tar' , logs=f)
       m=compute_md5(subprocess.Popen('ar p "%s" data.tar' % (TD+'NEW.file'),
                                      stdout=subprocess.PIPE,shell=True).stdout)
       if params['NEW/data.tar'][:32] != m:
-        fore()
-        raise DebDeltaError('MD5 mismatch for data.tar' )
+        f=fore()
+        raise DebDeltaError('MD5 mismatch for data.tar', logs=f)
   elif this_deb_format == 'preunpacked' :
     if tar_status != [True]:
-      fore()
+      f=fore()
       do_cleanup()
-      raise DebDeltaError("something bad happened in tar: "+repr(tar_status[0][1])) #todo format me better
+      raise DebDeltaError("something bad happened in tar: "+repr(tar_status[0][1]), logs=f) #todo format me better
     if md5_status != [True]:
-      fore()
+      f=fore()
       do_cleanup()
-      raise DebDeltaError("something bad happened in md5: "+repr(md5_status[0][1])) #todo format me better
+      raise DebDeltaError("something bad happened in md5: "+repr(md5_status[0][1]), logs=f) #todo format me better
     #if DO_MD5: #actually we always do MD5
     m=compute_md5(subprocess.Popen('ar p "%s" control.tar.gz | zcat' % (TD+'NEW.file'),
                                    stdout=subprocess.PIPE,shell=True).stdout)
     if params['NEW/control.tar'][:32] != m:
-      fore()
+      f=fore()
       do_cleanup()
-      raise DebDeltaError('MD5 mismatch for control.tar' )
+      raise DebDeltaError('MD5 mismatch for control.tar', logs=f)
     if params['NEW/data.tar'][:32] != data_md5:
-      fore()
+      f=fore()
       do_cleanup()
-      raise DebDeltaError('MD5 mismatch for data.tar' )
+      raise DebDeltaError('MD5 mismatch for data.tar', logs=f)
   else: assert('unimplemented'=='')
 
   os.unlink(temp_name)
@@ -3960,7 +4029,7 @@ def delta_upgrade_(args):
   patching_queue=Queue.Queue()
   thread_returns={}
   ######################## thread_do_patch
-  def thread_do_patch(que, no_delta, returns, exitcodes):
+  def thread_do_patch(que, no_delta, returns, exitcodes, forensics):
       if VERBOSE > 1 : print '  Patching thread started. '
       debs_size=0
       debs_time=0
@@ -4000,6 +4069,7 @@ def delta_upgrade_(args):
             if 'e' in DEB_POLICY:
               no_delta.append( (deb_uri, newdeb) )
             elif VERBOSE > 1 : print '  No deb-policy "e", no download of ',deb_uri
+            forensics.append(s.logs)
             exitcodes.append(s.exitcode)
           except:
             if puke == None: return
@@ -4294,10 +4364,11 @@ def delta_upgrade_(args):
   ###################################### end of HTTP stuff
 
   ################### start patching thread
+  forensics=[]
 
   patching_thread=threading.Thread(
     target=thread_do_patch  ,
-    args=(patching_queue, no_delta, thread_returns, mainexitcodes) )
+    args=(patching_queue, no_delta, thread_returns, mainexitcodes, forensics) )
   patching_thread.daemon=True
   patching_thread.start()
 
@@ -4577,7 +4648,7 @@ def delta_upgrade_(args):
   
   while patching_thread.isAlive():
     time.sleep(0.1)
-  
+
   #terminate progress report
   thread_returns['STOP']=True
   while progress_thread != None and progress_thread.isAlive():
@@ -4610,7 +4681,9 @@ def delta_upgrade_(args):
     t=total_time
     print ' ' + _('total resulting debs, size %(size)s time %(time)dsec virtual speed %(speed)s/sec') % \
           {'size' : SizeToKibiStr(a), 'time' : int(t), 'speed' : SizeToKibiStr(a / t )}
-    
+  
+  if forensics:
+    forensic_send(forensics)
   return max(mainexitcodes)
 
 ################################################# main program, do stuff
@@ -4659,6 +4732,8 @@ if action == 'patch':
     raise SystemExit(5)
   except DebDeltaError,s:
     puke('debpatch',s)
+    if s.logs:
+      forensic_send([s.logs])
     raise SystemExit(s.exitcode)
   except Exception,s:
     puke('debpatch',s)
