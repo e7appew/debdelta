@@ -1428,7 +1428,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   #this is not needed in preparing the patch, but may help in forensic
   conf_files=[]
   z='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
-  if DEBUG and os.path.isfile(z):
+  if FORENSIC and os.path.isfile(z):
     #note that filenames do not have leading /
     conf_files=[de_bar(p) for p in open(z).read().split('\n') if p]
   del z
