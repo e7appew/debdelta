@@ -85,6 +85,11 @@ and the found packages are considered as the older versions.  Multiple
 index, it is not an error if files do not exist, as long as they have
 been moved in a --alt directory. Note that, if no --old
 is specified, then no deltas will be generated.
+.TP
+\fB\-\-forensicdir \fIDIR
+write hashes files; these are to be compared with those produced by 
+.I debdelta-upgrade --forensic=...
+when a delta fails
 
 .SH The double slash
 If a directory path is provided as argument to --dir, and it ends in // ,

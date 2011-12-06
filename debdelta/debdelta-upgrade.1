@@ -64,6 +64,18 @@ while for other users is unset. See
 in 
 .BR gpg(1)
 for details.
+.TP
+\fB \-\-forensic \fIMETHOD
+if a delta fails, report logs so that the problem may be addressed.
+Method may be
+  do     
+      just prepare logs and say where they are
+  mutt
+      send logs by email using mutt
+  icedove 
+      send logs by email using icedove (as root!)
+  http  
+      send by http (the easiest and most recommended method!)
 
 .SH EXAMPLES
 
