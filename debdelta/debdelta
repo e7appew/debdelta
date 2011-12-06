@@ -1118,10 +1118,16 @@ def hash_to_hex(s):
         a=a+ ( '%02x' % ord(i)  )
     return a
 
-def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
-  o.write('Package: '+db['OLD/Package']+'\n')
-  o.write('Version: '+db['OLD/Version']+'\n')
-  o.write('Architecture: '+db['OLD/Architecture']+'\n')
+def forensics_rfc(o,db,bytar,controlfiles,files,diverted,diversions,conffiles):
+  " this is invoked by do_patch_() as well as do_delta_() ; in the former case, by_tar=False"
+  if type(db) == dict:
+    for a in sorted(db.keys()):
+      if a[:3] == 'OLD':
+        o.write(a[4:]+': '+db[a]+'\n')    
+  else:
+    for a in sorted(db):
+      if a[:3] == 'OLD':
+        o.write(a[4:]+'\n')
   if diverted:
     o.write("Diversions:\n")
     for a in sorted(diverted):
@@ -1135,21 +1141,28 @@ def forensics_rfc(o,db,controlfiles,files,diverted,diversions,conffiles=[]):
       o.write(' '+a+'\n')
   for L,N in ((controlfiles,"Control"),(files,"Files")):
     o.write(N+":\n")
-    for a,b in sorted(L):
-      if not os.path.exists(b):
-        o.write(' NONEXISTENT\n '+b+'\n \n')
+    for l in sorted(L):
+      if bytar:
+        name,mode,tartype,uid,gid,uname,gname,data=l
+      else:
+        name,b=l
+        if not os.path.exists(b):
+          o.write(' NONEXISTENT\n '+b+'\n \n')
+          continue
+        fullname,mode,tartype,uid,gid,uname,gname,data=stat_to_tar(b)
+        if tartype == tarfile.REGTYPE:
+          data=hash_to_hex(sha1_hash_file(b))
+      if name in ('.', '/', './', '/.') and tartype == tarfile.DIRTYPE: #skip root
         continue
-      name,mode,tartype,uid,gid,uname,gname,data=stat_to_tar(b)
-      if tartype == tarfile.REGTYPE:
-        data=hash_to_hex(sha1_hash_file(b))
       if uname == None: uname=str(uid)
       if gname == None: gname=str(gid)
+      name=de_bar(name)
       o.write(' '+tarinfo_to_ls(tartype,mode)+" "+uname+' '+gname)
-      if N == "Files" and tartype == tarfile.REGTYPE and a in conffiles:
+      if N == "Files" and tartype == tarfile.REGTYPE and name in conffiles:
         o.write(" [conffile]\n")
       else:
         o.write("\n")
-      o.write(" "+a+"\n")
+      o.write(" "+name+"\n")
       if data!=None:
         o.write(" "+data+"\n")
       else:
@@ -1306,8 +1319,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   conf_files=[]
   a='/var/lib/dpkg/info/'+params['OLD/Package']+'.conffiles'
   if DEBUG and os.path.isfile(a):
-    #note that filenames have leading /
-    conf_files=[p for p in open(a).read().split('\n') if p]
+    #note that filenames do not have leading /
+    conf_files=[de_bar(p) for p in open(a).read().split('\n') if p]
   del a
   
   ###
@@ -1742,7 +1755,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.write('PrelinkUFailedN: '+str(len(prelink_u_failed))+'\n')
         if ret:
           temp_file.write('PatchExitCode: '+str(ret)+'\n')
-        forensics_rfc(temp_file,params,control_file_pairs,
+        forensics_rfc(temp_file,params,False,control_file_pairs,
                       linked_file_pairs,diverted,diversions,conf_files)
         temp_file.close()
       except OSError: #Exception,s:
