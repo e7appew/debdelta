@@ -1175,6 +1175,8 @@ def forensics_rfc(o,db,bytar,controlfiles,files,conffiles,diverted=[],diversions
     for l in sorted(L):
       if bytar:
         name,mode,tartype,uid,gid,uname,gname,data=l
+        tmpcopy=None
+        divert=None
       else:
         name,divert,tmpcopy=l
         if os.path.exists(divert):
@@ -1198,7 +1200,7 @@ def forensics_rfc(o,db,bytar,controlfiles,files,conffiles,diverted=[],diversions
         o.write(" [localpurged]")
       if N == "Files" and tartype == tarfile.REGTYPE and name in prelink_u_failed:
         o.write(" [prelink-u failed]")
-      if not os.path.exists(divert):
+      if divert and not os.path.exists(divert):
         o.write(" [missing file %r]" % divert)
       if tmpcopy:
         o.write(" [prelink-u]")
@@ -1950,7 +1952,7 @@ def do_delta(olddeb,newdeb,delta):
     if T : rmtree(T)
   return r
 
-def do_delta_(olddeb,newdeb,delta,TD):
+def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
   """This function creates a delta. The delta is 'ar' archive (see 'man ar').
   The delta contains data, a script, and optional gpg signatures.
   The script recreates the new deb. Note that the deb is (again) an 'ar' archive,
@@ -2642,7 +2644,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
   time_corr=0
 
   ####################  vvv     delta_tar    vvv ###########################
-  def delta_tar(old_filename, new_filename, CWD,\
+  def delta_tar(old_filename, new_filename, CWD, old_forensic,\
                   skip=[], old_md5={}, new_md5={},\
                   chunked_p=(not delta_uses_infifo) ,debdelta_conf_skip=()):
     " compute delta of two tar files, and prepare the script consequently"
@@ -2663,7 +2665,10 @@ def do_delta_(olddeb,newdeb,delta,TD):
     oldtarinfos = {}
     for oldtarinfo in oldtar:
       oldname = de_bar(oldtarinfo.name)
-
+      if old_forensic != None:
+        #fixme : devices are not supported (but debian policy does not allow them)
+        old_forensic.append([oldtarinfo.name,oldtarinfo.mode,oldtarinfo.type,\
+                            oldtarinfo.uid,oldtarinfo.gid,oldtarinfo.uname,oldtarinfo.gname,oldtarinfo.linkname])
       #this always happens
       #if VERBOSE > 3 and oldname != de_bar(oldname):
       #  print '     filename in old tar has weird ./ in front: ' , oldname 
@@ -2688,11 +2693,19 @@ def do_delta_(olddeb,newdeb,delta,TD):
       
       if oldname in skip:
         if VERBOSE > 2 : print '  skipping ',repr(oldname)
+        if old_forensic != None:
+          oldtar.extract(oldtarinfo,TD+"OLD/"+CWD )
+          old_forensic.append(old_forensic.pop()[:-1] + \
+                              [hash_to_hex(sha1_hash_file(os.path.join(TD,"OLD",CWD,oldname)))])
         continue
 
       oldnames.append(oldname)
       oldtarinfos[oldname] = oldtarinfo
       oldtar.extract(oldtarinfo,TD+"OLD/"+CWD )
+      if old_forensic != None:
+        old_forensic.append(old_forensic.pop()[:-1] + \
+                            [hash_to_hex(sha1_hash_file(os.path.join(TD,"OLD",CWD,oldname)))])
+      
     oldtar.close()
     if type(old_filename) == StringType :
       unlink(TD+old_filename)
@@ -2997,6 +3010,13 @@ def do_delta_(olddeb,newdeb,delta,TD):
   ar_list_old= list_ar(TD+'OLD.file')
   ar_list_new= list_ar(TD+'NEW.file')
   
+  if forensic_file==None:
+    control_forensic=None
+    data_forensic=None
+  else:
+    control_forensic=[]
+    data_forensic=[]
+  
   for name in ar_list_new :
     newname = 'NEW/'+name
     system(('ar','x',TD+'NEW.file',name), TD+'/NEW/')
@@ -3034,7 +3054,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
         if a not in dpkg_keeps_controls:
           skip.append(a)
       #delta it
-      delta_tar(oldname,newname,'CONTROL',skip)
+      delta_tar(oldname,newname,'CONTROL',control_forensic,skip)
       script.end_member()
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       script.start_member(ar_line, newname, extrachar)
@@ -3053,7 +3073,7 @@ def do_delta_(olddeb,newdeb,delta,TD):
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.xz | unxz -c')
       else: assert(0)
-      delta_tar(x,newname,'DATA',old_conffiles,old_md5,new_md5,\
+      delta_tar(x,newname,'DATA',data_forensic,old_conffiles,old_md5,new_md5,\
                 debdelta_conf_skip=debdelta_conf_skip)
       del x
       script.end_member()
@@ -3095,6 +3115,9 @@ def do_delta_(olddeb,newdeb,delta,TD):
   
   #script is done
   script.close()
+
+  if forensic_file:
+    forensics_rfc(forensic_file,info,True,control_forensic,data_forensic,old_conffiles)
 
   patchsize = os.stat(TD+'PATCH/patch.sh')[ST_SIZE]
   patch_files = []
