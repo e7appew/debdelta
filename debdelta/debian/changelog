@@ -1,3 +1,12 @@
+debdelta (0.45) unstable; urgency=low
+
+  * debdelta-upgrade/debpatch : new option --forensic,
+     to report a log when a delta fails
+  * debdelta/debdeltas : new option --forensicdir,
+     to store hashes to check above reports
+
+ --
+
 debdelta (0.44) unstable; urgency=low
 
   * support xz compression for data.tar part in .deb
