@@ -3606,8 +3606,25 @@ def do_deltas(debs):
         deltatmp=delta+'_tmp_'
         ret= None
         tdir=tempo()
+        
+        forensicfile=None
+        if FORENSICDIR:
+          if 'Filename' in new:
+            forensicdirname=delta_dirname(os.path.dirname(new['Filename']),FORENSICDIR)
+          elif 'File' in new:
+            forensicdirname=delta_dirname(os.path.dirname(new['File']),FORENSICDIR)
+          else:
+            assert(0)
+          if not os.path.exists(forensicdirname): #FIXME this does not respect --no-act
+            os.makedirs(forensicdirname)
+          forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
+          a=os.path.join(forensicdirname,forensicbasename)
+          if not os.path.exists(a):
+            forensicfile=open(a,'w')
+          del a
+        
         try:
-          ret=do_delta_(old['File'],new['File'], deltatmp, TD=tdir)
+          ret=do_delta_(old['File'],new['File'], deltatmp, TD=tdir, forensic_file=forensicfile)
           (deltatmp_, percent, elaps, info_delta, gpg_hashes) = ret
         except KeyboardInterrupt:
           if os.path.exists(deltatmp):
