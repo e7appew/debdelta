@@ -214,6 +214,9 @@ DISABLED_FEATURES=[]
 
 HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
+
+DPKG_MULTIARCH=( 0 == os.system('dpkg --assert-multi-arch 2> /dev/null') )
+
 if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
 else:
@@ -1481,11 +1484,14 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
 
   ### some auxiliary routines, separated to make code more readable
 
-  def dpkg_L_faster(pa,diversions):
+  def dpkg_L_faster(pa,ar,diversions):
     "Scan dpkg -L . 'diversions' must be prepared by scan_diversions() . Returns list of pairs of files ,and list of diverted files. "
     s=[]
     diverted=[]
-    f=open('/var/lib/dpkg/info/'+pa+'.list')
+    n='/var/lib/dpkg/info/'+pa+':'+ar+'.list'
+    if not DPKG_MULTIARCH or not os.path.exists(n):
+      n='/var/lib/dpkg/info/'+pa+'.list'
+    f=open(n)
     while 1:
       a=f.readline()
       if not a: break
@@ -1501,12 +1507,15 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     f.close()
     return s,diverted
 
-  def dpkg_L(pa):
+  def dpkg_L(pa,ar):
     "Scan dpkg -L . Currently unused, see previous function."
-    sys.stderr.write('INTERNAL WARNING: USING OBSOLETE dpkg_L\n')
+    #sys.stderr.write('INTERNAL WARNING: USING OBSOLETE dpkg_L\n')
     s=[]
     diverted=[]
-    p=my_popen_read('env -i dpkg -L '+pa)
+    if DPKG_MULTIARCH:
+      p=my_popen_read('env -i dpkg-query -L '+pa+':'+ar)
+    else:
+      p=my_popen_read('env -i dpkg-query -L '+pa)
     a=p.readline()
     while a:
       a=de_n(a)
@@ -1525,16 +1534,16 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
     p.close()
     return s, diverted
 
-  def _symlink_data_tree(pa,TD,diversions,runtime):
+  def _symlink_data_tree(pa,ar,TD,diversions,runtime):
     localepurged=[]
     prelink_u_failed=[]
     file_triples=[]
     prelink_time = 0
     prelink_datasize = 0
     if diversions:
-      s,diverted=dpkg_L_faster(pa,diversions)
+      s,diverted=dpkg_L_faster(pa,ar,diversions)
     else:
-      s,diverted=dpkg_L(pa)
+      s,diverted=dpkg_L(pa,ar)
     progressline=0
     progresslen=float(len(s))
     for orig,divert in s:
@@ -1651,7 +1660,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       os.mkdir(TD+'/OLD/DATA')
       if olddeb == '/':
         file_triples, localepurged, prelink_u_failed, diverted, prelink_time, prelink_datasize=\
-          _symlink_data_tree(params['OLD/Package'],TD,diversions,runtime)
+          _symlink_data_tree(params['OLD/Package'],params['OLD/Architecture'],TD,diversions,runtime)
       else:
         ar_list_old= list_ar(TD+'OLD.file')
         if 'data.tar.bz2' in ar_list_old:
@@ -1673,8 +1682,11 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           if not os.path.isdir(TD+'OLD/CONTROL'):
             os.mkdir(TD+'OLD/CONTROL')
           p=params['OLD/Package']
+          a=params['OLD/Architecture']
           for  b in dpkg_keeps_controls :
-            z='/var/lib/dpkg/info/' + p +'.'+b
+            z='/var/lib/dpkg/info/' + p + ':' + a + '.'+b
+            if not DPKG_MULTIARCH or not os.path.exists(z):
+              z='/var/lib/dpkg/info/' + p +'.'+b
             if os.path.exists(z):
               os.symlink(z,TD+'OLD/CONTROL/'+b)
               control_file_triples.append((b,z,None))
