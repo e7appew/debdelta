@@ -295,7 +295,9 @@ else:
         except:
           print 'To use the http forensic, you must install the package "python-poster".'
           raise SystemExit(3)
-
+      if FORENSIC[:4] in ('mutt','mail') and not os.path.exists('/usr/bin/mutt'):
+        print 'To use this forensic, you must install the package "mutt".'
+        raise SystemExit(3)
     elif o == '--alt'  :
       if not (os.path.isfile(v)  or  os.path.isdir(v)) :
         sys.stderr.write(_('Error: argument of --alt is not a directory or a regular file:')+' '+v +'\n')
