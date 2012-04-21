@@ -1219,6 +1219,20 @@ def forensics_rfc(o,db,bytar,controlfiles,files,conffiles,diverted=[],diversions
       else:
         o.write(" \n")
 
+def tar_those(f):
+  " tar multiple files in one tar (all in the same base directory!). Note that f may be a list of lists or strings or mixed."
+  temptar=tempfile.mktemp(suffix='.tgz')
+  tar=tarfile.open(name=temptar,mode='w:gz')
+  for z in f:
+    if type(z) in (list,tuple):
+      for j in z:
+        tar.add(j,arcname=os.path.basename(j))
+    elif type(z) in (str,unicode):
+      tar.add(z,arcname=os.path.basename(z))
+    else: DebDeltaError(' internal error m92ksy')
+  tar.close()
+  return temptar
+
 def forensic_send(f,forensic=FORENSIC):
   " note that f must be a list of lists (or None)"
   assert type(f) == list
