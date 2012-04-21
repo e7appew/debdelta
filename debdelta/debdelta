@@ -2110,6 +2110,8 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         self.fd.write("mkfifo %s\n" % self.the_fifo)
       else:
         self.the_fifo=None
+      #this is used when recompressing data.tar.zx
+      self.xz_parameters=None
       
     def write(self,s):
       "verbatim write in the script"
@@ -2142,7 +2144,10 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         self.fd.write('lzma -9')
       elif cn == '.xz' :
         info_append('needs-xz')
-        self.fd.write('xz')
+        if self.xz_parameters==None:
+          self.fd.write('xz -c')
+        else:
+          self.fd.write('xz -c '+self.xz_parameters)
       else: assert(0)
   
     def start_member(self, ar_line, newname, extrachar):
@@ -2612,6 +2617,28 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     os.rename(TD+p+'.faked.gz',TD+o)
     if DEBUG > 1 :
       script.md5_check_file(o, compute_md5(TD+o))
+
+  def guess_xz_parameters(o):
+    "tries to guess the parameters used to compress ; uses lock "
+    par=None
+    z=tempfile.NamedTemporaryFile(suffix='.xz',delete=False)
+    #unfortunately 'xz --list' does not work on pipes!
+    shutil.copyfileobj(o,z)
+    z.flush()
+    #assert os.path.exists(z.name)
+    #os.system('file '+z.name)
+    #os.system('xz -cc --list '+z.name)
+    b=subprocess.Popen(['xz','-vv','--robot','--list',z.name],stdout=subprocess.PIPE)
+    for a in b.stdout:
+      a=a.rstrip('\n')
+      a=string.split(a,'\t')
+      #print '------ ',a
+      if a[0]=='block':
+        if par and par != a[16]:
+          print "  warning : this xz -- compressed file was compressed with variable blocks options ?! '%s' ~= '%s'" & (par,a[16])
+        par=a[-1]
+    os.unlink(z.name)
+    return par
 
   ########### helper sh functions for script, for delta_tar()
 
@@ -3101,7 +3128,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
   for name in ar_list_new :
     newname = 'NEW/'+name
     system(('ar','x',TD+'NEW.file',name), TD+'/NEW/')
-
+    script.xz_parameters=None
     newsize = os.stat(TD+newname)[ST_SIZE]
     if VERBOSE > 1: print '  studying ' , name , ' of len %dkB' % (newsize/1024)
     #add 'ar' structure
@@ -3151,6 +3178,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
       elif 'data.tar.xz' in ar_list_old :
         info_append('needs-xz')
+        script.xz_parameters=guess_xz_parameters(my_popen_read('cd '+TD+'; ar p NEW.file data.tar.xz'))
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.xz | unxz -c')
       else: assert(0)
