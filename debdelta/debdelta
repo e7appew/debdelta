@@ -1909,7 +1909,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       f=[]
       tempos(f)
       try:
-        (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_")
+        (temp_fd,temp_fore_name) = tempfile.mkstemp(prefix="debforensic_"+params['NEW/Package']+"_")
         temp_file=os.fdopen(temp_fd,'w')
         temp_file.write('Delta: '+delta+'\n')
         temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
