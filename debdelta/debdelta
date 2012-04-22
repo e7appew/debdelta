@@ -179,7 +179,7 @@ DO_PROGRESS = terminalcolumns != None
 #  mutt:user@domain      : as above, but use 'mutt', so the user can customize it
 #  http://domain/cgi     : send them automatically thru a CGI script
 #Warning: the above is mostly TODO
-FORENSIC=False
+FORENSIC='http'
 
 #directory tree where forensic info are stored by 'debdeltas'
 FORENSICDIR=None
