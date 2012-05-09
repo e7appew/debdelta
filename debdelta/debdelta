@@ -1920,12 +1920,18 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         temp_file.write('DeltaSHA1: '+hash_to_hex(sha1_hash_file(delta))+'\n')
         temp_file.write('LocalePurgedFilesN: '+str(len(localepurged))+'\n')
         temp_file.write('PrelinkUFailedN: '+str(len(prelink_u_failed))+'\n')
-        for i in f:
-          temp_file.write('PatchLogFile: '+str(i)+'\n')
         if ret:
           temp_file.write('PatchExitCode: '+str(ret)+'\n')
         forensics_rfc(temp_file,params,False,control_file_triples,file_triples,conf_files,
                       diverted,diversions,localepurged,prelink_u_failed)
+        #copy short content here and remove from list
+        for i in copy(f):
+          if os.path.getsize(i) < 2000:
+            f.remove(i)
+            temp_file.write('PatchLogFile_'+str(i)+'_content:\n')
+            for ll in open(i):
+              temp_file.write(' '+repr(ll)+'\n')
+          else: temp_file.write('PatchLogFileIs: '+str(i)+'\n')
         temp_file.close()
       except OSError: #Exception,s:
         die('!!While creating forensic '+temp_fore_name+' error:'+str(s)+'\n')
