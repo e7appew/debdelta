@@ -709,17 +709,22 @@ if VERBOSE < 1 :
 
 GPG_SIGN=GPG_BASE_CMD_LINE+["--batch","--armor","--clearsign","--default-key",GPG_SIGNING_KEY,"--sign"]
 
-def compute_md5(o):
-  "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type"
+def compute_md5_len(o):
+  "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type; returns MD5 and length"
   if type(o) in (StringType, UnicodeType):
     o = open(o)
   m=hashlib.md5()
   a=o.read(1024)
+  l=0
   while a:
+    l+=len(a)
     m.update(a)
     a=o.read(1024)
-  return m.hexdigest()
+  return m.hexdigest(), l
 
+def compute_md5(o):
+  "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type; returns MD5 (as a string of hexes)"
+  return compute_md5_len(o)[0]
 
 def _compute_hashes_(na):
   "hash the file"
