@@ -1,3 +1,10 @@
+debdelta (0.47) unstable; urgency=low
+
+  * debdelta , debdeltas : autodetect (some) xz parameters for data.tar.xz
+  * debdelta-upgrade: --forensic=http is the default
+
+ -- A Mennucc1 <mennucc1@debian.org>  Mon, 28 May 2012 17:34:56 +0200
+
 debdelta (0.46) unstable; urgency=low
 
   * debdelta-upgrade: support multiarch
