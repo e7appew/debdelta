@@ -2645,9 +2645,9 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     if DEBUG > 1 :
       script.md5_check_file(o, compute_md5(TD+o))
 
-  def guess_xz_parameters(o):
-    "tries to guess the parameters used to compress ; uses lock "
-    par=None
+  def guess_xz_parameters(o, check=True):
+    "tries to guess the parameters used to compress, returns a string of options ; if check=True and it fails, returns False "
+    par=''
     crc=''
     z=tempfile.NamedTemporaryFile(suffix='.xz',delete=False)
     #unfortunately 'xz --list' does not work on pipes!
@@ -2660,7 +2660,6 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     for a in b.stdout:
       a=a.rstrip('\n')
       a=string.split(a,'\t')
-      #print '------ ',a
       if a[0]=='block':
         if crc and crc != a[9]:
           print "  warning : this xz -- compressed file was compressed with variable blocks crc ?! '%s' != '%s'" & (crc,a[9])
@@ -2668,15 +2667,43 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         if par and par != a[15]:
           print "  warning : this xz -- compressed file was compressed with variable blocks options ?! '%s' != '%s'" & (par,a[15])
         par=a[15]
-    os.unlink(z.name)
+    #print ' guessed par crc ',par,crc
     if crc:
       crc=crc.lower()
       if crc=='sha-256': crc='sha256'
-      if crc in ('crc32','crc64','sha256'):
-        crc=' -C '+crc
-      else:
+      if crc not in ('crc32','crc64','sha256'):
         print ' Unknown XZ crc ',crc
         crc=''
+    PARS=['-6e','-9','-9e']
+    if par:
+      PARS.append(par)
+    if check:
+      redo=True
+      while redo and PARS:
+        par=PARS.pop()
+        y=subprocess.Popen(['unxz','-c',z.name],stdout=subprocess.PIPE)
+        w=['xz','-c']
+        if par:
+          w.append(par)
+        if crc:
+          w+=['-C',crc]
+        w.append('-')
+        if VERBOSE > 2 : print '   Testing XZ options ',w
+        w=subprocess.Popen(w,stdin=y.stdout,stdout=subprocess.PIPE)
+        y.stdout.close()
+        redo=False
+        c=subprocess.Popen(['cmp','-',z.name],stdin=w.stdout,stdout=open(os.devnull,'w'))
+        w.stdout.close()
+        if c.wait() :
+          redo=True
+          if VERBOSE or DEBUG : print ' Tried XZ options but failed: ',par,crc
+        if redo and not PARS:
+          #print '  HO FINITO LE OPZIONI !'
+          os.unlink(z.name)
+          return False
+    if crc:
+      crc=' -C '+crc
+    os.unlink(z.name)
     return par+crc
 
   ########### helper sh functions for script, for delta_tar()
@@ -3218,6 +3245,8 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       elif 'data.tar.xz' in ar_list_old :
         info_append('needs-xz')
         script.xz_parameters=guess_xz_parameters(my_popen_read('cd '+TD+'; ar p NEW.file data.tar.xz'))
+        if script.xz_parameters==False:
+          raise DebDeltaError('Cannot guess XZ parameters')
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.xz | unxz -c')
       else: assert(0)
