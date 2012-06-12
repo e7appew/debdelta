@@ -2648,6 +2648,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
   def guess_xz_parameters(o):
     "tries to guess the parameters used to compress ; uses lock "
     par=None
+    crc=''
     z=tempfile.NamedTemporaryFile(suffix='.xz',delete=False)
     #unfortunately 'xz --list' does not work on pipes!
     shutil.copyfileobj(o,z)
@@ -2661,11 +2662,22 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       a=string.split(a,'\t')
       #print '------ ',a
       if a[0]=='block':
-        if par and par != a[16]:
-          print "  warning : this xz -- compressed file was compressed with variable blocks options ?! '%s' ~= '%s'" & (par,a[16])
-        par=a[-1]
+        if crc and crc != a[9]:
+          print "  warning : this xz -- compressed file was compressed with variable blocks crc ?! '%s' != '%s'" & (crc,a[9])
+        crc=a[9]
+        if par and par != a[15]:
+          print "  warning : this xz -- compressed file was compressed with variable blocks options ?! '%s' != '%s'" & (par,a[15])
+        par=a[15]
     os.unlink(z.name)
-    return par
+    if crc:
+      crc=crc.lower()
+      if crc=='sha-256': crc='sha256'
+      if crc in ('crc32','crc64','sha256'):
+        crc=' -C '+crc
+      else:
+        print ' Unknown XZ crc ',crc
+        crc=''
+    return par+crc
 
   ########### helper sh functions for script, for delta_tar()
 
