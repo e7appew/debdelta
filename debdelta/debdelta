@@ -3232,6 +3232,15 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       script.end_member()
     elif not NEEDSOLD and name[:8] == 'data.tar'  :
       script.start_member(ar_line, newname, extrachar)
+      #
+      if 'data.tar.lzma' == name :
+        info_append('needs-lzma')
+      elif 'data.tar.xz' == name :
+        info_append('needs-xz')
+        script.xz_parameters=guess_xz_parameters(my_popen_read('cd '+TD+'; ar p NEW.file data.tar.xz'))
+        if script.xz_parameters==False:
+          raise DebDeltaError('Cannot guess XZ parameters')
+      #
       if 'data.tar.gz' in ar_list_old  :
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
@@ -3244,9 +3253,6 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
       elif 'data.tar.xz' in ar_list_old :
         info_append('needs-xz')
-        script.xz_parameters=guess_xz_parameters(my_popen_read('cd '+TD+'; ar p NEW.file data.tar.xz'))
-        if script.xz_parameters==False:
-          raise DebDeltaError('Cannot guess XZ parameters')
         def x():
           return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.xz | unxz -c')
       else: assert(0)
