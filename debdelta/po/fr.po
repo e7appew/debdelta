@@ -289,9 +289,7 @@ msgstr "(inexpliqué %.2f sec)"
 msgid ""
 "delta is %(perc)3.1f%% of deb; that is, %(save)dkB are saved, on a total of "
 "%(tot)dkB."
-msgstr ""
-"Le delta a une taille de %(perc)3.1f% % du deb ; c'est-à-dire que %(save)"
-"d kB ont été économisés sur un total de %(tot)d kB."
+msgstr "Le delta a une taille de %(perc)3.1f %% du deb ; c'est-à-dire que %(save)d kB ont été économisés sur un total de %(tot)d kB."
 
 #: ../debdelta:2755
 #, python-format
