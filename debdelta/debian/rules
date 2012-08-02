@@ -57,12 +57,13 @@ binary-arch:	checkroot build
 	$(checkdir)
 	rm -rf $(D)
 	# dirs
-	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta $(D)/usr/share/debdelta $(D)/usr/share/keyrings $(D)/usr/share/locale/it/LC_MESSAGES
+	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta $(D)/usr/share/debdelta $(D)/usr/share/keyrings $(D)/usr/share/locale/it/LC_MESSAGES $(D)/usr/share/locale/fr/LC_MESSAGES
 	# control
 	install -m 755 debian/postrm $(D)/DEBIAN/
 	install -m 755 debian/postinst $(D)/DEBIAN/
 	# /usr/share
 	cp po/it.mo $(D)/usr/share/locale/it/LC_MESSAGES/debdelta.mo
+	cp po/fr.mo $(D)/usr/share/locale/fr/LC_MESSAGES/debdelta.mo
 	install debpatch.sh $(D)/usr/share/debdelta
 	install contrib/debmirror-delta-security $(D)/usr/share/debdelta/
 	install contrib/debmirror-marshal-deltas $(D)/usr/share/debdelta/
