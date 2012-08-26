@@ -1,3 +1,12 @@
+debdelta (0.50) unstable; urgency=medium
+
+  * ship 2012 gpg public key (to verify deltas with debdelta-upgrade)
+  * correct typo in program message
+  * correct italian translation of program messages
+    according to d-italian rules
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 26 Aug 2012 21:10:55 +0200
+
 debdelta (0.49) unstable; urgency=low
 
   * update italian translation of program messages
