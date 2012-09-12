@@ -43,7 +43,7 @@ Options:
 
 
 doc['deltas']=_("""\
-Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Package' files]
+Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Packages' files]
   Computes all missing deltas for deb files.
   It orders by version number and produce deltas to the newest version
 
@@ -52,7 +52,7 @@ Options:
             key used to sign the deltas (using GnuPG)
 --dir DIR   force saving of deltas in this DIR
             (otherwise they go in the dir of the newer deb_file)
---old ARGS  'Package' files containing list of old versions of debs
+--old ARGS  'Packages' files containing list of old versions of debs
 --alt ARGS  for any cmdline argument, search for debs also in this place
  -n N       how many deltas to produce for each deb (default unlimited)
 --no-md5    do not include MD5 info in delta

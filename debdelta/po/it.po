@@ -1,14 +1,14 @@
-# SOME DESCRIPTIVE TITLE.
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# Italian translations of 'debdelta' program messages
+# Copyright (C) A Mennucci
+# This file is distributed under the same license as the 'debdelta' package.
+# a m <mennucc1@debian.org>, 2012.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: debdelta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2010-11-06 23:40+0100\n"
-"PO-Revision-Date: 2010-11-06 23:39+0100\n"
+"POT-Creation-Date: 2012-08-26 22:24+0200\n"
+"PO-Revision-Date: 2012-08-26 22:17+0200\n"
 "Last-Translator: A Mennucc <mennucc1@debian.org>\n"
 "Language-Team: italian <debian-italian@lists.debian.org>\n"
 "Language: it\n"
@@ -33,21 +33,22 @@ msgid ""
 "            use a specific backend for computing binary diffs\n"
 msgstr ""
 "Uso: debdelta [ opzioni...  ] DAFILE AFILE DELTA\n"
-"  Calcola la differenza fra due deb, da DAFILE a AFILE, e lo scrive in "
+"  Calcola la differenza fra due deb, da DAFILE a AFILE, e la scrive in "
 "DELTA\n"
 "\n"
 "Opzione:\n"
 "--signing-key KEY\n"
 "            chiave usata per firmare il delta (usando GnuPG)\n"
-"--no-md5    non includere MD5 nel delta\n"
-"--needsold  crea un delta che può essere usato solo con il vecchio deb\n"
-" -M Mb      massima memoria da usare (per 'bsdiff' o 'xdelta')\n"
+"--no-md5    non includere informazione MD5 nel delta\n"
+"--needsold  crea un delta che può essere usato solo se il\n"
+"            vecchio deb è disponibile\n"
+" -M Mb      memoria massima da usare (per \"bsdiff\" o \"delta\")\n"
 "--delta-algo ALGO\n"
 "            usa uno specifico backend per calcolare i diff binari\n"
 
 #: ../debdelta:45
 msgid ""
-"Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Package' files]\n"
+"Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Packages' files]\n"
 "  Computes all missing deltas for deb files.\n"
 "  It orders by version number and produce deltas to the newest version\n"
 "\n"
@@ -56,7 +57,7 @@ msgid ""
 "            key used to sign the deltas (using GnuPG)\n"
 "--dir DIR   force saving of deltas in this DIR\n"
 "            (otherwise they go in the dir of the newer deb_file)\n"
-"--old ARGS  'Package' files containing list of old versions of debs\n"
+"--old ARGS  'Packages' files containing list of old versions of debs\n"
 "--alt ARGS  for any cmdline argument, search for debs also in this place\n"
 " -n N       how many deltas to produce for each deb (default unlimited)\n"
 "--no-md5    do not include MD5 info in delta\n"
@@ -68,28 +69,30 @@ msgid ""
 " -M Mb      maximum memory to use (for 'bsdiff' or 'xdelta')\n"
 "--clean-deltas     delete deltas if newer deb is not in archive\n"
 msgstr ""
-"Uso: debdeltas [ opzioni...  ]  [deb e dirs, o file \"Packages\"]\n"
+"Uso: debdeltas [ opzioni...  ]  [deb e directory, o file \"Packages\"]\n"
 "   Calcola i delta per i pacchetti Debian.\n"
 "   Li ordina per versione e produce i delta verso la versione più nuova.\n"
 "\n"
 "Opzioni:\n"
-"--signing-key KEY\n"
+"--signing-key CHIAVE\n"
 "            chiave GnuPG usata per firmare i delta\n"
 "--dir DIR   forza il salvataggio dei delta in DIR\n"
 "            (altrimenti vanno nella directory del 'deb' più nuovo)\n"
-"--old ARGS  file 'Package' che contengono le liste delle versioni vecchie "
-"dei deb\n"
-"--alt ARGS  per ogni deb, cerca anche in queste directory\n"
-" -n N       quanti delta creare per ogni deb (default illimitato)\n"
-"--no-md5    non includere MD5 nel delta\n"
-"--needsold  crea un delta che può essere usato solo se il vacchio deb è "
-"disponibile\n"
+"--old ARG   file 'Packages' che contengono le liste delle versioni\n"
+"            vecchie dei deb\n"
+"--alt ARG   per ogni argomento nella riga di comando,\n"
+"            cerca anche in queste directory\n"
+" -n N       quanti delta creare per ogni deb (valore predefinito "
+"illimitato)\n"
+"--no-md5    non includere informazioni MD5 nel delta\n"
+"--needsold  crea un delta che può essere usato solo se il vecchio\n"
+"            deb è disponibile\n"
 "--delta-algo ALGO\n"
-"            usa l'algoritmo ALGO per calcolare le differenze binarie;\n"
+"            usa il backend ALGO per calcolare le differenze binarie;\n"
 "            valori possibili sono: xdelta xdelta-bzip xdelta3 bsdiff\n"
-" -M Mb      massima memoria da usare (per 'bsdiff' o 'xdelta')\n"
+" -M Mb      massima memoria da usare (per \"bsdiff\" o \"xdelta\")\n"
 "--clean-deltas\n"
-"            cancella i delta se il deb più nuovo non è presente\n"
+"            elimina i delta se il deb più nuovo non è presente in archivio\n"
 
 #: ../debdelta:69
 msgid ""
@@ -106,20 +109,24 @@ msgid ""
 "Options:\n"
 "--no-md5   do not verify MD5 (if found in info in delta)\n"
 " -A        accept unsigned deltas\n"
+"--format FORMAT\n"
+"           format of created deb\n"
 msgstr ""
-"Uso: debpatch [ opzioni...  ] delta  fromfile  tofile \n"
-"  Applica delta a fromfile e produce una versione ricostruita di tofile.\n"
+"Uso: debpatch [ opzioni...  ] DELTA DAFILE AFILE \n"
+"  Applica DELTA a DAFILE e produce una versione ricostruita di AFILE.\n"
 "\n"
-"(Se il vecchio deb non è disponibile, si usi '/' come fromfile)\n"
+"(Se il vecchio deb non è disponibile, usa \"/\" come fromfile)\n"
 "\n"
-"Usa: debpatch --info delta\n"
-"  Scrive informazioni sul delta.\n"
+"Uso: debpatch --info DELTA\n"
+"  Scrive informazioni sul DELTA.\n"
 "\n"
 "Opzioni:\n"
-"--no-md5   non verifica lo MD5 (se è presente nelle info in delta)\n"
-" -A        accetta un delta non firmato\n"
+"--no-md5   non verifica lo MD5 (se è presente nelle informazione in delta)\n"
+" -A        accetta delta non firmati\n"
+"--format FORMATO\n"
+"           formato del deb ricostruito\n"
 
-#: ../debdelta:84
+#: ../debdelta:86
 msgid ""
 "Usage: debdelta-upgrade [package names]\n"
 "  Downloads all deltas and apply them to create the debs\n"
@@ -130,6 +137,8 @@ msgid ""
 "--deb-policy POLICY\n"
 "            policy to decide which debs to download,\n"
 " -A         accept unsigned deltas\n"
+"--format FORMAT\n"
+"            format of created debs\n"
 msgstr ""
 "Uso: debdelta-upgrade [nomi pacchetti]\n"
 "  Scarica i delta e li applica per creare i deb che servono\n"
@@ -137,21 +146,23 @@ msgstr ""
 "\n"
 "Opzioni:\n"
 "--dir DIR   directory in cui salvare i pacchetti\n"
-"--deb-policy POLICY\n"
+"--deb-policy POLITICA\n"
 "            politica per accettare quali pacchetti scaricare\n"
 " -A         accetta delta non firmati\n"
+"--format FORMATO\n"
+"           formato del deb ricostruito\n"
 
-#: ../debdelta:96
+#: ../debdelta:100
 msgid ""
 "Usage: debpatch-url [package names]\n"
 "  Show URL wherefrom to downloads all deltas that may be used to upgrade the "
 "given package names\n"
 msgstr ""
 "Uso: debpatch-url [nomi pacchetti]\n"
-"  Mostra lo URL da cui si scaricano i delta che possono aggiornare i\n"
+"  Mostra lo URL da cui scaricare i delta che possono aggiornare i\n"
 "  pacchetti indicati.\n"
 
-#: ../debdelta:101
+#: ../debdelta:105
 msgid ""
 " -v         verbose (can be added multiple times)\n"
 "--no-act    do not do that (whatever it is!)\n"
@@ -162,63 +173,72 @@ msgid ""
 "\n"
 "See man page for more options and details.\n"
 msgstr ""
-" -v         verboso (si può inserire più volte)\n"
+" -v         prolisso (si può usare più volte)\n"
 "--no-act    non far nulla (far finta di lavorare)\n"
 " -d         aggiungi controlli di debug extra\n"
 " -k         tiene i file temporanei (per debug)\n"
 "--gpg-home HOME\n"
-"            specifica una diversa pagina HOME per gnupg\n"
+"            specifica una diversa directory HOME per GPG\n"
 "\n"
-"Si veda la pagina di manuale per ulteriori opzioni.\n"
+"Si veda la pagina di manuale per ulteriori opzioni e dettagli.\n"
 
-#: ../debdelta:258
+#: ../debdelta:279
 msgid "Error: argument of --dir is not a directory:"
-msgstr "Errore: l'argomento --dir non è una directory:"
+msgstr "Errore: l'argomento di --dir non è una directory:"
 
-#: ../debdelta:262
+#: ../debdelta:287
+msgid "Error: argument of --forensicdir is not a directory:"
+msgstr "Errore: l'argomento di --forensicdir non è una directory:"
+
+#: ../debdelta:303
 msgid "Error: argument of --alt is not a directory or a regular file:"
 msgstr "Errore: l'argomento di --alt non è una directory o un file regolare:"
 
-#: ../debdelta:267
+#: ../debdelta:308
 msgid "Error: argument of --old is not a directory or a regular file:"
 msgstr "Errore: l'argomento di --old non è una directory o un file regolare:"
 
-#: ../debdelta:283
+#: ../debdelta:324
 #, python-format
 msgid "Error: --gpg-home `%s' does not exist."
 msgstr "Errore: --gpg-home '%s' non esiste."
 
-#: ../debdelta:286
+#: ../debdelta:328
+#, python-format
+msgid "Error: output format `%s' is unknown."
+msgstr "Errore: il formato di uscita '%s' è sconosciuto."
+
+#: ../debdelta:332
 #, python-format
 msgid "Error: option `%s' is unknown, try --help"
 msgstr "Errore: l'opzione '%s' è sconosciuta, vedere --help"
 
-#: ../debdelta:291
+#: ../debdelta:337
 #, python-format
 msgid "Error: feature `%s' cannot be disabled."
 msgstr "Errore: la caratteristica '%s' non può essere disabilitata."
 
-#: ../debdelta:608 ../debdelta:618
+#: ../debdelta:672 ../debdelta:682
 #, python-format
 msgid "Error: the file `%s' does not exist."
 msgstr "Errore: il file '%s' non esiste."
 
-#: ../debdelta:610 ../debdelta:620
+#: ../debdelta:674 ../debdelta:684
 #, python-format
 msgid "Error: `%s' is not a regular file."
 msgstr "Errore: '%s' non è un file regolare."
 
-#: ../debdelta:613
+#: ../debdelta:677
 #, python-format
 msgid "Error: `%s' does not seem to be a Debian package."
 msgstr "Errore: '%s' non sembra essere un pacchetto Debian."
 
-#: ../debdelta:623
+#: ../debdelta:687
 #, python-format
 msgid "Error: `%s' does not seem to be a Debian delta."
 msgstr "Errore: '%s' non sembra essere un delta Debian."
 
-#: ../debdelta:902
+#: ../debdelta:984
 #, python-format
 msgid ""
 "not enough disk space (%(free)dkB) in directory %(dir)s for applying delta "
@@ -227,44 +247,72 @@ msgstr ""
 "non c'è abbastanza spazio su disco (%(free)dkB) nella directory\n"
 "%(dir)s per applicare il delta (servono %(size)dkB)"
 
-#: ../debdelta:1244
+#: ../debdelta:1246 ../debdelta:1303
+msgid ""
+"(Faulty delta. Please consider retrying with the option \"--forensic=http"
+"\" )."
+msgstr ""
+"(Questo delta è difettoso. Potreste riprovare con l'opzione \"--forensic=http"
+"\")."
+
+#: ../debdelta:1259 ../debdelta:1280
+msgid "There were faulty deltas."
+msgstr "Alcuni delta erano difettosi."
+
+#: ../debdelta:1259
+msgid "Now invoking the mail sender to send the logs."
+msgstr ""
+"Ora verrà avviato il programma di invio posta elettronica per mandare\n"
+"i registri."
+
+#: ../debdelta:1261
+msgid "(hit any key)"
+msgstr "(premere un qualunque tasto)"
+
+#: ../debdelta:1280
+msgid "Sending logs to server."
+msgstr "Sto mandando i registri al server."
+
+#: ../debdelta:1295
+msgid "Server answers:"
+msgstr "Il server risponde:"
+
+#: ../debdelta:1298
+#, python-format
+msgid "Faulty delta. Please send by email to %s the following files:\n"
+msgstr ""
+"Questo delta è difettoso. Si prega di inviare per e-mail a %s i\n"
+"seguenti file:\n"
+
+#: ../debdelta:1431
 msgid "Delta is not signed:"
 msgstr "Il delta non è firmato:"
 
-#: ../debdelta:1246
+#: ../debdelta:1433
 msgid "WARNING, delta is not signed:"
 msgstr "ATTENZIONE: il delta non è firmato:"
 
-#: ../debdelta:1557
-msgid "(Faulty delta. Please consider retrying with the option \"-d\" )."
-msgstr "(Questo delta è difettoso. Potreste riprovare con l'opzione \"-d\")."
-
-#: ../debdelta:1560 ../debdelta:1580
-#, python-format
-msgid "Faulty delta. Please send by email to %s the following files:"
-msgstr "Questo delta è difettoso. Si prega di inviare a %s i seguenti file:"
-
-#: ../debdelta:1630
+#: ../debdelta:2018
 #, python-format
 msgid "Patching done, time %(time).2fsec, speed %(speed)dk/sec"
 msgstr "Creato il deb, tempo: %(time).2fsec, velocità: %(speed)dk/sec"
 
-#: ../debdelta:1632
+#: ../debdelta:2020
 #, python-format
 msgid "(script %(time).2fsec %(speed)dk/sec)"
 msgstr "(script %(time).2fsec %(speed)dk/sec)"
 
-#: ../debdelta:1636
+#: ../debdelta:2024
 #, python-format
 msgid "(prelink %(time).2fsec, %(size)dk, %(speed)dk/s)"
 msgstr "(prelink %(time).2fsec, %(size)dk, %(speed)dk/s)"
 
-#: ../debdelta:1638 ../debdelta:1640
+#: ../debdelta:2026 ../debdelta:2028
 #, python-format
 msgid "(unaccounted %.2fsec)"
 msgstr "(altro %.2fsec)"
 
-#: ../debdelta:2753
+#: ../debdelta:3290
 #, python-format
 msgid ""
 "delta is %(perc)3.1f%% of deb; that is, %(save)dkB are saved, on a total of "
@@ -273,7 +321,7 @@ msgstr ""
 "il delta è %(perc)3.1f%% del deb; cioè, sono stati risparmiati %(save)dkB su "
 "un totale di %(tot)dkB."
 
-#: ../debdelta:2755
+#: ../debdelta:3292
 #, python-format
 msgid ""
 "delta time %(time).2f sec, speed %(speed)dkB /sec, (%(algo)s time "
@@ -282,188 +330,195 @@ msgstr ""
 "delta tempo %(time).2f sec, velocità %(speed)dkB /sec, (%(algo)s tempo "
 "%(algotime).2fsec velocità %(algospeed)dkB /sec) (corr %(corrtime).2f sec)"
 
-#: ../debdelta:2768
+#: ../debdelta:3305
 msgid "Warning, no non-option arguments, debdeltas does nothing."
 msgstr "Attenzione, non ci sono argomenti non-opzioni, debdeltas non fa nulla."
 
-#: ../debdelta:2772
+#: ../debdelta:3309
 msgid "Warning, no --old arguments, debdeltas will not generate any deltas."
-msgstr ""
-"Attenzione, manca l'argomento --old, debdeltas non genererà alcun delta."
+msgstr "Attenzione, manca l'opzione --old, debdeltas non genererà alcun delta."
 
-#: ../debdelta:3176
+#: ../debdelta:3714
 #, python-format
 msgid "Not enough disk space for storing `%s'."
 msgstr "Non c'è abbastanza spazio nel disco per salvare '%s'."
 
-#: ../debdelta:3216
+#: ../debdelta:3771
 msgid "Creating:"
 msgstr "Creazione di:"
 
-#: ../debdelta:3253
+#: ../debdelta:3808
 msgid "Error: testing of delta failed:"
 msgstr "Errore: il test del delta è fallito:"
 
-#: ../debdelta:3300
+#: ../debdelta:3855
 #, python-format
 msgid "Total running time: %.1f"
 msgstr "Tempo totale: %.1f"
 
-#: ../debdelta:3415
+#: ../debdelta:3970
 #, python-format
 msgid "(sources.conf does not provide a server for `%s')"
-msgstr "(il 'sources.conf' non descrive un server per '%s')"
+msgstr "(il 'sources.conf' non specifica un server per '%s')"
 
-#: ../debdelta:3430
+#: ../debdelta:3985
 msgid ""
 " Proxy settings detected in the environment; using \"urllib2\" for "
 "downloading; but\n"
 "  this disables some features and is in general slower and buggier. See man "
 "page."
 msgstr ""
-"Un proxy è definito nell'environment; userò \"urllib2\" per\n"
+"Un proxy è definito nell'ambiente; verrà usato \"urllib2\" per\n"
 "scaricare; ma questo disabilita alcune caratteristiche e sarà\n"
 "più lento e malfunzionante. Vedere la pagina di manuale."
 
-#: ../debdelta:3442 ../debdelta:3444
+#: ../debdelta:3997 ../debdelta:3999
 msgid "Initializing APT cache..."
 msgstr "Inizializzazione della cache di APT..."
 
-#: ../debdelta:3472
+#: ../debdelta:4027
 msgid "Upgrading APT cache..."
 msgstr "Aggiornamento della cache di APT..."
 
-#: ../debdelta:3474
+#: ../debdelta:4029
 msgid "upgrading..."
 msgstr "aggiornamento..."
 
-#: ../debdelta:3480
+#: ../debdelta:4036
+msgid "Failed! Safe upgrading APT cache..."
+msgstr "Fallito! Aggiornamento sicuro della cache di APT..."
+
+#: ../debdelta:4038
+msgid "failed! trying safe-upgrade..."
+msgstr "fallito! provo l'aggiornamento sicuro..."
+
+#: ../debdelta:4042
 msgid "Upgraded APT cache."
 msgstr "La cache di APT è stata aggiornata."
 
-#: ../debdelta:3482
+#: ../debdelta:4044
 msgid "done."
 msgstr "fatto."
 
-#: ../debdelta:3518
+#: ../debdelta:4081
 #, python-format
 msgid "Recreated debs are saved in the directory %s"
 msgstr "I pacchetti deb ricreati saranno salvati nella directory %s"
 
-#: ../debdelta:3561
+#: ../debdelta:4124
 #, python-format
 msgid "Created,    time %(time)5.2fsec, speed %(speed)4s/sec, %(name)s"
 msgstr "Creato,    tempo %(time)5.2fsec, velocità %(speed)4s/sec, %(name)s"
 
-#: ../debdelta:3831
+#: ../debdelta:4395
 msgid "Not enough disk space to download:"
 msgstr "Non vi è abbastanza spazio disco per scaricare:"
 
-#: ../debdelta:3856
+#: ../debdelta:4420
 #, python-format
 msgid "Downloaded, time %(time)5.2fsec, speed %(speed)4s/sec, %(name)s"
 msgstr "Scaricato, tempo %(time)5.2fsec, velocità %(speed)4s/sec, %(name)s"
 
-#: ../debdelta:4009
+#: ../debdelta:4556
 #, python-format
 msgid "Downloading head of %s..."
 msgstr "Scaricamento dell'inizio di %s..."
 
-#: ../debdelta:4029
+#: ../debdelta:4576
 msgid "Delta is too big:"
 msgstr "Il delta è troppo grande:"
 
-#: ../debdelta:4035 ../debdelta:4037
+#: ../debdelta:4582 ../debdelta:4584
 msgid "Delta is not present:"
 msgstr "Il delta non è presente:"
 
-#: ../debdelta:4047
+#: ../debdelta:4594
 #, python-format
 msgid "Downloaded head of %s."
 msgstr "Scaricato l'inizio di %s."
 
-#: ../debdelta:4085
+#: ../debdelta:4632
 #, python-format
 msgid "Deltas: %(present)d present and %(absent)d not,"
 msgstr "Delta: %(present)d presenti e %(absent)d non presenti,"
 
-#: ../debdelta:4087
+#: ../debdelta:4634
 #, python-format
 msgid ""
 "downloaded so far: time %(time).2fsec, size %(size)s, speed %(speed)4s/sec."
 msgstr ""
-"scaricato fin'ora: tempo %(time).2fsec, dimensione %(size)s, velocità "
+"scaricato finora: tempo %(time).2fsec, dimensione %(size)s, velocità "
 "%(speed)4s/sec."
 
-#: ../debdelta:4090
+#: ../debdelta:4637
 #, python-format
 msgid "Need to get %s of deltas."
-msgstr "Bisogna ancora scaricare %s di deltas."
+msgstr "Bisogna ancora scaricare %s di delta."
 
-#: ../debdelta:4126
+#: ../debdelta:4673
 msgid "You may wish to rerun, to get also:"
-msgstr "Potresti riprovare più tardi, per scaricare anche:"
+msgstr "Si può riprovare più tardi per scaricare anche:"
 
-#: ../debdelta:4181
+#: ../debdelta:4728
 msgid "Delta-upgrade statistics:"
 msgstr "Statistiche di debdelta-upgrade:"
 
-#: ../debdelta:4182
+#: ../debdelta:4729
 #, python-format
 msgid "size %(size)s time %(time)dsec speed %(speed)s/sec"
 msgstr "dimensione %(size)s tempo %(time)dsec velocità %(speed)s/sec"
 
-#: ../debdelta:4187
+#: ../debdelta:4734
 msgid "downloaded deltas, "
-msgstr "scaricato delta, "
+msgstr "delta scaricati, "
 
-#: ../debdelta:4192
+#: ../debdelta:4739
 msgid "patching to debs, "
-msgstr "creazione deb, "
+msgstr "deb creati, "
 
-#: ../debdelta:4197
+#: ../debdelta:4744
 msgid "downloaded debs, "
-msgstr "scaricati deb, "
+msgstr "deb scaricati, "
 
-#: ../debdelta:4202
+#: ../debdelta:4749
 #, python-format
 msgid ""
 "total resulting debs, size %(size)s time %(time)dsec virtual speed %(speed)s/"
 "sec"
 msgstr ""
-"totale deb scaricati, dimensione %(size)s tempo %(time)dsec velocità "
-"%(speed)s/sec"
+"totale deb risultanti, dimensione %(size)s tempo %(time)dsec velocità "
+"virtuale %(speed)s/sec"
 
-#: ../debdelta:4218
+#: ../debdelta:4767
 msgid "Need a filename; try --help."
-msgstr "Ci vuole un nome di file; si veda lo --help."
+msgstr "È necessario un nome di file; si veda --help."
 
-#: ../debdelta:4239 ../debdelta:4261
+#: ../debdelta:4788 ../debdelta:4812
 msgid "Need 3 filenames; try --help."
-msgstr "Ci vogliono tre nomi di file; si veda lo --help."
+msgstr "Sono necessari tre nomi di file; si veda --help."
 
-#: ../debdelta:4281
+#: ../debdelta:4832
 msgid "Error: argument is not a directory or a regular file:"
 msgstr "Errore: l'argomento non è una directory o un file regolare:"
 
-#: ../debdelta:4334
+#: ../debdelta:4885
 #, python-format
 msgid "Lookup %s"
 msgstr "Cerco %s"
 
-#: ../debdelta:4340
+#: ../debdelta:4891
 #, python-format
 msgid "Sorry, cannot find an URI to download the debian package of `%s'."
 msgstr ""
-"Spiacente, non riesco a trovare un URI per scaricare il pacchetto\n"
+"Non è possibile trovare un URI per scaricare il pacchetto\n"
 "Debian di '%s'."
 
-#: ../debdelta:4356
+#: ../debdelta:4907
 #, python-format
 msgid "Sorry, no source is available to upgrade `%s'."
-msgstr "Spiacente, non vi è una sorgente per l'aggiornamento di '%s'."
+msgstr "Non è disponibile alcuna sorgente per l'aggiornamento di '%s'."
 
-#: ../debdelta:4360
+#: ../debdelta:4911
 #, python-format
 msgid "Sorry, the package `%s' is already at its newest version."
-msgstr "Spiacente, il pacchetto '%s' è già alla versione più recente."
+msgstr "Il pacchetto '%s' è già alla versione più recente."

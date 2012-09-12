@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2010-11-06 23:40+0100\n"
+"POT-Creation-Date: 2012-08-26 22:24+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -36,7 +36,7 @@ msgstr ""
 
 #: ../debdelta:45
 msgid ""
-"Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Package' files]\n"
+"Usage: debdeltas [ option...  ]  [deb files and dirs, or 'Packages' files]\n"
 "  Computes all missing deltas for deb files.\n"
 "  It orders by version number and produce deltas to the newest version\n"
 "\n"
@@ -45,7 +45,7 @@ msgid ""
 "            key used to sign the deltas (using GnuPG)\n"
 "--dir DIR   force saving of deltas in this DIR\n"
 "            (otherwise they go in the dir of the newer deb_file)\n"
-"--old ARGS  'Package' files containing list of old versions of debs\n"
+"--old ARGS  'Packages' files containing list of old versions of debs\n"
 "--alt ARGS  for any cmdline argument, search for debs also in this place\n"
 " -n N       how many deltas to produce for each deb (default unlimited)\n"
 "--no-md5    do not include MD5 info in delta\n"
@@ -73,9 +73,11 @@ msgid ""
 "Options:\n"
 "--no-md5   do not verify MD5 (if found in info in delta)\n"
 " -A        accept unsigned deltas\n"
+"--format FORMAT\n"
+"           format of created deb\n"
 msgstr ""
 
-#: ../debdelta:84
+#: ../debdelta:86
 msgid ""
 "Usage: debdelta-upgrade [package names]\n"
 "  Downloads all deltas and apply them to create the debs\n"
@@ -86,16 +88,18 @@ msgid ""
 "--deb-policy POLICY\n"
 "            policy to decide which debs to download,\n"
 " -A         accept unsigned deltas\n"
+"--format FORMAT\n"
+"            format of created debs\n"
 msgstr ""
 
-#: ../debdelta:96
+#: ../debdelta:100
 msgid ""
 "Usage: debpatch-url [package names]\n"
 "  Show URL wherefrom to downloads all deltas that may be used to upgrade the "
 "given package names\n"
 msgstr ""
 
-#: ../debdelta:101
+#: ../debdelta:105
 msgid ""
 " -v         verbose (can be added multiple times)\n"
 "--no-act    do not do that (whatever it is!)\n"
@@ -107,143 +111,174 @@ msgid ""
 "See man page for more options and details.\n"
 msgstr ""
 
-#: ../debdelta:258
+#: ../debdelta:279
 msgid "Error: argument of --dir is not a directory:"
 msgstr ""
 
-#: ../debdelta:262
+#: ../debdelta:287
+msgid "Error: argument of --forensicdir is not a directory:"
+msgstr ""
+
+#: ../debdelta:303
 msgid "Error: argument of --alt is not a directory or a regular file:"
 msgstr ""
 
-#: ../debdelta:267
+#: ../debdelta:308
 msgid "Error: argument of --old is not a directory or a regular file:"
 msgstr ""
 
-#: ../debdelta:283
+#: ../debdelta:324
 #, python-format
 msgid "Error: --gpg-home `%s' does not exist."
 msgstr ""
 
-#: ../debdelta:286
+#: ../debdelta:328
+#, python-format
+msgid "Error: output format `%s' is unknown."
+msgstr ""
+
+#: ../debdelta:332
 #, python-format
 msgid "Error: option `%s' is unknown, try --help"
 msgstr ""
 
-#: ../debdelta:291
+#: ../debdelta:337
 #, python-format
 msgid "Error: feature `%s' cannot be disabled."
 msgstr ""
 
-#: ../debdelta:608 ../debdelta:618
+#: ../debdelta:672 ../debdelta:682
 #, python-format
 msgid "Error: the file `%s' does not exist."
 msgstr ""
 
-#: ../debdelta:610 ../debdelta:620
+#: ../debdelta:674 ../debdelta:684
 #, python-format
 msgid "Error: `%s' is not a regular file."
 msgstr ""
 
-#: ../debdelta:613
+#: ../debdelta:677
 #, python-format
 msgid "Error: `%s' does not seem to be a Debian package."
 msgstr ""
 
-#: ../debdelta:623
+#: ../debdelta:687
 #, python-format
 msgid "Error: `%s' does not seem to be a Debian delta."
 msgstr ""
 
-#: ../debdelta:902
+#: ../debdelta:984
 #, python-format
 msgid ""
 "not enough disk space (%(free)dkB) in directory %(dir)s for applying delta "
 "(needs %(size)dkB)"
 msgstr ""
 
-#: ../debdelta:1244
+#: ../debdelta:1246 ../debdelta:1303
+msgid ""
+"(Faulty delta. Please consider retrying with the option \"--forensic=http"
+"\" )."
+msgstr ""
+
+#: ../debdelta:1259 ../debdelta:1280
+msgid "There were faulty deltas."
+msgstr ""
+
+#: ../debdelta:1259
+msgid "Now invoking the mail sender to send the logs."
+msgstr ""
+
+#: ../debdelta:1261
+msgid "(hit any key)"
+msgstr ""
+
+#: ../debdelta:1280
+msgid "Sending logs to server."
+msgstr ""
+
+#: ../debdelta:1295
+msgid "Server answers:"
+msgstr ""
+
+#: ../debdelta:1298
+#, python-format
+msgid "Faulty delta. Please send by email to %s the following files:\n"
+msgstr ""
+
+#: ../debdelta:1431
 msgid "Delta is not signed:"
 msgstr ""
 
-#: ../debdelta:1246
+#: ../debdelta:1433
 msgid "WARNING, delta is not signed:"
 msgstr ""
 
-#: ../debdelta:1557
-msgid "(Faulty delta. Please consider retrying with the option \"-d\" )."
-msgstr ""
-
-#: ../debdelta:1560 ../debdelta:1580
-#, python-format
-msgid "Faulty delta. Please send by email to %s the following files:"
-msgstr ""
-
-#: ../debdelta:1630
+#: ../debdelta:2018
 #, python-format
 msgid "Patching done, time %(time).2fsec, speed %(speed)dk/sec"
 msgstr ""
 
-#: ../debdelta:1632
+#: ../debdelta:2020
 #, python-format
 msgid "(script %(time).2fsec %(speed)dk/sec)"
 msgstr ""
 
-#: ../debdelta:1636
+#: ../debdelta:2024
 #, python-format
 msgid "(prelink %(time).2fsec, %(size)dk, %(speed)dk/s)"
 msgstr ""
 
-#: ../debdelta:1638 ../debdelta:1640
+#: ../debdelta:2026 ../debdelta:2028
 #, python-format
 msgid "(unaccounted %.2fsec)"
 msgstr ""
 
-#: ../debdelta:2753
+#: ../debdelta:3290
 #, python-format
 msgid ""
 "delta is %(perc)3.1f%% of deb; that is, %(save)dkB are saved, on a total of "
 "%(tot)dkB."
 msgstr ""
 
-#: ../debdelta:2755
+#: ../debdelta:3292
 #, python-format
 msgid ""
 "delta time %(time).2f sec, speed %(speed)dkB /sec, (%(algo)s time "
 "%(algotime).2fsec speed %(algospeed)dkB /sec) (corr %(corrtime).2f sec)"
 msgstr ""
 
-#: ../debdelta:2768
+#: ../debdelta:3305
 msgid "Warning, no non-option arguments, debdeltas does nothing."
 msgstr ""
 
-#: ../debdelta:2772
+#: ../debdelta:3309
 msgid "Warning, no --old arguments, debdeltas will not generate any deltas."
 msgstr ""
 
-#: ../debdelta:3176
+#: ../debdelta:3714
 #, python-format
 msgid "Not enough disk space for storing `%s'."
 msgstr ""
 
-#: ../debdelta:3216
+#: ../debdelta:3771
 msgid "Creating:"
 msgstr ""
 
-#: ../debdelta:3253
+#: ../debdelta:3808
 msgid "Error: testing of delta failed:"
 msgstr ""
 
-#: ../debdelta:3300
+#: ../debdelta:3855
 #, python-format
 msgid "Total running time: %.1f"
 msgstr ""
 
-#: ../debdelta:3415
+#: ../debdelta:3970
 #, python-format
 msgid "(sources.conf does not provide a server for `%s')"
 msgstr ""
 
-#: ../debdelta:3430
+#: ../debdelta:3985
 msgid ""
 " Proxy settings detected in the environment; using \"urllib2\" for "
 "downloading; but\n"
@@ -251,139 +286,147 @@ msgid ""
 "page."
 msgstr ""
 
-#: ../debdelta:3442 ../debdelta:3444
+#: ../debdelta:3997 ../debdelta:3999
 msgid "Initializing APT cache..."
 msgstr ""
 
-#: ../debdelta:3472
+#: ../debdelta:4027
 msgid "Upgrading APT cache..."
 msgstr ""
 
-#: ../debdelta:3474
+#: ../debdelta:4029
 msgid "upgrading..."
 msgstr ""
 
-#: ../debdelta:3480
+#: ../debdelta:4036
+msgid "Failed! Safe upgrading APT cache..."
+msgstr ""
+
+#: ../debdelta:4038
+msgid "failed! trying safe-upgrade..."
+msgstr ""
+
+#: ../debdelta:4042
 msgid "Upgraded APT cache."
 msgstr ""
 
-#: ../debdelta:3482
+#: ../debdelta:4044
 msgid "done."
 msgstr ""
 
-#: ../debdelta:3518
+#: ../debdelta:4081
 #, python-format
 msgid "Recreated debs are saved in the directory %s"
 msgstr ""
 
-#: ../debdelta:3561
+#: ../debdelta:4124
 #, python-format
 msgid "Created,    time %(time)5.2fsec, speed %(speed)4s/sec, %(name)s"
 msgstr ""
 
-#: ../debdelta:3831
+#: ../debdelta:4395
 msgid "Not enough disk space to download:"
 msgstr ""
 
-#: ../debdelta:3856
+#: ../debdelta:4420
 #, python-format
 msgid "Downloaded, time %(time)5.2fsec, speed %(speed)4s/sec, %(name)s"
 msgstr ""
 
-#: ../debdelta:4009
+#: ../debdelta:4556
 #, python-format
 msgid "Downloading head of %s..."
 msgstr ""
 
-#: ../debdelta:4029
+#: ../debdelta:4576
 msgid "Delta is too big:"
 msgstr ""
 
-#: ../debdelta:4035 ../debdelta:4037
+#: ../debdelta:4582 ../debdelta:4584
 msgid "Delta is not present:"
 msgstr ""
 
-#: ../debdelta:4047
+#: ../debdelta:4594
 #, python-format
 msgid "Downloaded head of %s."
 msgstr ""
 
-#: ../debdelta:4085
+#: ../debdelta:4632
 #, python-format
 msgid "Deltas: %(present)d present and %(absent)d not,"
 msgstr ""
 
-#: ../debdelta:4087
+#: ../debdelta:4634
 #, python-format
 msgid ""
 "downloaded so far: time %(time).2fsec, size %(size)s, speed %(speed)4s/sec."
 msgstr ""
 
-#: ../debdelta:4090
+#: ../debdelta:4637
 #, python-format
 msgid "Need to get %s of deltas."
 msgstr ""
 
-#: ../debdelta:4126
+#: ../debdelta:4673
 msgid "You may wish to rerun, to get also:"
 msgstr ""
 
-#: ../debdelta:4181
+#: ../debdelta:4728
 msgid "Delta-upgrade statistics:"
 msgstr ""
 
-#: ../debdelta:4182
+#: ../debdelta:4729
 #, python-format
 msgid "size %(size)s time %(time)dsec speed %(speed)s/sec"
 msgstr ""
 
-#: ../debdelta:4187
+#: ../debdelta:4734
 msgid "downloaded deltas, "
 msgstr ""
 
-#: ../debdelta:4192
+#: ../debdelta:4739
 msgid "patching to debs, "
 msgstr ""
 
-#: ../debdelta:4197
+#: ../debdelta:4744
 msgid "downloaded debs, "
 msgstr ""
 
-#: ../debdelta:4202
+#: ../debdelta:4749
 #, python-format
 msgid ""
 "total resulting debs, size %(size)s time %(time)dsec virtual speed %(speed)s/"
 "sec"
 msgstr ""
 
-#: ../debdelta:4218
+#: ../debdelta:4767
 msgid "Need a filename; try --help."
 msgstr ""
 
-#: ../debdelta:4239 ../debdelta:4261
+#: ../debdelta:4788 ../debdelta:4812
 msgid "Need 3 filenames; try --help."
 msgstr ""
 
-#: ../debdelta:4281
+#: ../debdelta:4832
 msgid "Error: argument is not a directory or a regular file:"
 msgstr ""
 
-#: ../debdelta:4334
+#: ../debdelta:4885
 #, python-format
 msgid "Lookup %s"
 msgstr ""
 
-#: ../debdelta:4340
+#: ../debdelta:4891
 #, python-format
 msgid "Sorry, cannot find an URI to download the debian package of `%s'."
 msgstr ""
 
-#: ../debdelta:4356
+#: ../debdelta:4907
 #, python-format
 msgid "Sorry, no source is available to upgrade `%s'."
 msgstr ""
 
-#: ../debdelta:4360
+#: ../debdelta:4911
 #, python-format
 msgid "Sorry, the package `%s' is already at its newest version."
 msgstr ""

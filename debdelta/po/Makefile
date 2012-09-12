@@ -1,14 +1,18 @@
 
-all : messages.pot it.mo
+all : messages.pot it.mo fr.mo
 
 messages.pot: ../debdelta Makefile
 	xgettext -L Python -d debdelta --from-code=UTF-8 -o messages.pot ../debdelta
-	msgmerge -o it~new~.po it.po messages.pot
-	@if ! diff -q  it~new~.po it.po ; then mv it~new~.po  it.po ; echo Please edit it.po ; else rm  it~new~.po ; echo No significant changes ; fi 
+	for L in it fr ; do \
+		msgmerge --previous -o $$L~new~.po $$L.po messages.pot ; \
+		if ! diff -q  $$L~new~.po $$L.po ; then mv $$L~new~.po  $$L.po ; echo Please edit $$L.po ; else rm  $$L~new~.po ; echo No significant changes ; fi ; done
 
 
 it.mo: it.po
 	msgfmt -c -o it.mo~~~~ it.po && mv it.mo~~~~ it.mo
+
+fr.mo: fr.po
+	msgfmt -c -o fr.mo~~~~ fr.po && mv fr.mo~~~~ fr.mo
 
 
 #perche' diavolo non funziona questo?
