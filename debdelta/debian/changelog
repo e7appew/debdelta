@@ -1,3 +1,10 @@
+debdelta (0.51) experimental; urgency=low
+
+  * debdelta, debdeltas: XZ parameter autodetection, detect CRC choice
+     and compression
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 12 Sep 2012 16:34:53 +0200
+
 debdelta (0.50) unstable; urgency=medium
 
   * ship 2012 gpg public key (to verify deltas with debdelta-upgrade)
