@@ -1627,6 +1627,9 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
           file_triples.append((orig,divert,z))
         else:
           file_triples.append((orig,divert,None))
+      elif not os.path.exists(divert) and os.path.islink(divert):
+        file_triples.append((orig,divert,None))
+        if VERBOSE > 1 : print '  Broken symlink? ',divert
       elif not os.path.exists(divert):
         file_triples.append((orig,divert,None))
         if VERBOSE : print ' Disappeared file? ',divert
