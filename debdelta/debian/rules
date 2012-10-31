@@ -14,23 +14,26 @@ docdir2 = $(D2)/usr/share/doc/$(package)
 docdir2doc = $(D2)/usr/share/doc/$(package)-doc
 
 CC = gcc
-CFLAGS = -g -Wall
+
 INSTALL_PROGRAM = install
 
-ifeq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
-  CFLAGS += -O2
-endif
+CPPFLAGS:=$(shell dpkg-buildflags --get CPPFLAGS)
+CFLAGS:=$(shell dpkg-buildflags --get CFLAGS)
+CXXFLAGS:=$(shell dpkg-buildflags --get CXXFLAGS)
+LDFLAGS:=$(shell dpkg-buildflags --get LDFLAGS)
+
 ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
   INSTALL_PROGRAM += -s
 endif
 
-
 minibzip2: minigzip.c
-	$(CC) -DBZIP $(CFLAGS) minigzip.c -o minibzip2 -lbz2
+	$(CC) -DBZIP $(CFLAGS) $(CPPFLAGS) minigzip.c -o minibzip2  $(LDFLAGS) -lbz2
 
-build: minibzip2
+minigzip: minigzip.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) minigzip.c -o minigzip $(LDFLAGS) -lz
+
+build: minibzip2 minigzip
 	$(checkdir)
-	$(CC) $(CFLAGS) minigzip.c -o minigzip -lz
 	touch build
 
 clean:
