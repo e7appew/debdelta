@@ -1,3 +1,10 @@
+debdelta (0.50+1) unstable; urgency=high
+
+  * debpatch, debdelta-upgrade : do not get confused by broken symlinks
+  * enable hardening flags
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 31 Oct 2012 10:40:46 +0100
+
 debdelta (0.50) unstable; urgency=medium
 
   * ship 2012 gpg public key (to verify deltas with debdelta-upgrade)
