@@ -4528,7 +4528,7 @@ def delta_upgrade_(args):
       assert(a[0] == 'http')
 
       #delta name
-      delta_name=p.name+'_'+version_mangle(installed_version)+\
+      delta_name=p.name.split(':')[0]+'_'+version_mangle(installed_version)+\
                   '_'+ version_mangle(candidate_version)+'_'+\
                   arch+'.debdelta'
 
