@@ -1,3 +1,13 @@
+debdelta (0.50+2) unstable; urgency=high
+
+  * debdelta-upgrade: uses incorrect URL when requesting
+     i386 debdeltas to upgrade amd64 (multiarch) host,
+    thanks to Carlos Maddela (Closes: #692194).
+  * debdelta-upgrade: packages whose version number contains a colon not
+    upgraded when using a proxy, thanks to Carlos Maddela (Closes: #691641).
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 07 Nov 2012 13:31:31 +0100
+
 debdelta (0.50+1) unstable; urgency=high
 
   * debpatch, debdelta-upgrade : do not get confused by broken symlinks
