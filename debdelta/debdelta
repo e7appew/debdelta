@@ -4197,7 +4197,7 @@ def delta_upgrade_(args):
   #########################################
 
   import socket, httplib
-  from urlparse import urlparse
+  from urlparse import urlparse, urlunparse
 
   #################### manage connections
   #keeps a cache of all connections, by URL
@@ -4226,7 +4226,7 @@ def delta_upgrade_(args):
   def _connect(uri, headers):
     "connects for a GET ; returns (filetype, statuscode, servermessage, getheaders)"
     uri_p=urlparse(uri)
-    if uri[:7] == 'http://' and not proxies:
+    if uri_p.scheme == 'http' and not proxies:
       #use persistent http connections
       conn=conn_by_url(uri)
       if conn == None :
@@ -4253,7 +4253,11 @@ def delta_upgrade_(args):
           return e, None, None, None
     else: #use urllib2
       try:
-        req = urllib2.Request(uri, headers=headers)
+        if uri_p.scheme == 'http':
+          a=[copy(z) for z in uri_p]
+          a[2]=urllib2.quote(uri_p[2])
+          url=urlunparse(a)
+        req = urllib2.Request(url, headers=headers)
         r = urllib2.urlopen(req)
         #print r.info(),dir(r),r.code
         return r, getattr(r,'code',None), getattr(r,'msg','(no message)'), r.info()
