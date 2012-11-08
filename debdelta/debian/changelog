@@ -1,3 +1,19 @@
+debdelta (0.53) experimental; urgency=low
+
+  * merge changes uploaded in wheezy, and changelogs as well
+
+ --
+
+debdelta (0.50+2) unstable; urgency=high
+
+  * debdelta-upgrade: uses incorrect URL when requesting
+     i386 debdeltas to upgrade amd64 (multiarch) host,
+    thanks to Carlos Maddela (Closes: #692194).
+  * debdelta-upgrade: packages whose version number contains a colon not
+    upgraded when using a proxy, thanks to Carlos Maddela (Closes: #691641).
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 07 Nov 2012 13:31:31 +0100
+
 debdelta (0.52) experimental; urgency=low
 
   * debpatch, debdelta-upgrade : do not get confused by broken symlinks
@@ -5,6 +21,13 @@ debdelta (0.52) experimental; urgency=low
 
  -- A Mennucc1 <mennucc1@debian.org>  Fri, 02 Nov 2012 10:08:46 +0100
 
+debdelta (0.50+1) unstable; urgency=high
+
+  * debpatch, debdelta-upgrade : do not get confused by broken symlinks
+  * enable hardening flags
+
+ -- A Mennucc1 <mennucc1@debian.org>  Wed, 31 Oct 2012 10:40:46 +0100
+  
 debdelta (0.51) experimental; urgency=low
 
   * debdelta, debdeltas: XZ parameter autodetection, detect CRC choice
