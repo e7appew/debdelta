@@ -1,8 +1,10 @@
 debdelta (0.53) experimental; urgency=low
 
   * merge changes uploaded in wheezy, and changelogs as well
+  * Bug fix: "owned and unowned files after purge (policy 6.8 + 10.7.3)",
+    thanks to Holger Levsen (Closes: #617481).
 
- --
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 02 Dec 2012 18:52:15 +0100
 
 debdelta (0.50+2) unstable; urgency=high
 
