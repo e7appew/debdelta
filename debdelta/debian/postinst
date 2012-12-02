@@ -1,19 +1,47 @@
-#!/bin/sh -e
+#!/bin/sh
+
+set  -e
+
+umask 0077
 
 GPG_MASTER_PUB_KEYRING="/usr/share/keyrings/debian-debdelta-archive-keyring.gpg"
 GPG_HOME="/etc/debdelta/gnupg"
 
+sha1it () {
+ (
+    cd ${GPG_HOME}
+    echo '#if this file is deleted or it does not match, then  ' > sha1_hashes.txt
+    echo '# these files will not be removed when purging "debdelta"  ' >> sha1_hashes.txt
+    sha1sum pubring.gpg  secring.gpg >> sha1_hashes.txt
+    if test -f trustdb.gpg ; then sha1sum trustdb.gpg >> sha1_hashes.txt ; fi
+ )
+}
+
+check1it () {
+ (
+  cd ${GPG_HOME}
+  test -f sha1_hashes.txt && sha1sum -c --quiet sha1_hashes.txt
+ )
+}
+
 case "$1" in
   configure|reconfigure)
     if test ! -r ${GPG_HOME} ; then
+      echo "Debdelta: creating ${GPG_HOME}"
+      mkdir ${GPG_HOME}
+    fi
+    if test ! -r ${GPG_HOME}/pubring.gpg -a \
+            ! -r ${GPG_HOME}/secring.gpg   ; then
       echo "Debdelta: creating keyrings in ${GPG_HOME}"
-      mkdir  ${GPG_HOME}
-      chmod 0700  ${GPG_HOME}
-      touch   ${GPG_HOME}/secring.gpg   ${GPG_HOME}/pubring.gpg 
-      chmod 0600  ${GPG_HOME}/secring.gpg  ${GPG_HOME}/pubring.gpg
+      touch ${GPG_HOME}/secring.gpg  ${GPG_HOME}/pubring.gpg
+      sha1it
     else
       echo "Debdelta: updating public keyring in ${GPG_HOME}"
     fi
-    gpg --no-tty --batch --no-options --no-auto-check-trustdb --homedir ${GPG_HOME} --import ${GPG_MASTER_PUB_KEYRING} || true 
+
+    c=0 ;  if  check1it ; then   c=1 ;  fi
+    gpg --no-tty --batch --no-options --no-auto-check-trustdb --homedir ${GPG_HOME} --import ${GPG_MASTER_PUB_KEYRING} || true
+    if test $c = 1 ; then sha1it ; fi
+
     ;;
 esac
