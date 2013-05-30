@@ -72,7 +72,7 @@ Usage: debpatch [ option...  ] delta  fromfile  tofile
   Applies delta to fromfile and produces a reconstructed  version of tofile.
 
 (When using 'debpatch' and the old .deb is not available,
-  use '/' for the fromfile.)
+  use the unpack directory, usually '/', for the fromfile.)
 
 Usage: debpatch --info delta
   Write info on delta.
@@ -1110,7 +1110,7 @@ def patch_check_tmp_space(params,olddeb):
   free=freespace(TMPDIR)
   if free == None : return True
   free = free / 1024
-  if olddeb == '/':
+  if os.path.isdir(olddeb):
     instsize=int(params['NEW/Installed-Size'])
     #the last action of the script is to gzip the data.tar, so
     if 'NEW/Size' in params :
@@ -1536,7 +1536,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if newdeb:
     newdebshortname=newdeb
     newdeb=abspath(newdeb)
-  if olddeb != '/':
+  if not os.path.isdir(olddeb):
     olddeb=abspath(olddeb)
   elif diversions == None:
     diversions=scan_diversions()
@@ -1546,7 +1546,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   
   check_is_delta(delta)
 
-  if olddeb != '/':
+  if not os.path.isdir(olddeb):
       check_deb(olddeb)
   
   temp_name, temp_err_name, ret=system(('ar','xvo',delta), TD+'/PATCH', return_output=True, ignore_output=True)
@@ -1602,14 +1602,14 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if s != True:
     raise DebDeltaError('Sorry, '+s, True )
 
-  if olddeb != '/':
+  if not os.path.isdir(olddeb):
       os.symlink(olddeb,TD+'/OLD.file')
       #unpack the old control structure, if available
       os.mkdir(TD+'/OLD/CONTROL')
       #unpack control.tar.gz
       system(('ar','p',TD+'OLD.file','control.tar.gz','|','tar','-xzp','-f','-','-C',TD+'OLD/CONTROL'),TD)
   #then we check for the conformance
-  if olddeb != '/' and 'OLD/Size' in params:
+  if not os.path.isdir(olddeb) and 'OLD/Size' in params:
     olddebsize = os.stat(olddeb)[ST_SIZE]
     if olddebsize != int(params['OLD/Size']):
       raise DebDeltaError('Old deb size is '+str(olddebsize)+' instead of '+params['OLD/Size'])
@@ -1620,13 +1620,13 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
       #this is currently disabled, since  'dpkg -s' is vey slow (~ 1.6 sec)
       dpkg_params={}
       b=params['OLD/Package']
-      if olddeb == '/' :
+      if os.path.isdir(olddeb):
         p=my_popen_read('env -i dpkg -s '+b)
       else:        
         p=open(TD+'OLD/CONTROL/control')
       scan_control(p,params=dpkg_params,prefix='OLD')
       p.close()
-      if  olddeb == '/' :
+      if os.path.isdir(olddeb):
         if 'OLD/Status' not in dpkg_params:
           die('Error: package %s is not known to dpkg.' % b)
         if  dpkg_params['OLD/Status'] != 'install ok installed' :
@@ -1818,11 +1818,11 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   
   for a in params:
     if 'needs-old' == a:
-      if olddeb == '/':
+      if os.path.isdir(olddeb):
         die('This patch needs the old version Debian package')
     elif 'old-data-tree' == a :
       os.mkdir(TD+'/OLD/DATA')
-      if olddeb == '/':
+      if os.path.isdir(olddeb):
         file_triples, localepurged, prelink_u_failed, diverted, prelink_time, prelink_datasize=\
           _symlink_data_tree(params['OLD/Package'],params['OLD/Architecture'],TD,diversions,runtime)
       else:
@@ -1842,7 +1842,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
         else: assert(0)
         _fix_data_tree_(TD)
     elif 'old-control-tree' == a:
-        if olddeb == '/':
+        if os.path.isdir(olddeb):
           if not os.path.isdir(TD+'OLD/CONTROL'):
             os.mkdir(TD+'OLD/CONTROL')
           p=params['OLD/Package']
@@ -2048,7 +2048,7 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   if not FORENSIC:
     def fore():
       return None
-  elif olddeb != '/':
+  elif not os.path.isdir(olddeb):
     def fore():
       f=[delta,olddeb]
       tempos(f)
