@@ -3808,7 +3808,6 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
     #      assert a['Label'] == 'ALT'
     #      scan_deb_bydict(a)
     
-    VersionCompare = init_apt_return_VersionCompare()
     info_pack.sort(cmp = lambda x,y : order_by_version(x, y, VersionCompare))
     
     how_many= len(info_pack)
@@ -4045,6 +4044,9 @@ def init_apt_return_VersionCompare():
 
 def do_deltas(debs):
   exitstatus=0
+  
+  
+  VersionCompare = init_apt_return_VersionCompare()
   
   if not debs:
     print _('Warning, no non-option arguments, debdeltas does nothing.')
