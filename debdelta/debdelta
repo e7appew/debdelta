@@ -3647,19 +3647,25 @@ def do_deltas(debs):
             return f
     print 'Error, bad fishing for ', deb, others
     return False
+  
+  for pa,ar in info_by_pack_arch :
+    info_pack=info_by_pack_arch[ (pa,ar) ]
+    assert(info_pack)
+    do_deltas_one_pack_arch(info_pack)
+  
+  if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
+  return exitstatus
 
-  def order_by_version(a,b):
+def order_by_version(a,b):
     # lazy packages do not have versions; but are always ALT, so we sort them at bottom
     if 'Version' not in a:
       return -1
     if 'Version' not in b:
       return 1
     return VersionCompare( a['Version'] , b['Version']  )
-  
-  for pa,ar in info_by_pack_arch :
-    info_pack=info_by_pack_arch[ (pa,ar) ]
-    assert(info_pack)
-    
+
+
+def do_deltas_one_pack_arch(info_pack,thedir=DIR,theforensicdir=FORENSICDIR):
     #delete deltas that are useless
     if CLEAN_DELTAS :
       if (pa,ar) in old_deltas_by_pack_arch :
@@ -3681,13 +3687,13 @@ def do_deltas(debs):
     
     if N_DELTAS != None and 0 == N_DELTAS:
       #debdeltas was invoked just to clean the archive
-      continue
+      return
     
     if all([('CMDLINE' != a['Label']) for a in info_pack ]):
       #this happens a lot, e.g. when we are scanning non-free/Packages.gz,
       # all free packages in the trash are to be ignored
       if DEBUG > 2 or VERBOSE > 3 : print '    No cmdline for:',pa,ar
-      continue
+      return
     
     #do we need the versions of --alt packages ? seems not
     #  for a in info_pack:
@@ -3702,7 +3708,7 @@ def do_deltas(debs):
     
     if how_many <= 1 :
       if VERBOSE > 3 : print '    Only one version: ', pa,ar
-      continue
+      return
     
     newest = how_many -1
     while newest >= 0 :
@@ -3715,11 +3721,11 @@ def do_deltas(debs):
 
     if newest <= 0 :
       if VERBOSE > 3 : print '    No older versions: ', new
-      continue
+      return
     
     if not go_fishing(new,[]):
       print 'Error, cannot locate new file: ',new
-      continue
+      return
     
     if VERBOSE > 2 : 
       print '   Package: ',repr(pa),repr(ar),' Versions:',[ (o.get('Version'),o['Label'],o.get('Packages'),o.get('File'))  for o in info_pack]
@@ -3728,7 +3734,7 @@ def do_deltas(debs):
     #very small packages cannot be effectively delta-ed
     if newdebsize <= MIN_DEB_SIZE :
       if VERBOSE > 1 : print '  Skip , too small: ', new['File']
-      continue
+      return
 
     oldn = newest
     generated=0
@@ -3739,20 +3745,20 @@ def do_deltas(debs):
         
         if old['Label'] != 'OLD':
           if VERBOSE > 2 : print '   Not old, skip:',old
-          continue
+          return
         
         if old['Version'] == new['Version'] :
           if VERBOSE > 3 and old != new : print '    Identical versions: ', old, new
-          continue
+          return
         
         assert( old['Package'] == pa and pa == new['Package'] )
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
                         '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
 
         if 'Filename' in new:
-          deltadirname=delta_dirname(os.path.dirname(new['Filename']),DIR)
+          deltadirname=delta_dirname(os.path.dirname(new['Filename']),thedir)
         elif 'File' in new:
-          deltadirname=delta_dirname(os.path.dirname(new['File']),DIR)
+          deltadirname=delta_dirname(os.path.dirname(new['File']),thedir)
         else:
           assert(0)
         if deltadirname == '' :
@@ -3797,11 +3803,11 @@ def do_deltas(debs):
         tdir=tempo()
         
         forensicfile=None
-        if FORENSICDIR:
+        if theforensicdir:
           if 'Filename' in new:
-            forensicdirname=delta_dirname(os.path.dirname(new['Filename']),FORENSICDIR)
+            forensicdirname=delta_dirname(os.path.dirname(new['Filename']),theforensicdir)
           elif 'File' in new:
-            forensicdirname=delta_dirname(os.path.dirname(new['File']),FORENSICDIR)
+            forensicdirname=delta_dirname(os.path.dirname(new['File']),theforensicdir)
           else:
             assert(0)
           if not os.path.exists(forensicdirname): #FIXME this does not respect --no-act
@@ -3893,11 +3899,6 @@ def do_deltas(debs):
         
         #eventually, put in its place
         os.rename(deltatmp,delta)
-
-
-  if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
-
-  return exitstatus
 
 ##################################################### delta-upgrade
 
