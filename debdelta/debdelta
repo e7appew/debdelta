@@ -230,7 +230,10 @@ HTTP_USER_AGENT={'User-Agent': ('Debian debdelta-upgrade' ) }
 
 DPKG_MULTIARCH=( 0 == os.system('dpkg --assert-multi-arch 2> /dev/null') )
 
-if os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
+
+if __name__ != "__main__":
+  action = None
+elif os.path.dirname(sys.argv[0]) == '/usr/lib/apt/methods' :
   action = None
 else:
   action=(os.path.basename(sys.argv[0]))[3:]
