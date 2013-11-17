@@ -3894,16 +3894,6 @@ def do_deltas(debs):
         #eventually, put in its place
         os.rename(deltatmp,delta)
 
-    #delete debs in --alt that are too old
-    #if CLEAN_ALT:
-    #  while oldn>=0:
-    #    old=info_pack[l]
-    #    if old['Label'] == 'ALT':
-    #      f=old['File']
-    #      if os.path.exists(f):
-    #        if VERBOSE : print ' Removing alt deb: ',f
-    #        if ACT: os.unlink(f)
-    #    oldn-=1
 
   if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
 
