@@ -3544,7 +3544,7 @@ def order_by_version(a, b, VersionCompare):
 
 
 
-def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir):
+def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompare):
     if all([('CMDLINE' != a['Label']) for a in info_pack ]):
       #this happens a lot, e.g. when we are scanning non-free/Packages.gz,
       # all free packages in the trash are to be ignored
@@ -3558,7 +3558,6 @@ def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir):
     #      assert a['Label'] == 'ALT'
     #      scan_deb_bydict(a)
     
-    VersionCompare = init_apt_return_VersionCompare()
     info_pack.sort(cmp = lambda x,y : order_by_version(x, y, VersionCompare))
     
     how_many= len(info_pack)
@@ -3783,6 +3782,9 @@ def init_apt_return_VersionCompare():
 def do_deltas(debs):
   exitstatus=0
   
+  
+  VersionCompare = init_apt_return_VersionCompare()
+  
   if not debs:
     print _('Warning, no non-option arguments, debdeltas does nothing.')
     if not DEBUG:
@@ -3905,7 +3907,7 @@ def do_deltas(debs):
         #debdeltas was invoked just to clean the archive
         pass
       else:
-        do_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR)
+        do_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR,VersionCompare)
   
   if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
   return exitstatus
