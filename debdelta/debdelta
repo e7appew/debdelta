@@ -3451,7 +3451,7 @@ def scan_deb_bydict(a):
     p.close()
     return a
 
-def scan_delta_dir(d, debname, scanned_delta_dirs):
+def scan_delta_dir(d, debname, scanned_delta_dirs,  old_deltas_by_pack_arch):
     if (d,debname) in scanned_delta_dirs or (d,None) in scanned_delta_dirs :
       return
     if not os.path.isdir(d) :
@@ -3463,7 +3463,7 @@ def scan_delta_dir(d, debname, scanned_delta_dirs):
     for n in os.listdir(d):
       if debname != None and debname != n.split('_')[0]:
         continue
-      scan_delta( os.path.join(d,n) )
+      scan_delta( os.path.join(d,n) ,  old_deltas_by_pack_arch)
 
 def scan_delta(f,  old_deltas_by_pack_arch):
     assert( os.path.isfile(f) )
@@ -3859,7 +3859,7 @@ def do_deltas(debs):
           for alt in ALT_DOUBLEDIR:
             scan_deb_dir(delta_dirname(ofd,alt), pa , 'ALT', True, info_by_pack_arch)
           if CLEAN_DELTAS:
-            scan_delta_dir(delta_dirname(ofd,DIR), pa, scanned_delta_dirs)
+            scan_delta_dir(delta_dirname(ofd,DIR), pa, scanned_delta_dirs,  old_deltas_by_pack_arch)
       elif arg[-4: ] == '.deb':
         a=scan_deb_byfile(arg, info_by_file)
         if a :
@@ -3869,14 +3869,14 @@ def do_deltas(debs):
           for alt in ALT_DOUBLEDIR:
             scan_deb_dir(delta_dirname(ofd,alt), a['Package'], 'ALT', True, info_by_pack_arch, info_by_file)
           if CLEAN_DELTAS:
-            scan_delta_dir(delta_dirname(ofd,DIR), a['Package'], scanned_delta_dirs)
+            scan_delta_dir(delta_dirname(ofd,DIR), a['Package'], scanned_delta_dirs,  old_deltas_by_pack_arch)
       else: print 'Error! skipping cmdline argument: ',arg
     elif os.path.isdir(arg):
       scan_deb_dir(arg, None, 'CMDLINE', False, info_by_pack_arch, info_by_file)
       for alt in ALT_DOUBLEDIR:
         scan_deb_dir(delta_dirname(arg,alt), None, 'ALT', True, info_by_pack_arch, info_by_file)
       if CLEAN_DELTAS:
-        scan_delta_dir(delta_dirname(arg,DIR), None, scanned_delta_dirs)
+        scan_delta_dir(delta_dirname(arg,DIR), None, scanned_delta_dirs,  old_deltas_by_pack_arch)
     else:
       print 'Error, skipping cmd line argument: ',arg
 
