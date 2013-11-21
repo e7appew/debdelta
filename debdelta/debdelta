@@ -3543,8 +3543,8 @@ def order_by_version(a, b, VersionCompare):
     return VersionCompare( a['Version'] , b['Version']  )
 
 
-
-def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompare):
+def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompare):
+    " iterate deltas to be created for package pa, architecture ar, by analyzing info_pack"
     if all([('CMDLINE' != a['Label']) for a in info_pack ]):
       #this happens a lot, e.g. when we are scanning non-free/Packages.gz,
       # all free packages in the trash are to be ignored
@@ -3653,10 +3653,6 @@ def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompare
           print 'Would create:',delta
           return
         
-        if VERBOSE : print 'Creating:',delta
-        deltatmp=delta+'_tmp_'
-        ret= None
-        tdir=tempo()
         
         forensicfile=None
         if theforensicdir:
@@ -3674,8 +3670,18 @@ def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompare
             forensicfile=open(a,'w')
           del a
         
+        yield (old['File'],new['File'], delta, forensicfile)
+
+
+def do_delta_and_test(old_File, new_File, delta, forensicfile):
+        if VERBOSE : print 'Creating:',delta
+        
+        deltatmp=delta+'_tmp_'
+        ret= None
+        tdir=tempo()
+        
         try:
-          ret=do_delta_(old['File'],new['File'], deltatmp, TD=tdir, forensic_file=forensicfile)
+          ret=do_delta_(old_File,new_File, deltatmp, TD=tdir, forensic_file=forensicfile)
           (deltatmp_, percent, elaps, info_delta, gpg_hashes) = ret
         except KeyboardInterrupt:
           if os.path.exists(deltatmp):
@@ -3718,7 +3724,7 @@ def do_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompare
           pret=None
           try:
             #test, ignoring gpg, that is added later on
-            pret=do_patch(deltatmp,old['File'],None , info=info_delta, do_gpg=None)
+            pret=do_patch(deltatmp,old_File,None , info=info_delta, do_gpg=None)
           except DebDeltaError,s:
             print ' '+_('Error: testing of delta failed:')+' '+str(s)
             if os.path.exists(deltatmp) and DEBUG==0:
@@ -3907,7 +3913,9 @@ def do_deltas(debs):
         #debdeltas was invoked just to clean the archive
         pass
       else:
-        do_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR,VersionCompare)
+        for old_File, new_File, delta, forensicfile in   \
+            iter_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR, VersionCompare):
+          do_delta_test(old_File, new_File, delta, forensicfile)
   
   if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
   return exitstatus
