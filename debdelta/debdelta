@@ -3667,7 +3667,7 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
           forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
           forensicfile=os.path.join(forensicdirname,forensicbasename)
           
-        yield (old['File'],new['File'], delta, forensicfile)
+        yield (old,new, delta, forensicfile)
 
 
 def do_delta_and_test(old_File, new_File, delta, forensicfile):
@@ -3913,9 +3913,9 @@ def do_deltas(debs):
         #debdeltas was invoked just to clean the archive
         pass
       else:
-        for old_File, new_File, delta, forensicfile in   \
+        for old, new, delta, forensicfile in   \
             iter_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR, VersionCompare):
-          do_delta_test(old_File, new_File, delta, forensicfile)
+          do_delta_test(old['File'], new['File'], delta, forensicfile)
   
   if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
   return exitstatus
