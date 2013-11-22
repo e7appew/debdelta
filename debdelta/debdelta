@@ -3596,6 +3596,7 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
 
     oldn = newest
     generated=0
+    seen_versions=[]
     while (oldn>0) :
         oldn -= 1
         
@@ -3639,6 +3640,10 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
           if VERBOSE > 1 : print '  Skip , already exists: ',delta
           continue
         
+        if old['Package']  in seen_versions:
+          if VERBOSE > 3 : print '    Skip , already considered: ',delta
+          continue
+        
         if os.path.exists(delta+'-too-big'):
           if VERBOSE > 1 : print '  Skip , tried and too big: ',delta
           continue
@@ -3667,7 +3672,9 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
             os.makedirs(forensicdirname)
           forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
           forensicfile=os.path.join(forensicdirname,forensicbasename)
-          
+        
+        seen_versions.append(old['Package'])
+        
         yield (old,new, delta, forensicfile)
 
 
