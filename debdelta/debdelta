@@ -3852,11 +3852,11 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
         
         if old['Label'] != 'OLD':
           if VERBOSE > 2 : print '   Not old, skip:',old
-          return
+          continue
         
         if old['Version'] == new['Version'] :
           if VERBOSE > 3 and old != new : print '    Identical versions: ', old, new
-          return
+          continue
         
         assert( old['Package'] == pa and pa == new['Package'] )
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
@@ -3883,7 +3883,7 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
         
         if old['Package']  in seen_versions:
           if VERBOSE > 3 : print '    Skip , already considered: ',delta
-          continue 
+          continue
         
         seen_versions.append(old['Package'])
         
