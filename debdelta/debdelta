@@ -3574,7 +3574,7 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
       if new['Label'] != 'CMDLINE' :
         if VERBOSE > 3 : print '    Newest version deb was not in cmdline, skip down one: ', new
       else:
-        return
+        break
       newest -= 1
 
     if newest <= 0 :
