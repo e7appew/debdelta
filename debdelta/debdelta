@@ -3601,11 +3601,11 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
         
         if old['Label'] != 'OLD':
           if VERBOSE > 2 : print '   Not old, skip:',old
-          return
+          continue
         
         if old['Version'] == new['Version'] :
           if VERBOSE > 3 and old != new : print '    Identical versions: ', old, new
-          return
+          continue
         
         assert( old['Package'] == pa and pa == new['Package'] )
         deltabasename = pa +'_'+  version_mangle(old['Version']) +\
@@ -3627,33 +3627,32 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
         free=freespace(deltadirname)
         if free and (free < (newdebsize /2 + 2**15)) :
           if VERBOSE : print ' '+(_("Not enough disk space for storing `%s'.") % delta)
-          return
+          continue
         
         generated+=1 #count also those already generated
         if N_DELTAS != None and (generated > N_DELTAS):
-          return
+          continue
                 
         if os.path.exists(delta):
           if VERBOSE > 1 : print '  Skip , already exists: ',delta
-          return
+          continue
         
         if os.path.exists(delta+'-too-big'):
           if VERBOSE > 1 : print '  Skip , tried and too big: ',delta
-          return
+          continue
 
         if os.path.exists(delta+'-fails'):
           if VERBOSE > 1 : print '  Skip , tried and fails: ',delta
-          return
+          continue
 
         if not go_fishing(old,info_pack):
           print 'Error, cannot locate old file: ',old
-          return
+          continue
         
         if not ACT:
           print 'Would create:',delta
-          return
-        
-        
+          continue
+      
         forensicfile=None
         if theforensicdir:
           if 'Filename' in new:
