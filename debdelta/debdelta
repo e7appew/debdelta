@@ -3665,11 +3665,8 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
           if not os.path.exists(forensicdirname): #FIXME this does not respect --no-act
             os.makedirs(forensicdirname)
           forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
-          a=os.path.join(forensicdirname,forensicbasename)
-          if not os.path.exists(a):
-            forensicfile=open(a,'w')
-          del a
-        
+          forensicfile=os.path.join(forensicdirname,forensicbasename)
+          
         yield (old['File'],new['File'], delta, forensicfile)
 
 
@@ -3680,8 +3677,11 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
         ret= None
         tdir=tempo()
         
+        if forensicfile and  not os.path.exists(forensicfile):
+            forensic_file=open(forensicfile,'w')
+        
         try:
-          ret=do_delta_(old_File,new_File, deltatmp, TD=tdir, forensic_file=forensicfile)
+          ret=do_delta_(old_File,new_File, deltatmp, TD=tdir, forensic_file=forensic_file)
           (deltatmp_, percent, elaps, info_delta, gpg_hashes) = ret
         except KeyboardInterrupt:
           if os.path.exists(deltatmp):
