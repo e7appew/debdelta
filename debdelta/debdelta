@@ -3399,7 +3399,7 @@ def do_deltas(debs):
   def iterate_Packages(packages):
     packages=abspath(packages)
     assert os.path.isfile(packages)
-    assert os.path.basename(packages) in  ('Packages', 'Packages.gz','Packages.bz2')
+    assert os.path.basename(packages) in  ('Packages', 'Packages.gz','Packages.bz2','Packages.xz')
     dir=os.path.dirname(packages)
     dir=dir.split('/')
     try:
@@ -3412,6 +3412,8 @@ def do_deltas(debs):
       F=subprocess.Popen(["zcat",packages],stdout=subprocess.PIPE).stdout
     elif packages[-4:] == '.bz2':
       F=subprocess.Popen(["bzcat",packages],stdout=subprocess.PIPE).stdout
+    elif packages[-3:] == '.xz':
+      F=subprocess.Popen(["xzcat",packages],stdout=subprocess.PIPE).stdout
     else:
       F=open(packages)
     of,pack,vers,arch=None,None,None,None
