@@ -4164,16 +4164,16 @@ def do_deltas(debs):
         del versions
       elif DEBUG > 1:
         print 'No deltas where found for: ',pa,ar
-      if N_DELTAS != None and 0 == N_DELTAS:
-        #debdeltas was invoked just to clean the archive
-        pass
-      else:
-        for old, new, delta, forensicfile in   \
-            iter_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR, VersionCompare):
-          if not ACT:
-            print 'Would create:',delta
-          else:
-            do_delta_test(old['File'], new['File'], delta, forensicfile)
+    if N_DELTAS != None and 0 == N_DELTAS:
+      #debdeltas was invoked just to clean the archive
+      pass
+    else:
+      for old, new, delta, forensicfile in   \
+          iter_deltas_one_pack_arch(pa,ar,info_pack, DIR, FORENSICDIR, VersionCompare):
+        if not ACT:
+          print 'Would create:',delta
+        else:
+          do_delta_test(old['File'], new['File'], delta, forensicfile)
 
   if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
   return exitstatus
