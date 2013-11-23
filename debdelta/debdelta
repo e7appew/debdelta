@@ -3870,8 +3870,6 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
           assert(0)
         if deltadirname == '' :
           deltadirname = '.'
-        if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
-          os.makedirs(deltadirname)
         
         delta=os.path.join(deltadirname,deltabasename)
 
@@ -3919,8 +3917,6 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
             forensicdirname=delta_dirname(os.path.dirname(new['File']),theforensicdir)
           else:
             assert(0)
-          if not os.path.exists(forensicdirname): #FIXME this does not respect --no-act
-            os.makedirs(forensicdirname)
           forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
           forensicfile=os.path.join(forensicdirname,forensicbasename)
           
@@ -3934,8 +3930,15 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
         ret= None
         tdir=tempo()
         
+        deltadirname=os.path.dirname(delta)
+        if not os.path.exists(deltadirname): #FIXME this does not respect --no-act
+          os.makedirs(deltadirname)
+        
         if forensicfile and  not os.path.exists(forensicfile):
-            forensic_file=open(forensicfile,'w')
+          forensicdirname=os.path.dirname(forensicfile)
+          if not os.path.exists(forensicdirname): #FIXME this does not respect --no-act
+            os.makedirs(forensicdirname)
+          forensic_file=open(forensicfile,'w')
         
         try:
           ret=do_delta_(old_File,new_File, deltatmp, TD=tdir, forensic_file=forensic_file)
