@@ -3925,7 +3925,7 @@ def do_deltas(debs):
         if not ACT:
           print 'Would create:',delta
         else:
-          do_delta_test(old['File'], new['File'], delta, forensicfile)
+          do_delta_and_test(old['File'], new['File'], delta, forensicfile)
 
   if VERBOSE : print ' '+ ( _('Total running time: %.1f') % ( -start_time + time.time()))
   return exitstatus
