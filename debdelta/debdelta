@@ -3687,6 +3687,8 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
           if not os.path.exists(forensicdirname): #FIXME this does not respect --no-act
             os.makedirs(forensicdirname)
           forensic_file=open(forensicfile,'w')
+        else:
+          forensic_file=None
         
         try:
           ret=do_delta_(old_File,new_File, deltatmp, TD=tdir, forensic_file=forensic_file)
