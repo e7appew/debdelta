@@ -1,0 +1,12 @@
+create table deltas_queue ( 
+id integer unique primary key autoincrement,
+priority integer,
+old_name text,
+new_name text,
+delta text,
+forensic text,
+other_info text,
+ctime integer
+) ;
+
+CREATE INDEX IF NOT EXISTS deltas_queue_priority ON deltas_queue ( priority );
