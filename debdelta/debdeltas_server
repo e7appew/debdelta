@@ -56,8 +56,10 @@ debdelta.DO_GPG = True
 debdelta.USE_DELTA_ALGO = 'xdelta3'
 debdelta.GPG_SIGNING_KEY = gnupg_key
 debdelta.GPG_HOME = gnupg_home
-debdelta.TMPDIR=tmp_dir
 
+debdelta.TMPDIR=tmp_dir
+debdelta.tempfile.tempdir=tmp_dir
+tempfile.tempdir=tmp_dir
 os.environ['TMPDIR']=tmp_dir
 
 for d in mirrorsdir , backup_Packages_dir, deltas_www_dir,  forensic_www_dir:
