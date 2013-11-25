@@ -704,15 +704,20 @@ def puke(s,e=None):
 
 ################################################################### GPG
 
-if GPG_HOME:
-  GPG_BASE_CMD_LINE=[GPG_CMD,"--homedir",GPG_HOME]
-else:
-  GPG_BASE_CMD_LINE=[GPG_CMD,"--keyring",GPG_MASTER_PUB_KEYRING]
+def gpg_base_commandline():
+  if GPG_HOME:
+    GPG_BASE_CMD_LINE=[GPG_CMD,"--homedir",GPG_HOME]
+  else:
+    GPG_BASE_CMD_LINE=[GPG_CMD,"--keyring",GPG_MASTER_PUB_KEYRING]
+  
+  if VERBOSE < 1 :
+    GPG_BASE_CMD_LINE+=['--quiet']
+  
+  return GPG_BASE_CMD_LINE
 
-if VERBOSE < 1 :
-  GPG_BASE_CMD_LINE+=['--quiet']
+def gpg_sign_command():
+  return gpg_base_commandline()+["--batch","--armor","--clearsign","--default-key",GPG_SIGNING_KEY,"--sign"]
 
-GPG_SIGN=GPG_BASE_CMD_LINE+["--batch","--armor","--clearsign","--default-key",GPG_SIGNING_KEY,"--sign"]
 
 def compute_md5_len(o):
   "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type; returns MD5 and length"
@@ -761,7 +766,7 @@ def verify_signature(signature, DIR):
 
   (temp_fd, temp_name) = tempfile.mkstemp(prefix="debdelta_gpg_verified")
   #(read_end, write_end) = os.pipe()
-  p=subprocess.Popen(GPG_BASE_CMD_LINE+['--batch','--status-fd',"2",'--output',"-",signature],
+  p=subprocess.Popen(gpg_base_commandline() + ['--batch','--status-fd',"2",'--output',"-",signature],
                      stdout=subprocess.PIPE,stderr=temp_fd)
   r=_verify_signature_no_gpg(p.stdout, DIR, role)
   p.wait()
@@ -847,7 +852,7 @@ def sign_delta(delta, db, role="maker"):
   TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
   try:
     _write_signature(db,TD+'/_temp',role)
-    p=subprocess.Popen(GPG_SIGN+['--output',TD+'/_gpg'+role,TD+'/_temp'])
+    p=subprocess.Popen(gpg_sign_command() +['--output',TD+'/_gpg'+role,TD+'/_temp'])
     p.wait()
     if p.returncode==0:
       r=system(("ar","qS",delta,TD+"/_gpg"+role),TD)
