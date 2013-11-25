@@ -603,8 +603,8 @@ class DebDeltaError(Exception):  #should derive from (Exception):http://docs.pyt
 
 def die(s):
   #if s : sys.stderr.write(s+'\n')
-  assert(type(s) == StringType)
-  raise DebDeltaError,s
+  assert type(s) in (str, unicode)
+  raise DebDeltaError(s)
 
 
 def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
