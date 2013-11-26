@@ -25,7 +25,7 @@ possible commands:
 #License: GNU GPL v2 
 
 
-import os, sys, time, shutil, pickle, tempfile, subprocess, lockfile
+import os, sys, time, shutil, pickle, tempfile, subprocess, lockfile, logging, logging.handlers
 from os.path import join
 from copy import copy
 
@@ -63,16 +63,10 @@ tempfile.tempdir=tmp_dir
 os.environ['TMPDIR']=tmp_dir
 
 for d in mirrorsdir , backup_Packages_dir, deltas_www_dir,  forensic_www_dir:
-    if not os.path.isdir(d) : # todo, or if cannot write there
-        raise Exception('config variable is not a a directory :'+repr(d))
+    if not os.path.isdir(d) : # todo: or if cannot write there
+        logging.critical('config variable is not a a directory :'+repr(d))
 
 ######
-
-import logging
-import logging.handlers
-
-#logging.basicConfig(format='%(asctime)s %(levelname)s %(funcName)s %(message)s', 
-#                    filename=join(logs_dir,'debdelta_server'), level= logging.INFO)
 
 #http://stackoverflow.com/questions/14758299/python-logging-daemon-destroys-file-handle
 logger = logging.getLogger(__name__)
