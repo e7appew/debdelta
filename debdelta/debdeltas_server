@@ -75,8 +75,7 @@ logger_hdlr = logging.handlers.TimedRotatingFileHandler(join(logs_dir,'debdelta_
 logger_formatter = logging.Formatter('%(asctime)s %(levelname)s %(funcName)s %(message)s')
 logger_hdlr.setFormatter(logger_formatter)
 logger.addHandler(logger_hdlr)
-logger.setLevel(logging.INFO)
-
+logger.setLevel(getattr(logging,logging_level))
 
 ######
 
