@@ -1,8 +1,9 @@
 #!/usr/bin/python
 
-"""Usage: debdelta_server config_file command
-
-possible commands:
+"""Usage: debdelta_server   config_file   command
+ 
+Possible commands:
+ 
  backup_Packages                backup all Packages.bz2  from all mirrors
                                 in 'mirrorsdir' into  'backup_Packages_dir'
  
@@ -584,7 +585,9 @@ elif  sys.argv[2] == 'start_gpg_agent':
     if r: print 'test signing fails ',r
     os.unlink(n.name)
     
-else:
-    print '  command not recognized'
+elif '--help' in sys.argv or '-h' in sys.argv:
     print __doc__
+else:
+    print 'Command not recognized. Use --help'
 
+sys.exit(0)
