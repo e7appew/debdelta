@@ -503,6 +503,13 @@ def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
     except Exception, e:
         logger.exception(cmdname)
 
+
+def deamon_test(a='foobar'):
+    print a
+    os.system('date')
+    time.sleep(60)
+
+
 #########################################################
 
 if sys.argv[2] == 'backup_Packages':
@@ -536,7 +543,7 @@ elif sys.argv[2] == 'create_one_delta':
     create_one_delta()
     
 elif sys.argv[2] == 'daemonize_test':
-    daemonize_maybe_mail('os.system',os.system,'date')
+    daemonize_maybe_mail('daemon_test',deamon_test,'barfoo')
     
 elif  sys.argv[2] == 'start_gpg_agent':
     # ignore environment ?
