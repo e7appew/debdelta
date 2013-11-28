@@ -266,6 +266,9 @@ def scan_packages(packages,label,ibpa):
 def iter_backups_for_deltas(bPd=backup_Packages_dir):
     VersionCompare = debdelta.init_apt_return_VersionCompare()
     lb = list_backups(bPd)
+    if not lb:
+        logger.critical(' no backups in '+bPd)
+        return
     # iterate on most recent backups of all Packages,
     current_distrib=mirrors_binary_Packages(join(bPd,lb[0]))
     for p in iterate_Packages_in_dict_of_mirrors(current_distrib):
