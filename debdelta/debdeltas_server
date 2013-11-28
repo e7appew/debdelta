@@ -454,7 +454,7 @@ def backup_then_scan_and_queue_deltas():
         ##nope it does not really detach from this process
         #daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, True)
 
-def daemonize_maybe_mail(cmdname, cmd, *args):
+def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
     if daemon == None:
         print 'Sorry, needs "python-daemon" '
         sys.exit(3)
@@ -468,20 +468,31 @@ def daemonize_maybe_mail(cmdname, cmd, *args):
                                   pidfile=lockfile.FileLock(join(lock_dir,cmdname))):
             logger.info('start '+cmdname)
             try:
-                cmd(*args)
-                out.flush()
-                p=subprocess.Popen(['mail','-s',cmdname,email], stdin=subprocess.PIPE)
-                o=open(out.name)
-                for a in o: 
-                    p.stdin.write(a)
-                p.stdin.close()
-                p.wait()
-                if p.returncode:
-                    logger.warn('email failed')
-                os.unlink(out.name)
+                cmd(*args, **kw)
+            except SystemExit:
+                logger.info('systemexit '+cmdname+' output in '+out.name)
+                raise
             except Exception, e:
                 logger.exception(cmdname+'--daemonized')
+                logger.info('exit '+cmdname+' output in '+out.name)
+                raise
             logger.info('end '+cmdname)
+        
+        out.close() # <- warning from here on, nothing can write to stdout  stderr!
+        if os.path.getsize(out.name) > 0:
+            logger.debug('there was output, sending email')
+            p=subprocess.Popen(['mail','-s',cmdname,email], stdin=subprocess.PIPE)
+            o=open(out.name)
+            for a in o: 
+                p.stdin.write(a)
+            p.stdin.close()
+            p.wait()
+            if p.returncode:
+                logger.warn('email failed')
+        os.unlink(out.name)
+    
+    except SystemExit:
+        raise
     except Exception, e:
         logger.exception(cmdname)
 
