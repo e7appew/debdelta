@@ -12,7 +12,8 @@ possible commands:
  backup_then_scan_and_queue_deltas   as above two, and in daemon mode
                                      then start worker if not already running
  
- start_worker_d                      start a daemon that creates the deltas
+ start_worker_d   [--EQE]            start a daemon that creates the deltas
+                            --EQE    exit when queue is empty
  
  start_gpg_agent                     starts the agent and loads the gpg key 
                                     (FIXME)
@@ -383,6 +384,9 @@ def worker_creates_deltas(exit_when_queue_empty=False):
         x=None
         try:
             x=thesqldb.queue_pop()
+            if x==None and exit_when_queue_empty:
+                logger.info('queue empty, exiting')
+                break
         except dbapi.OperationalError, e:
             logger.exception(' sqlite3 OperationalError ')
         if x == None: #queue is empty, or error
@@ -511,11 +515,12 @@ elif sys.argv[2] == 'backup_then_scan_and_queue_deltas':
     daemonize_maybe_mail('backup_then_scan_and_queue_deltas', backup_then_scan_and_queue_deltas)
     
 elif sys.argv[2] == 'start_worker':
-    worker_creates_deltas()
+    f=len(sys.argv)>3 and sys.argv[3] == '--EQE'
+    worker_creates_deltas(exit_when_queue_empty=f)
     
 elif sys.argv[2] == 'start_worker_d':
-    daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas)
-
+    f=len(sys.argv)>3 and sys.argv[3] == '--EQE'
+    daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, exit_when_queue_empty=f)
     
 elif sys.argv[2] == 'update_popcon':
     update_popcon()
