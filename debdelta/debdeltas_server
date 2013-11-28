@@ -10,6 +10,7 @@ possible commands:
                                 and queue all deltas that should be created
  
  backup_then_scan_and_queue_deltas   as above two, and in daemon mode
+                                     then start worker if not already running
  
  start_worker_d                      start a daemon that creates the deltas
  
@@ -33,6 +34,19 @@ try:
     import daemon
 except ImportError:
     daemon=None
+
+if sys.argv :
+    # do this before going into daemon mode, since this changes the CWD
+    sys_argv_0_abspath = os.path.abspath(sys.argv[0])
+else:
+    sys_argv_0_abspath = None
+
+if len(sys.argv) > 1:
+    # do this before going into daemon mode, since this changes the CWD
+    sys_argv_1_abspath = os.path.abspath(sys.argv[1])
+else:
+    sys_argv_1_abspath = None
+
 
 if len(sys.argv) <= 2:
     print __doc__
@@ -429,6 +443,16 @@ def update_popcon():
 def backup_then_scan_and_queue_deltas():
     backup_Packages()
     scan_backups_queue_deltas()
+    if not os.path.exists(join(lock_dir,'worker_creates_deltas.lock')): # <- FIXME may do it better
+        args=[sys_argv_0_abspath, sys_argv_1_abspath, 'start_worker_d', '--EQE']
+        if not sys_argv_0_abspath:
+            logger.warn(' cannot spawn start_worker_d ')
+            return
+        p=subprocess.call(args)
+        if p:
+            logger.error('failed: exitstatus %r args %r ', p, args)
+        ##nope it does not really detach from this process
+        #daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, True)
 
 def daemonize_maybe_mail(cmdname, cmd, *args):
     if daemon == None:
