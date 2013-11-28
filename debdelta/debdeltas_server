@@ -332,9 +332,23 @@ def scan_backups_queue_deltas(bPd=backup_Packages_dir):
     thesqldb.queue_add_commit()
 
 
+def set_environ_gpg_agent():
+    if gnupg_agent_info == True:
+        pass #keep environment if available
+    elif type(gnupg_agent_info) in (str,unicode):
+        if os.path.isfile(gnupg_agent_info):
+            gpg_agent_info=open(gnupg_agent_info).readline().strip().split('=')[1]
+            os.environ['GPG_AGENT_INFO']=gpg_agent_info
+        else:
+            logger.error(' file not found: '+gnupg_agent_info)
+    elif gnupg_agent_info == False :
+        if'GPG_AGENT_INFO' in os.environ:
+            del os.environ['GPG_AGENT_INFO']
+    else:
+        logger.warn("configuration variable 'gpg_agent_info' set to a strange value: "+repr(gnupg_agent_info))
+
 def create_one_delta():
-    gpg_agent_info=open(gnupg_agent_info_file).readline().strip().split('=')[1]
-    os.environ['GPG_AGENT_INFO']=gpg_agent_info
+    set_environ_gpg_agent()
     
     thesqldb=SQL_queue(sqlite3_queue)
     x=thesqldb.queue_pop()
@@ -347,9 +361,9 @@ def create_one_delta():
             logger.warn('failed %s', repr(x[2:4]))
             #FIXME, REQUE
 
-def worker_creates_deltas():
-    gpg_agent_info=open(gnupg_agent_info_file).readline().strip().split('=')[1]
-    os.environ['GPG_AGENT_INFO']=gpg_agent_info
+def worker_creates_deltas(exit_when_queue_empty=False):
+    set_environ_gpg_agent()
+    
     thesqldb=SQL_queue(sqlite3_queue)
     while True:
         x=None
