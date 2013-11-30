@@ -417,6 +417,16 @@ def worker_creates_deltas(exit_when_queue_empty=False):
                     logger.exception('while do_delta_and_test')
                     
             time.sleep(1)
+    
+    if publisher:
+        if os.path.isfile(publisher):
+            args=[publisher]
+            p=subprocess.call(args)
+            if p:
+                logger.error('failed: '+repr(p)+repr(args))
+        else:
+            logger.warn(' does not exists: '+publisher)
+
 
 def update_popcon():
     " prepare a cache in popcon_cache, a pickle of a dict where keys are names of packages, and values\
