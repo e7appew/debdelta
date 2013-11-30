@@ -28,7 +28,7 @@ Possible commands:
 #License: GNU GPL v2 
 
 
-import os, sys, time, shutil, pickle, tempfile, subprocess, lockfile, logging, logging.handlers
+import os, sys, time, string, shutil, pickle, tempfile, subprocess, lockfile, logging, logging.handlers
 from os.path import join
 from copy import copy
 
@@ -421,7 +421,6 @@ def worker_creates_deltas(exit_when_queue_empty=False):
 def update_popcon():
     " prepare a cache in popcon_cache, a pickle of a dict where keys are names of packages, and values\
     are popularity, normalized so that maximum popularity is 1.0 "
-    import string
     import cPickle as pickle
     popcon_dict={}
     maximum=None
