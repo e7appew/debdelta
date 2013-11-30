@@ -400,9 +400,9 @@ def worker_creates_deltas(exit_when_queue_empty=False):
             if x[-1] < (now - max_queue_age * 24 * 3600):
                 logger.debug('queue item too old %s' , repr(x[2:4]))
             elif not os.path.isfile(x[2]):
-                logger.info('missing old deb for %s' , repr(x[2:4]))
+                logger.warn('missing old deb for %s' , repr(x[2:4]))
             elif not os.path.isfile(x[3]):
-                logger.info('missing new deb for %s' , repr(x[2:4]))
+                logger.warn('missing new deb for %s' , repr(x[2:4]))
             elif os.path.isfile(x[4]):
                 logger.info('already available delta %s' , repr(x[2:4]))
             else:
@@ -487,11 +487,11 @@ def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
             try:
                 cmd(*args, **kw)
             except SystemExit:
-                logger.info('systemexit '+cmdname+' output in '+out.name)
+                logger.warn('SystemExit from '+cmdname+' , output in '+out.name)
                 raise
             except Exception, e:
                 logger.exception(cmdname+'--daemonized')
-                logger.info('exit '+cmdname+' output in '+out.name)
+                logger.warn('output was left in '+out.name)
                 raise
             logger.info('end '+cmdname)
         
