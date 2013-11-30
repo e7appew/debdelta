@@ -495,7 +495,11 @@ def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
                 raise
             logger.info('end '+cmdname)
         
-        out.close() # <- warning from here on, nothing can write to stdout  stderr!
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout=os.open(os.devnull, os.O_RDWR)
+        sys.stderr=os.open(os.devnull, os.O_RDWR)
+        out.close()# <- warning from here on, output to stdout and stderr are lost
         if os.path.getsize(out.name) > 0:
             logger.debug('there was output, sending email')
             p=subprocess.Popen(['mail','-s',cmdname,email], stdin=subprocess.PIPE)
