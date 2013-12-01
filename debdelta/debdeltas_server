@@ -250,6 +250,17 @@ def backup_Packages():
     thehash='sha1' # hash used to deduplicate
     
     lb=list_backups() #list previous backups
+    
+    if max_backup_age :
+        for z in lb[2:]: # keep at least two backups
+            a=join(backup_Packages_dir,z)
+            if os.path.getmtime(a) <  (time.time() - max_backup_age * 24 * 3600 ):
+                try:
+                    logger.info('deleting old backup '+repr(a))
+                    shutil.rmtree(a)
+                except: #swallow exception, if any
+                    logger.exception(' while removing tree '+repr(a)) 
+    
     oldwhere = join(backup_Packages_dir,lb[0]) if lb else None
     
     NewRelease={}
