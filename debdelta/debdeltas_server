@@ -211,7 +211,7 @@ def mirrors_binary_Packages(mirrorsdir=mirrorsdir,archs=architectures):
     for m in distrib:
         for d in distrib[m]:
             #iterate on components
-            for k in ('main','contrib','non-free'):
+            for k in components:
                 for a in archs:
                     md=join(mirrorsdir,m,'dists',d,k,'binary-'+a)
                     #print 'bin',m,d,k,a,os.path.isdir(md)
@@ -229,7 +229,7 @@ def mirrors_binary_Packages(mirrorsdir=mirrorsdir,archs=architectures):
 def iterate_Packages_in_dict_of_mirrors(distrib,mirrorsdir=mirrorsdir):
     for m in distrib:
         for d in distrib[m]:
-            for k in suites:
+            for k in components:
                 if k in distrib[m][d]:
                     for a in distrib[m][d][k]:
                         yield distrib[m][d][k][a]
