@@ -324,6 +324,13 @@ def scan_packages(packages,label,ibpa):
                 debdelta.info_by_pack_arch_add(a,ibpa)
 
 
+
+def stat_inode(s):
+    import stat
+    a=os.stat(s)
+    return a[stat.ST_INO], a[stat.ST_DEV]
+
+
 def iter_backups_for_deltas(bPd=backup_Packages_dir):
     VersionCompare = debdelta.init_apt_return_VersionCompare()
     lb = list_backups(bPd)
@@ -335,15 +342,26 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
     for p in iterate_Packages_in_dict_of_mirrors(current_distrib):
         latest=[bPd,lb[0]]+list(p)
         logger.debug('%s %r',' on ', p)
+        visited_inodes=[stat_inode(join(*latest))]
         older=[]
         # add some previous version of each Packages file
-        for bj in range(1, max_backups*skip_backups, skip_backups):
-            if bj < len(lb):
+        bj=1
+        while len(older) < max_backups  and bj < len(lb):
                 a=[bPd,lb[bj]] +list(p)
                 if os.path.isfile(join(*a)):
-                    older.append(a)
+                    ai=stat_inode(join(*a))
+                    if ai not in visited_inodes:
+                        older.append(a)
+                        visited_inodes.append(ai)
+                        logger.debug(' adding to older version %s for %r',lb[bj],p)
+                        bj = bj + skip_backups
+                    else:
+                        logger.debug(' skipping duplicate %s for %r',lb[bj],p)
+                        bj = bj + 1
                 else:
                     logger.warn(' missing %s for %r',lb[bj],p)
+                    bj = bj + 1
+        
         if p[0][-8:]=='security':
             # for security, add also the corresponding stable packages
             q=list(copy(p))
