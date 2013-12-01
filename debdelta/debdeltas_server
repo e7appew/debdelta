@@ -37,6 +37,12 @@ try:
 except ImportError:
     daemon=None
 
+try:
+    import debian.deb822 
+    debian_deb822 = debian.deb822
+except ImportError:
+    debian_deb822 = None
+
 if sys.argv :
     # do this before going into daemon mode, since this changes the CWD
     sys_argv_0_abspath = os.path.abspath(sys.argv[0])
@@ -238,10 +244,64 @@ def backup_Packages():
     #similar to rfc-3339
     now= time.strftime('%Y-%m-%d_%H:%M:%S', time.gmtime())
     where=join(backup_Packages_dir,now)
+    
+    distrib=mirrors_binary_Packages() 
+    
+    thehash='sha1' # hash used to deduplicate
+    
+    lb=list_backups() #list previous backups
+    oldwhere = join(backup_Packages_dir,lb[0]) if lb else None
+    
+    NewRelease={}
+    OldRelease={}
+    if debian_deb822 == None:
+        logger.warn(" please install package 'python-debian' ")
+    else:
+        for m in distrib:
+            for d in distrib[m]:
+                OldRelease[(m,d)]=([],None)
+                if oldwhere:
+                    a=join(oldwhere,m,'dists',d,'Release')
+                    if os.path.isfile(a):
+                        OldRelease[(m,d)]=(debian_deb822.Release(open(a))[thehash],a)
+                    else:
+                        logger.warn('file not found:'+repr(a))
+                b=join(mirrorsdir,m,'dists',d,'Release')
+                NewRelease[(m,d)]=([],None)
+                if os.path.isfile(b):
+                    NewRelease[(m,d)]=(debian_deb822.Release(open(b))[thehash],b)
+                    os.makedirs(join(where,m,'dists',d))
+                    shutil.copy2( b, join(where,m,'dists',d,'Release') )
+                else:
+                    logger.warn('file not found:'+repr(b))
 
-    for p in iterate_Packages_in_dict_of_mirrors( mirrors_binary_Packages() ):
+    for p in iterate_Packages_in_dict_of_mirrors( distrib ):
         os.makedirs(join(where,*(p[:-1])))
-        shutil.copy2( join(mirrorsdir,*p) , join(where,*p))
+        m_d = (p[0], p[2])
+        linked_p=None
+        if oldwhere and os.path.isfile(join(oldwhere,*p)):
+            if debian_deb822 != None:
+                B=os.path.splitext(join(*(p[-3:])))[0]
+                old=[z[thehash] for z in OldRelease[m_d][0] if (z['name'] ==  B )]
+                new=[z[thehash] for z in NewRelease[m_d][0] if (z['name'] ==  B )]
+                if not new:
+                    logger.warn(' failed to get %r for %r from new Release %r' % (thehash,B,NewRelease[m_d][1]))
+                elif not old :
+                    logger.warn(' failed to get %r for %r from old Release %r' % (thehash,B,OldRelease[m_d][1]))
+                elif old[0] == new[0]:
+                    linked_p=True
+                    logger.debug(' by Release os.link  %r %r ' % (join(oldwhere,*p) , join(where,*p)))
+                    os.link(join(oldwhere,*p) , join(where,*p))
+                else:
+                    linked_p=False
+            if linked_p == None:
+                r=subprocess.call(['cmp','--quiet',join(oldwhere,*p) ,join(mirrorsdir,*p)  ])
+                if r==0:
+                    linked_p=True
+                    logger.debug(' by cmp os.link %r %r ' % (join(oldwhere,*p) , join(where,*p)))
+                    os.link(join(oldwhere,*p) , join(where,*p))
+        if linked_p != True:
+            shutil.copy2( join(mirrorsdir,*p) , join(where,*p))
 
 def list_backups(bPd=backup_Packages_dir):
     "list backups timestamps (that are also subdirectories of 'backup_Packages_dir') sorted, newest first"
