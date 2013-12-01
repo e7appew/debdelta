@@ -494,6 +494,10 @@ def worker_creates_deltas(exit_when_queue_empty=False):
                 logger.warn('missing new deb for %s' , repr(x[2:4]))
             elif os.path.isfile(x[4]):
                 logger.info('already available delta %s' , repr(x[2:4]))
+            elif os.path.isfile(x[4]+'-too-big'):
+                logger.info('tried, too big, delta %s' , repr(x[2:4]))
+            elif os.path.isfile(x[4]+'-fails'):
+                logger.info('tried, it failed, delta %s' , repr(x[2:4]))
             else:
                 try:
                     r=debdelta.do_delta_and_test(* (x[2:6]))
