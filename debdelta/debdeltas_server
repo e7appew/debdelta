@@ -291,7 +291,7 @@ def backup_Packages():
         m_d = (p[0], p[2])
         linked_p=None
         if oldwhere and os.path.isfile(join(oldwhere,*p)):
-            if debian_deb822 != None:
+            if debian_deb822 != None and OldRelease[m_d][1] and NewRelease[m_d][1]:
                 B=os.path.splitext(join(*(p[-3:])))[0]
                 old=[z[thehash] for z in OldRelease[m_d][0] if (z['name'] ==  B )]
                 new=[z[thehash] for z in NewRelease[m_d][0] if (z['name'] ==  B )]
