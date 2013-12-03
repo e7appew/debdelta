@@ -287,6 +287,12 @@ def backup_Packages():
                     logger.warn('file not found:'+repr(b))
                 if os.path.isfile(b+'.gpg'):
                     shutil.copy2( b+'.gpg', join(where,m,'dists',d,'Release.gpg') )
+                    #check signature. TODO currently if signature fails there is no consequence
+                    p=subprocess.Popen(['gpgv','-q', b+'.gpg',b ], stdout =  subprocess.PIPE, stderr=subprocess.STDOUT )
+                    e=p.stdout.read()
+                    p.wait()
+                    if p.returncode:
+                        logger.error(' gpgv failed for '+repr(b)+' message:'+repr(e) )
                 else:
                     logger.error('file not found:'+repr(b+'.gpg'))
 
