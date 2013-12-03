@@ -285,6 +285,11 @@ def backup_Packages():
                     shutil.copy2( b, join(where,m,'dists',d,'Release') )
                 else:
                     logger.warn('file not found:'+repr(b))
+                if os.path.isfile(b+'.gpg'):
+                    shutil.copy2( b+'.gpg', join(where,m,'dists',d,'Release.gpg') )
+                else:
+                    logger.error('file not found:'+repr(b+'.gpg'))
+
 
     for p in iterate_Packages_in_dict_of_mirrors( distrib ):
         os.makedirs(join(where,*(p[:-1])))
