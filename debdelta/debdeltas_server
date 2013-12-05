@@ -136,8 +136,14 @@ class SQL_queue:
         self.cursor_add = None
     
     def __del__(self):
-        self.sql_connection.close()
-        self.sql_connection_add.close()
+        if self.cursor != None:
+            self.cursor.close()
+        if self.cursor_add != None:
+            self.cursor.close()
+        if self.sql_connection != None:
+            self.sql_connection.close()
+        if self.sql_connection_add != None:
+            self.sql_connection_add.close()
     
     def commit(self):
         self.sql_connection.commit()
