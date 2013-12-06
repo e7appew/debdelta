@@ -528,10 +528,14 @@ def worker_creates_deltas(exit_when_queue_empty=False):
                     
             time.sleep(1)
     
+    publish()
+
+
+def publish(publisher=publisher, created=[]):
     if publisher:
         if os.path.isfile(publisher):
             args=[publisher]
-            p=subprocess.call(args)
+            p=subprocess.call(args+created)
             if p:
                 logger.error('failed: '+repr(p)+repr(args))
         else:
