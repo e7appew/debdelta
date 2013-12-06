@@ -422,7 +422,9 @@ def scan_backups_for_deltas(bPd=backup_Packages_dir):
         logger.info('%r', z)
 
 class Compute_Priority(object):
+    warned=[]
     def __init__(self):
+        self.warned=[]
         self.popcon_dict={}
         if  os.path.isfile(popcon_cache):
             self.popcon_dict=pickle.load(open(popcon_cache))
@@ -432,7 +434,11 @@ class Compute_Priority(object):
     def __call__(self, old, new):
         " compute priority . A lower number is an higher priority (with 0 being highest priority)"
         # todo: add old packag age
-        return int(priority_for_mirrors.get(old['Packages_file'][1],0.) +  \
+        m= old['Packages_file'][2]
+        if m not in priority_for_mirrors and m not in self.warned:
+            self.warned.append(m)
+            logger.warn('mirror %r not in configuration "priority_for_mirrors" ' % m)
+        return int(priority_for_mirrors.get(m,0.) +  \
                    priority_by_popcon * ( 1. - self.popcon_dict.get(old['Package'],0.)))
 
 
