@@ -119,13 +119,15 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 ####################################################################
 
-import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time, tarfile, stat, hashlib, random
+import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time, tarfile, stat, hashlib, random, gzip
 
 try:
     import debian.deb822 
     debian_deb822 = debian.deb822
 except ImportError:
     debian_deb822 = None
+
+import cPickle as pickle
 
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath, expanduser
@@ -490,6 +492,80 @@ def list_tar(f):
     ar_list.append(a)    
   p.close()
   return ar_list
+
+
+
+class cache_sequence(object):
+  cache_filename=None
+  cache=None
+  exists=None
+  broken=None
+  def __init__(self, filename):
+    "manages a cache file that store a sequence of python object"
+    self.cache_filename=os.path.splitext(filename)[0]+'.debdelta_cache'
+    self.cache=None
+    self.broken=None
+    self.exists=os.path.isfile(self.cache_filename) and \
+      os.path.getmtime(filename) < os.path.getmtime(self.cache_filename)
+  
+  def __iter__(self):
+    assert self.exists and not self.cache
+    self.cache=gzip.GzipFile(self.cache_filename)
+    return self
+  
+  def next(self):
+    assert self.cache
+    try:
+      return pickle.load(self.cache)
+    except EOFError:
+      self.cache=None
+      raise StopIteration
+    except Exception, e:
+      print 'Cache file is broken (%r), deleting %r' % (e, self.cache_filename)
+      if ACT: os.unlink(self.cache_filename)
+      self.cache=None
+      self.broken=True
+      # do not kill program
+      raise StopIteration
+  
+  def __prepare_for_write__(self):
+    if not self.cache:
+      if DEBUG: print ' Creating cache file :', self.cache_filename
+      self.cache=gzip.GzipFile(self.cache_filename,'w')
+  
+  def close(self):
+    if self.cache:
+      try:
+        self.cache.close()
+      except Exception,e:
+        print 'Cannot close the cache file (%r)' %  (self.cache_filename,)
+        self.broken=True
+      try:
+        self.cache=None
+      except:
+        pass
+  
+  __del__=close
+  
+  def write(self,s):
+    " write one object"
+    self.write_many([s])
+  
+  def write_many(self, iterator):
+    " read from iterator and caches objects"
+    assert not self.exists
+    if self.broken:
+      return
+    self.__prepare_for_write__()   
+    try:
+      for s in iterator:
+        self.cache.write(pickle.dumps(s))
+    except Exception,e:
+      print 'Cannot write to cache file (%r), deleting %r' % (e, self.cache_filename)
+      self.close()
+      if ACT: os.unlink(self.cache_filename)
+      self.broken=True
+
 
 #####################################################################
 
@@ -4085,7 +4161,7 @@ def delta_upgrade_(args):
   
   original_cwd = os.getcwd()
 
-  import thread, threading, Queue, pickle, urllib2, fcntl, atexit, signal
+  import thread, threading, Queue, urllib2, fcntl, atexit, signal
 
   proxies=urllib2.getproxies()
   if VERBOSE and proxies:
