@@ -121,6 +121,12 @@ minibzip2='/usr/lib/debdelta/minibzip2'
 
 import sys , os , tempfile , string ,getopt , tarfile , shutil , time, traceback, ConfigParser, subprocess, time, tarfile, stat, hashlib, random
 
+try:
+    import debian.deb822 
+    debian_deb822 = debian.deb822
+except ImportError:
+    debian_deb822 = None
+
 from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXUSR 
 from os.path import abspath, expanduser
 from copy    import copy
@@ -3418,6 +3424,15 @@ def do_deltas(debs):
       F=subprocess.Popen(["xzcat",packages],stdout=subprocess.PIPE).stdout
     else:
       F=open(packages)
+    #
+    if debian_deb822: #use faster implementation
+      fields=('Package','Architecture','Version','Filename')
+      #P=debian_deb822.Packages(F,fields=fields)
+      for a in debian_deb822.Packages.iter_paragraphs(sequence=F,shared_storage=False,fields=fields):
+        a['Basepath'] = base
+        yield a
+      return
+    #
     of,pack,vers,arch=None,None,None,None
     for l in F:
       l=l.rstrip('\n')
