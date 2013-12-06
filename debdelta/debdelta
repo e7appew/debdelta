@@ -125,7 +125,9 @@ from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXU
 from os.path import abspath, expanduser
 from copy    import copy
 
-from types import StringType, UnicodeType, FunctionType, TupleType, ListType, DictType
+from types import FunctionType
+
+string_types = (str, unicode)  # change this for python3
 
 def get_termsize():
   import termios, fcntl, struct
@@ -504,7 +506,7 @@ fi
 """
 
 def prepare_for_echo__(s):
-  assert ( type (s) == StringType )
+  assert ( type (s) in string_types )
   r=''
   shortquoted=False
   for a in s:
@@ -592,7 +594,7 @@ class DebDeltaError(Exception):  #should derive from (Exception):http://docs.pyt
   # Subclasses that define an __init__ must call Exception.__init__
   # or define self.args.  Otherwise, str() will fail.
   def __init__(self,s,retriable=False,exitcode=None,logs=None):
-    assert(type(s) == StringType)
+    assert(type(s) in string_types)
     self.retriable = retriable
     if retriable:
       self.args=(s + ' (retriable) ',)
@@ -608,13 +610,13 @@ class DebDeltaError(Exception):  #should derive from (Exception):http://docs.pyt
 
 def die(s):
   #if s : sys.stderr.write(s+'\n')
-  assert type(s) in (str, unicode)
+  assert type(s) in string_types
   raise DebDeltaError(s)
 
 
 def system(a,TD,saveargs=None,ignore_output=False,return_output=False):
   "a must be a tuple, TD the temporary directory ; if return_output , it will return (stdout,stderr,exitcode) regardless"
-  assert type(a) in (ListType, TupleType)
+  assert type(a) in (list, tuple)
   # mvo: compat with python2.5 where tuple does not have index
   a = list(a)
   if VERBOSE and TD[: (len(TMPDIR)+9) ] != TMPDIR+'/debdelta' :
@@ -721,7 +723,7 @@ def gpg_sign_command():
 
 def compute_md5_len(o):
   "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type; returns MD5 and length"
-  if type(o) in (StringType, UnicodeType):
+  if type(o) in string_types:
     o = open(o)
   m=hashlib.md5()
   a=o.read(1024)
@@ -972,7 +974,7 @@ def info_2_db(info):
 ########### other auxiliary routines
 
 def patch_check_tmp_space(params,olddeb):
-  if type(params) != DictType:
+  if type(params) != dict:
     params=info_2_db(params)
   if 'NEW/Installed-Size' not in params or 'OLD/Installed-Size' not in params:
     print '(Warning... Installed size unknown...)'
@@ -1157,7 +1159,7 @@ def tarinfo_to_ls(tartype,tarmode):
 
 def sha1_hash_file(f):
     s=hashlib.sha1()
-    if type(f) == StringType:
+    if type(f) in string_types:
       f=open(f)
     a=f.read(1024)
     while a:
@@ -2790,9 +2792,9 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
   def files_similarity_score(oo,nn):
     if oo == nn :
       return 0
-    if type(oo) == StringType:
+    if type(oo) in string_types:
       oo=file_similarity_premangle(oo)
-    if type(nn) == StringType:
+    if type(nn) in string_types:
       nn=file_similarity_premangle(nn)
     return files_similarity_score__(oo,nn)
 
@@ -2835,13 +2837,13 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
                   skip=[], old_md5={}, new_md5={},\
                   chunked_p=(not delta_uses_infifo) ,debdelta_conf_skip=()):
     " compute delta of two tar files, and prepare the script consequently"
-    assert( type(old_filename) == StringType or type(old_filename) == FunctionType )
+    assert( type(old_filename) in string_types or type(old_filename) == FunctionType )
 
     script.write('ECR () { $E "$1" ; $E "${FTH}" ; cat OLD/'+CWD+'/"$1" ; rm OLD/'+CWD+'/"$1" ;}\n')
     script.write('EC () { $E "$1" ; $E "${FTH}" ; cat OLD/'+CWD+'/"$1" ;}\n')
     
     ###### uncompress and scan the old tar file, extract regular files
-    if type(old_filename) == StringType :
+    if type(old_filename) in string_types :
       (old_filename,old_filename_ext) = unzip(old_filename)
       oldtar = tarfile.open(TD+old_filename, "r")
     else:
@@ -2894,7 +2896,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
                             [hash_to_hex(sha1_hash_file(os.path.join(TD,"OLD",CWD,oldname)))])
       
     oldtar.close()
-    if type(old_filename) == StringType :
+    if type(old_filename) in string_types :
       unlink(TD+old_filename)
     else:
       while oldfileobj.read(512):
@@ -3412,8 +3414,9 @@ def iterate_Packages(packages):
         yield a
         of,pack,vers,arch=None,None,None,None
 
+
 def scan_deb_dir(d, debname, label, lazy, info_by_pack_arch, info_by_file):
-    assert (debname == None or type(debname) == StringType) and type(label) == StringType
+    assert (debname == None or type(debname) in string_types) and type(label) in string_types
     if not os.path.isdir(d):
       print 'Error, skip non dir:',d
       return
@@ -3465,7 +3468,7 @@ def scan_delta_dir(d, debname, scanned_delta_dirs,  old_deltas_by_pack_arch):
       if VERBOSE > 2 and DEBUG : print '   No such delta dir: ',d
       scanned_delta_dirs.add((d,None)) #trick, if aint there no need to retry
       return
-    assert debname == None or type(debname) == StringType
+    assert debname == None or type(debname) in string_types
     scanned_delta_dirs.add((d,debname))
     for n in os.listdir(d):
       if debname != None and debname != n.split('_')[0]:
