@@ -488,7 +488,8 @@ def create_one_delta():
 
 def worker_creates_deltas(exit_when_queue_empty=False):
     set_environ_gpg_agent()
-    
+    created=[]
+    last_publishing=time.time()
     thesqldb=SQL_queue(sqlite3_queue)
     while True:
         x=None
@@ -520,21 +521,26 @@ def worker_creates_deltas(exit_when_queue_empty=False):
                     r=debdelta.do_delta_and_test(* (x[2:6]))
                     if  0 == r:
                         logger.info('created %s' , repr(x[2:4]))
+                        created.append(x[4])
                     else:
                         logger.warn('failed %s' , repr(x[2:4]))
                         # FIXME REQUEUE if r == 1
                 except Exception, e:
                     logger.exception('while do_delta_and_test')
-                    
-            time.sleep(1)
+            if (created and last_publishing > 600 + time.time()) or len(created)>20 :
+                publish(publisher, created)
+                created=[]
+                last_publishing = time.time()
+            else:
+                time.sleep(1)
     
-    publish()
+    publish(publisher)
 
 
-def publish(publisher=publisher, created=[]):
+def publish(publisher, created=[]):
     if publisher:
         if os.path.isfile(publisher):
-            args=[publisher]
+            args=[publisher, sys_argv_1_abspath]
             p=subprocess.call(args+created)
             if p:
                 logger.error('failed: '+repr(p)+repr(args))
