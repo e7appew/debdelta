@@ -62,6 +62,7 @@ Options:
             possible values are: xdelta xdelta-bzip xdelta3 bsdiff
  -M Mb      maximum memory to use (for 'bsdiff' or 'xdelta')
 --clean-deltas     delete deltas if newer deb is not in archive
+--cache     cache parsed version of Packages.bz2 as Packages.debdelta_cache
 """)
 
 ## implement : --search    search in the directory of the above debs for older versions
@@ -218,6 +219,8 @@ CLEAN_ALT    = False
 
 DO_PREDICTOR = False
 
+DO_CACHE = False #cache parsed version of Packages.bz2 as Packages.debdelta_cache
+
 #see README.features
 DISABLEABLE_FEATURES=['xz', 'lzma', 'xdelta3-fifo']
 DISABLED_FEATURES=[]
@@ -251,7 +254,7 @@ else:
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
                  ('help','info','needsold','dir=','no-act','alt=','old=','delta-algo=',
                     'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug','forensicdir=','forensic=',
-                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test", "format=") )
+                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test", "format=","cache") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(3)
@@ -341,6 +344,7 @@ else:
         sys.stderr.write(_("Error: output format `%s' is unknown.") % v + '\n')
         raise SystemExit(3)
       DEB_FORMAT=v
+    elif o == '--cache': DO_CACHE=True
     else:
       sys.stderr.write(_("Error: option `%s' is unknown, try --help") % o + '\n')
       raise SystemExit(3)
@@ -3470,12 +3474,20 @@ def iterate_Packages(packages):
     else:
       F=open(packages)
     #
+    cache=cache_sequence(packages)
+    if DO_CACHE and cache.exists:
+      for i in cache:
+        yield i
+      if not cache.broken:
+        return
+    #
     if debian_deb822: #use faster implementation
       fields=('Package','Architecture','Version','Filename')
       #P=debian_deb822.Packages(F,fields=fields)
       for a in debian_deb822.Packages.iter_paragraphs(sequence=F,shared_storage=False,fields=fields):
         a['Basepath'] = base
         yield a
+        if DO_CACHE and not cache.exists: cache.write(a)
       return
     #
     of,pack,vers,arch=None,None,None,None
@@ -3503,6 +3515,7 @@ def iterate_Packages(packages):
         a['Architecture'] = arch
         a['Version'] = vers
         yield a
+        if DO_CACHE and not cache.exists: cache.write(a)
         of,pack,vers,arch=None,None,None,None
 
 
