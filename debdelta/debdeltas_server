@@ -73,6 +73,7 @@ debdelta.DEBUG = DEBUG
 debdelta.VERBOSE = VERBOSE
 debdelta.DO_TEST = DO_TEST
 #debdelta.ACT = ACT
+debdelta.DO_CACHE = True
 
 debdelta.DO_GPG = True
 debdelta.USE_DELTA_ALGO = 'xdelta3'
@@ -341,12 +342,12 @@ def scan_packages(packages,label,ibpa):
     for arg in packages:
         m=join(mirrorsdir,arg[2])
         logger.debug (' scan  %r',arg)
-        for a in debdelta.iterate_Packages(join(*arg)):
+        for a in debdelta.iterate_Packages(join(*arg), use_debian_822=False):
             a['Label'] = label
             #cheat, the Packages file is in backup_Packages_dir but
             # the pool is in mirrorsdir
             a['Basepath'] = m
-            a['Packages_file'] = arg
+            a['Packages_file'] = arg  # <- deb822 crashes on this 
             a['Timestamp'] = arg[1]
             if os.path.isfile(join(m,a['Filename'])):
                 debdelta.info_by_pack_arch_add(a,ibpa)
