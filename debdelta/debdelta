@@ -3483,8 +3483,8 @@ def do_deltas(debs):
     if  (pack,arch) not in  info_by_pack_arch :
       info_by_pack_arch[ (pack,arch) ]=[]
     info_by_pack_arch[ (pack,arch) ].append( f )
-    
-  def iterate_Packages(packages):
+
+  def iterate_Packages(packages, use_debian_822=True):
     packages=abspath(packages)
     assert os.path.isfile(packages)
     assert os.path.basename(packages) in  ('Packages', 'Packages.gz','Packages.bz2','Packages.xz')
@@ -3508,17 +3508,18 @@ def do_deltas(debs):
     cache=cache_sequence(packages)
     if DO_CACHE and cache.exists:
       for i in cache:
+        i['Basepath'] = base
         yield i
       if not cache.broken:
         return
     #
-    if debian_deb822: #use faster implementation
+    if debian_deb822 and use_debian_822: #use faster implementation
       fields=('Package','Architecture','Version','Filename')
       #P=debian_deb822.Packages(F,fields=fields)
       for a in debian_deb822.Packages.iter_paragraphs(sequence=F,shared_storage=False,fields=fields):
+        if DO_CACHE and not cache.exists: cache.write(a)
         a['Basepath'] = base
         yield a
-        if DO_CACHE and not cache.exists: cache.write(a)
       return
     #
     of,pack,vers,arch=None,None,None,None
@@ -3540,13 +3541,13 @@ def do_deltas(debs):
           if VERBOSE > 2 : print '   skip udeb: '
           continue
         a={}
-        a['Basepath'] = base
         a['Filename'] = of
         a['Package']  = pack
         a['Architecture'] = arch
         a['Version'] = vers
-        yield a
         if DO_CACHE and not cache.exists: cache.write(a)
+        a['Basepath'] = base
+        yield a
         of,pack,vers,arch=None,None,None,None
 
   def scan_deb_dir(d, debname, label, lazy):
