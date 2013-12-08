@@ -504,12 +504,20 @@ def list_tar(f):
 
 class cache_sequence(object):
   cache_filename=None
+  cache_file=None
   cache=None
   exists=None
   broken=None
-  def __init__(self, filename):
-    "manages a cache file that store a sequence of python object"
-    self.cache_filename=os.path.splitext(filename)[0]+'.debdelta_cache'
+  suffix='.debdelta_cache'
+  def __init__(self, filename, cache_filename=None):
+    """manages a cache file that store a sequence of python object;
+    'filename' is a reference file that is related to the data being cached,
+    and is used to create the name of the cache file, unless 'cache_filename'
+    is provided
+    """
+    self.cache_filename=os.path.splitext(filename)[0]+self.suffix \
+                         if cache_filename==None else cache_filename
+    self.cache_file=None
     self.cache=None
     self.broken=None
     self.exists=os.path.isfile(self.cache_filename) and \
@@ -538,19 +546,20 @@ class cache_sequence(object):
   def __prepare_for_write__(self):
     if not self.cache:
       if DEBUG: print ' Creating cache file :', self.cache_filename
-      self.cache=gzip.GzipFile(self.cache_filename,'w')
+      self.cache_file=open(self.cache_filename,'wb')
+      self.cache=gzip.GzipFile(filename='', fileobj=self.cache_file, mode='wb', mtime=0)
   
   def close(self):
-    if self.cache:
       try:
-        self.cache.close()
+        if self.cache:
+          self.cache.close()
+          self.cache=None
+        if self.cache_file:
+          self.cache_file.close()
+          self.cache_file=None
       except Exception,e:
-        print 'Cannot close the cache file (%r)' %  (self.cache_filename,)
+        print 'Cannot close the cache file %r: %r' %  (self.cache_filename,e)
         self.broken=True
-      try:
-        self.cache=None
-      except:
-        pass
   
   __del__=close
   
