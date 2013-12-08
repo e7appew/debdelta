@@ -37,6 +37,20 @@ try:
 except ImportError:
     daemon=None
 
+
+###
+#http://stackoverflow.com/questions/36932/how-can-i-represent-an-enum-in-python
+#from enum import Enum
+class Enum(object):
+    def __init__(self, *k):
+        pass
+
+def enum(*enums):
+    d=dict([ (enums[k],k)    for k in range(len(enums)) ])
+    return type('Enum', (object,), d)
+
+###
+
 try:
     import debian.deb822 
     debian_deb822 = debian.deb822
