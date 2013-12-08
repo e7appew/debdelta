@@ -3466,9 +3466,11 @@ def iterate_Packages(packages, use_debian_822=True):
       return
     base = string.join(dir[:a],'/')
     if packages[-3:] == '.gz':
-      F=subprocess.Popen(["zcat",packages],stdout=subprocess.PIPE).stdout
+      import gzip
+      F=gzip.GzipFile(packages)
     elif packages[-4:] == '.bz2':
-      F=subprocess.Popen(["bzcat",packages],stdout=subprocess.PIPE).stdout
+      import bz2
+      F=bz2.BZ2File(packages)
     elif packages[-3:] == '.xz':
       F=subprocess.Popen(["xzcat",packages],stdout=subprocess.PIPE).stdout
     else:
