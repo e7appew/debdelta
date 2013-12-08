@@ -200,7 +200,7 @@ class SQL_queue:
     def __init__(self,dbname):
         assert type(dbname) in (str, unicode)
         if not os.path.exists(dbname):
-            r=subprocess.Popen(['sqlite3',dbname], stdin=subprocess.PIPE)
+            r=my_subprocess_Popen(['sqlite3',dbname], stdin=subprocess.PIPE)
             r.stdin.write(self.schema)
             r.stdin.close()
             r.wait()
@@ -377,7 +377,7 @@ def backup_Packages():
                 if os.path.isfile(b+'.gpg'):
                     shutil.copy2( b+'.gpg', join(where,m,'dists',d,'Release.gpg') )
                     #check signature. TODO currently if signature fails there is no consequence
-                    p=subprocess.Popen(['gpgv','-q', b+'.gpg',b ], stdout =  subprocess.PIPE, stderr=subprocess.STDOUT )
+                    p=my_subprocess_Popen(['gpgv','-q', b+'.gpg',b ], stdout = subprocess.PIPE, stderr=subprocess.STDOUT)
                     e=p.stdout.read()
                     p.wait()
                     if p.returncode:
@@ -641,9 +641,9 @@ def publish(publisher, created=[]):
         if os.path.isfile(publisher):
             now=time.time()
             args=[publisher, sys_argv_1_abspath]
-            p=subprocess.call(args+created, stdout= LoggerWriter(prefix='publisher_stdout=',level=logging.INFO),\
-                              stderr= LoggerWriter(prefix='publisher_stderr=',level=logging.ERROR))
-            if p:
+            p=my_subprocess_Popen(args+created)
+            p.wait()
+            if p.returncode:
                 logger.error('failed: exitstatus %r args %r deltas %r' , p, args, created)
             else:
                 if created:
@@ -660,8 +660,7 @@ def update_popcon():
     import cPickle as pickle
     popcon_dict={}
     maximum=None
-    for a in subprocess.Popen(popcon_update_command, close_fds=True, shell=True, \
-                              stdin=open(os.devnull), stdout=subprocess.PIPE, stderr=open(os.devnull,'w')).stdout:
+    for a in my_subprocess_Popen(popcon_update_command, shell=True, stdout=subprocess.PIPE).stdout:
         if not a or a[0] == '#':
             continue
         b=[c for c in string.split(a) if c]
@@ -691,9 +690,9 @@ def backup_then_scan_and_queue_deltas():
         if not sys_argv_0_abspath:
             logger.warn(' cannot spawn start_worker_d ')
             return
-        p=subprocess.call(args,  stdout= LoggerWriter(prefix='spawn_worker_stdout=',level=logging.INFO),\
-                          stderr= LoggerWriter(prefix='spawn_worker_stderr=',level=logging.ERROR))
-        if p:
+        p=my_subprocess_Popen(args)
+        p.wait()
+        if p.returncode:
             logger.error('failed: exitstatus %r args %r ', p, args)
         ##nope it does not really detach from this process
         #daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, True)
@@ -729,7 +728,7 @@ def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
         out.close()# <- warning from here on, output to stdout and stderr are lost
         if os.path.getsize(out.name) > 0:
             logger.debug('there was output, sending email')
-            p=subprocess.Popen(['mail','-s',cmdname,email], stdin=subprocess.PIPE)
+            p=my_subprocess_Popen(['mail','-s',cmdname,email], stdin=subprocess.PIPE)
             o=open(out.name)
             for a in o: 
                 p.stdin.write(a)
