@@ -576,7 +576,8 @@ def publish(publisher, created=[]):
         if os.path.isfile(publisher):
             now=time.time()
             args=[publisher, sys_argv_1_abspath]
-            p=subprocess.call(args+created)
+            p=subprocess.call(args+created, stdout= LoggerWriter(prefix='publisher_stdout=',level=logging.INFO),\
+                              stderr= LoggerWriter(prefix='publisher_stderr=',level=logging.ERROR))
             if p:
                 logger.error('failed: exitstatus %r args %r deltas %r' , p, args, created)
             else:
@@ -625,7 +626,8 @@ def backup_then_scan_and_queue_deltas():
         if not sys_argv_0_abspath:
             logger.warn(' cannot spawn start_worker_d ')
             return
-        p=subprocess.call(args)
+        p=subprocess.call(args,  stdout= LoggerWriter(prefix='spawn_worker_stdout=',level=logging.INFO),\
+                          stderr= LoggerWriter(prefix='spawn_worker_stderr=',level=logging.ERROR))
         if p:
             logger.error('failed: exitstatus %r args %r ', p, args)
         ##nope it does not really detach from this process
