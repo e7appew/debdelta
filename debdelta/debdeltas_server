@@ -390,7 +390,10 @@ def backup_Packages():
         os.makedirs(join(where,*(p[:-1])))
         m_d = (p[0], p[2])
         linked_p=None
-        if oldwhere and os.path.isfile(join(oldwhere,*p)):
+        m_p = join(mirrorsdir,*p)
+        n_p = join(where,*p)
+        o_p = join(oldwhere,*p) if oldwhere else None
+        if oldwhere and os.path.isfile(o_p):
             if debian_deb822 != None and OldRelease[m_d][1] and NewRelease[m_d][1]:
                 B=os.path.splitext(join(*(p[-3:])))[0]
                 old=[z[thehash] for z in OldRelease[m_d][0] if (z['name'] ==  B )]
@@ -401,18 +404,18 @@ def backup_Packages():
                     logger.warn(' failed to get %r for %r from old Release %r' % (thehash,B,OldRelease[m_d][1]))
                 elif old[0] == new[0]:
                     linked_p=True
-                    logger.debug(' by Release os.link  %r %r ' % (join(oldwhere,*p) , join(where,*p)))
-                    os.link(join(oldwhere,*p) , join(where,*p))
+                    logger.debug(' by Release os.link  %r %r ', o_p , n_p)
+                    os.link(o_p, n_p)
                 else:
                     linked_p=False
             if linked_p == None:
-                r=subprocess.call(['cmp','--quiet',join(oldwhere,*p) ,join(mirrorsdir,*p)  ])
+                r=subprocess.call(['cmp','--quiet', o_p, m_p])
                 if r==0:
                     linked_p=True
-                    logger.debug(' by cmp os.link %r %r ' % (join(oldwhere,*p) , join(where,*p)))
-                    os.link(join(oldwhere,*p) , join(where,*p))
+                    logger.debug(' by cmp os.link %r %r ' , o_p, n_p)
+                    os.link(o_p , n_p)
         if linked_p != True:
-            shutil.copy2( join(mirrorsdir,*p) , join(where,*p))
+            shutil.copy2(m_p, n_p)
 
 def list_backups(bPd=backup_Packages_dir):
     "list backups timestamps (that are also subdirectories of 'backup_Packages_dir') sorted, newest first"
