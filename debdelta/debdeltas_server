@@ -427,6 +427,11 @@ def backup_Packages():
                     os.link(o_p , n_p)
         if linked_p != True:
             shutil.copy2(m_p, n_p)
+        else:
+            o_c=debdelta.cache_sequence(o_p)
+            n_c=debdelta.cache_sequence(n_p)
+            if o_c.exists :
+                os.link(o_c.cache_filename, n_c.cache_filename)
 
 def list_backups(bPd=backup_Packages_dir):
     "list backups timestamps (that are also subdirectories of 'backup_Packages_dir') sorted, newest first"
