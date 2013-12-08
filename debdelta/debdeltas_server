@@ -170,6 +170,12 @@ class SQL_queue:
 
     def __init__(self,dbname):
         assert type(dbname) in (str, unicode)
+        if not os.path.exists(dbname):
+            r=subprocess.Popen(['sqlite3',dbname], stdin=subprocess.PIPE)
+            r.stdin.write(self.schema)
+            r.stdin.close()
+            r.wait()
+            assert 0 == r.returncode
         assert os.path.exists(dbname)
         self.dbname=dbname
         self.sql_connection = dbapi.connect(dbname, isolation_level='DEFERRED') # detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
