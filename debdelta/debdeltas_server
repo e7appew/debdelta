@@ -574,10 +574,16 @@ def worker_creates_deltas(exit_when_queue_empty=False):
 def publish(publisher, created=[]):
     if publisher:
         if os.path.isfile(publisher):
+            now=time.time()
             args=[publisher, sys_argv_1_abspath]
             p=subprocess.call(args+created)
             if p:
-                logger.error('failed: '+repr(p)+repr(args))
+                logger.error('failed: exitstatus %r args %r deltas %r' , p, args, created)
+            else:
+                if created:
+                    logger.info(' sent %d deltas in %d seconds' , len(created), time.time()-now )
+                else:
+                    logger.info(' full sync in %d seconds'  ,  time.time()-now )
         else:
             logger.warn(' does not exists: '+publisher)
 
