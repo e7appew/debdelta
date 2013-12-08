@@ -100,6 +100,33 @@ logger_hdlr.setFormatter(logger_formatter)
 logger.addHandler(logger_hdlr)
 logger.setLevel(getattr(logging,logging_level))
 
+
+#http://stackoverflow.com/questions/9410760/redirect-stdout-to-logger-in-python
+class LoggerWriter(object):
+    def __init__(self, prefix='', logger=logger, level=logging.DEBUG):
+        self.logger = logger
+        self.handler = None
+        for i in logger.handlers: # look for a handler that has a stream
+            if hasattr(i,'stream'):
+                self.handler = i
+                break
+        self.level = level
+        self.prefix = prefix
+
+    def write(self, message):
+        if message != '\n':
+            self.logger.log(self.level, self.prefix+message)
+            
+    def close(self):
+        pass
+    
+    def fileno(self):
+        if self.handler:
+            self.handler.stream.fileno
+        else:
+            raise AttributeError(' this logger does not have a stream ')
+
+
 ######
 
 try:
