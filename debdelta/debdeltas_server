@@ -267,11 +267,10 @@ def backup_Packages():
     OldRelease={}
     if debian_deb822 == None:
         logger.warn(" please install package 'python-debian' ")
-    else:
-        for m in distrib:
+    for m in distrib:
             for d in distrib[m]:
                 OldRelease[(m,d)]=([],None)
-                if oldwhere:
+                if oldwhere and debian_deb822 != None:
                     a=join(oldwhere,m,'dists',d,'Release')
                     if os.path.isfile(a):
                         OldRelease[(m,d)]=(debian_deb822.Release(open(a))[thehash],a)
@@ -280,7 +279,8 @@ def backup_Packages():
                 b=join(mirrorsdir,m,'dists',d,'Release')
                 NewRelease[(m,d)]=([],None)
                 if os.path.isfile(b):
-                    NewRelease[(m,d)]=(debian_deb822.Release(open(b))[thehash],b)
+                    if  debian_deb822 != None:
+                        NewRelease[(m,d)]=(debian_deb822.Release(open(b))[thehash],b)
                     os.makedirs(join(where,m,'dists',d))
                     shutil.copy2( b, join(where,m,'dists',d,'Release') )
                 else:
