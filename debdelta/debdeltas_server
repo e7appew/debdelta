@@ -227,7 +227,7 @@ class SQL_queue:
         if self.cursor != None:
             self.cursor.close()
         if self.cursor_add != None:
-            self.cursor.close()
+            self.cursor_add.close()
         if self.sql_connection != None:
             self.sql_connection.close()
         if self.sql_connection_add != None:
