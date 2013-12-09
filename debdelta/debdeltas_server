@@ -367,8 +367,17 @@ def iterate_Packages_in_dict_of_mirrors(distrib,mirrorsdir=mirrorsdir):
 def backup_Packages():
     #similar to rfc-3339
     now= time.strftime('%Y-%m-%d_%H:%M:%S', time.gmtime())
-    where=join(backup_Packages_dir,now)
-    
+    tmpdir=tempfile.mkdtemp(dir=backup_Packages_dir)
+    try:
+        _backup_Packages(now, tmpdir)
+    except Exception, e:
+        if os.path.isdir(tmpdir):
+            logger.warn('on exception, deleting tmp dir %r ', tmpdir)
+            shutil.rmtree(tmpdir)
+        raise
+    os.rename(tmpdir, join(backup_Packages_dir,now))
+
+def _backup_Packages(now, where):
     distrib=mirrors_binary_Packages() 
     
     thehash='sha1' # hash used to deduplicate
