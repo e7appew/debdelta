@@ -639,7 +639,8 @@ def worker_creates_deltas(exit_when_queue_empty=False):
                     r=debdelta.do_delta_and_test(* (x[2:6]))
                     if  0 == r:
                         logger.info('created %r' , repr(x[E.delta]))
-                        created.append(x[E.delta])
+                        if os.path.exists(x[E.delta]): # do not append if the delta was too big
+                            created.append(x[E.delta])
                     else:
                         logger.warn('failed %r' , repr(x[E.delta]))
                         # FIXME REQUEUE if r == 1

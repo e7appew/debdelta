@@ -544,7 +544,7 @@ class cache_sequence(object):
     if not self.cache:
       if DEBUG: print ' Creating cache file :', self.cache_filename
       self.cache_file=open(self.cache_filename+'~tmp~', 'wb')
-      self.cache=gzip.GzipFile(filename='', fileobj=self.cache_file, mode='wb', mtime=0)
+      self.cache=gzip.GzipFile(filename='', fileobj=self.cache_file, mode='wb') # 'mtime=0' needs python2.7 or higher
   
   def close(self):
       try:
