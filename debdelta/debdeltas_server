@@ -188,7 +188,6 @@ if dbapi != None:
 class SQL_queue:
     dbname=None
     sql_connection=None
-    cursor=None
     sql_connection_add=None
     cursor_add=None
     fields=('id','priority','old_name','new_name','delta','forensic','other_info','ctime')
@@ -218,26 +217,30 @@ class SQL_queue:
             assert 0 == r.returncode
         assert os.path.exists(dbname)
         self.dbname=dbname
-        self.sql_connection = dbapi.connect(dbname, isolation_level='DEFERRED') # detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
-        self.cursor = self.sql_connection.cursor()
-        self.sql_connection_add = dbapi.connect(dbname, isolation_level='DEFERRED') # detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
+        self.sql_connection = self._connect()
+        # will be created when needed
+        self.sql_connection_add = None
         self.cursor_add = None
     
+    def _connect(self):
+        return dbapi.connect(self.dbname, isolation_level='DEFERRED')   # detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
+    
     def __del__(self):
-        if self.cursor != None:
-            self.cursor.close()
         if self.cursor_add != None:
             self.cursor_add.close()
         if self.sql_connection != None:
             self.sql_connection.close()
         if self.sql_connection_add != None:
             self.sql_connection_add.close()
-    
-    def commit(self):
-        self.sql_connection.commit()
-    
+
+    def _get_connection_cursor(self):
+        connection =  self.sql_connection if (self.sql_connection != None) else  self._connect()
+        cursor = connection.cursor()
+        return connection, cursor
     
     def queue_add_begin(self):
+        assert self.sql_connection_add == None and  self.cursor_add == None
+        self.sql_connection_add = self._connect()
         self.cursor_add = self.sql_connection_add.cursor()
         #http://stackoverflow.com/questions/15856976/transactions-with-python-sqlite3
         #damn broken DBAPI!
@@ -255,6 +258,7 @@ class SQL_queue:
         if self.cursor_add == None:
             raise Exception(' should use queue_add_begin() before ')
         self.sql_connection_add.commit()
+        self.sql_connection_add = None
         #http://stackoverflow.com/questions/15856976/transactions-with-python-sqlite3
         #damn broken DBAPI!
         ## self.cursor_add.execute('commit transaction')
@@ -262,17 +266,19 @@ class SQL_queue:
     
     
     def queue_peek(self):
-        self.cursor.execute('SELECT * FROM deltas_queue ORDER BY priority ')
-        return self.cursor.fetchone()
+        conn,cursor = self._get_connection_cursor()
+        cursor.execute('SELECT * FROM deltas_queue ORDER BY priority ')
+        return cursor.fetchone()
     
     def queue_get(self, id_):
-        self.cursor.execute('SELECT * FROM deltas_queue WHERE id = ? ', (id_,))
-        return self.cursor.fetchone()
+        conn,cursor = self._get_connection_cursor()
+        cursor.execute('SELECT * FROM deltas_queue WHERE id = ? ', (id_,))
+        return cursor.fetchone()
     
     def queue_pop(self, id_=None):
         "pop one value, if 'id' is set that value"
         #http://stackoverflow.com/questions/15856976/transactions-with-python-sqlite3
-        cursor = self.sql_connection.cursor()
+        connection, cursor = self._get_connection_cursor()
         try:
             #cursor.executescript('begin deferred transaction')
             if id_ == None:
@@ -284,20 +290,20 @@ class SQL_queue:
                 return None
             id_ = x[0]
             cursor.execute('DELETE FROM deltas_queue where id = ? ', (id_,))
-            self.sql_connection.commit() #self.cursor.executescript('commit transaction')
+            connection.commit() #cursor.executescript('commit transaction')
         except:
-            self.sql_connection.rollback() #cursor.executescript('rollback')
+            connection.rollback() #cursor.executescript('rollback')
             raise
         return x
 
     def queue_del(self, id_):
         "delete queued item by 'id'"
-        cursor = self.sql_connection.cursor()
+        connection, cursor = self._get_connection_cursor()
         try:
             cursor.execute('DELETE FROM deltas_queue where id = ? ', (id_,))
-            self.sql_connection.commit() #self.cursor.executescript('commit transaction')
+            connection.commit() #cursor.executescript('commit transaction')
         except:
-            self.sql_connection.rollback() #cursor.executescript('rollback')
+            connection.rollback() #cursor.executescript('rollback')
             raise
         return x
 
