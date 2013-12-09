@@ -279,6 +279,17 @@ class SQL_queue:
             raise
         return x
 
+    def queue_del(self, id_):
+        "delete queued item by 'id'"
+        cursor = self.sql_connection.cursor()
+        try:
+            cursor.execute('DELETE FROM deltas_queue where id = ? ', (id_,))
+            self.sql_connection.commit() #self.cursor.executescript('commit transaction')
+        except:
+            self.sql_connection.rollback() #cursor.executescript('rollback')
+            raise
+        return x
+
 ######
 mirrors_binary_Packages_enum = enum('distribution', '"dists"', 'codename', 'component', 'architecture', 'filename')
 
