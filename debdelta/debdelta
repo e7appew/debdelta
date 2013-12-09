@@ -546,7 +546,7 @@ class cache_sequence(object):
   def __prepare_for_write__(self):
     if not self.cache:
       if DEBUG: print ' Creating cache file :', self.cache_filename
-      self.cache_file=open(self.cache_filename,'wb')
+      self.cache_file=open(self.cache_filename+'~tmp~', 'wb')
       self.cache=gzip.GzipFile(filename='', fileobj=self.cache_file, mode='wb', mtime=0)
   
   def close(self):
@@ -557,6 +557,7 @@ class cache_sequence(object):
         if self.cache_file:
           self.cache_file.close()
           self.cache_file=None
+          os.rename(self.cache_filename+'~tmp~', self.cache_filename)
       except Exception,e:
         print 'Cannot close the cache file %r: %r' %  (self.cache_filename,e)
         self.broken=True
