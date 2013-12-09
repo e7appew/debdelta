@@ -748,9 +748,12 @@ def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
         os.makedirs(lock_dir)
     #http://www.python.org/dev/peps/pep-3143/
     try:
+        sys.stdout.flush()
+        sys.stderr.flush()
         out=tempfile.NamedTemporaryFile(delete=False)
-        with daemon.DaemonContext(stdout=out, stderr=out, umask=0o022,
-                                  files_preserve = [logger_hdlr.stream],
+        outerr=os.fdopen(os.dup(out.fileno()), 'w')
+        with daemon.DaemonContext(stdout=out, stderr=outerr, umask=0o022,
+                                  files_preserve = [out, outerr, logger_hdlr.stream],
                                   pidfile=lockfile.FileLock(join(lock_dir,cmdname))):
             logger.info('start '+cmdname)
             try:
@@ -768,6 +771,7 @@ def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
         sys.stderr.close()
         sys.stdout=os.open(os.devnull, os.O_RDWR)
         sys.stderr=os.open(os.devnull, os.O_RDWR)
+        outerr.close()
         out.close()# <- warning from here on, output to stdout and stderr are lost
         if os.path.getsize(out.name) > 0:
             logger.debug('there was output, sending email')
