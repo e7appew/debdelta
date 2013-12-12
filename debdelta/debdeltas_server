@@ -74,6 +74,9 @@ if len(sys.argv) <= 2:
     print __doc__
     sys.exit(0)
 
+args=copy(sys.argv[2:])
+
+
 #####
 
 import debdelta
@@ -852,40 +855,45 @@ def daemon_test(a='foobar'):
 
 #########################################################
 
-if sys.argv[2] == 'backup_Packages':
+if not args:
+    if  __name__ ==  '__main__':
+        sys.stderr.write('Please provide a command. Use -h\n')
+        sys.exit(2)
+    
+elif args[0] == 'backup_Packages':
     backup_Packages()
     
-elif sys.argv[2] == 'scan_backups_for_deltas':
+elif args[0] == 'scan_backups_for_deltas':
     scan_backups_for_deltas()
     
-elif sys.argv[2] == 'scan_backups_queue_deltas':
+elif args[0] == 'scan_backups_queue_deltas':
     scan_backups_queue_deltas()
     
-elif sys.argv[2] == 'backup_then_scan_and_queue_deltas':
+elif args[0] == 'backup_then_scan_and_queue_deltas':
     daemonize_maybe_mail('backup_then_scan_and_queue_deltas', backup_then_scan_and_queue_deltas)
     
-elif sys.argv[2] == 'start_worker':
-    f=len(sys.argv)>3 and sys.argv[3] == '--EQE'
+elif args[0] == 'start_worker':
+    f=len(sys.argv)>3 and args[1] == '--EQE'
     worker_creates_deltas(exit_when_queue_empty=f)
     
-elif sys.argv[2] == 'start_worker_d':
-    f=len(sys.argv)>3 and sys.argv[3] == '--EQE'
+elif args[0] == 'start_worker_d':
+    f=len(sys.argv)>3 and args[1] == '--EQE'
     daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, exit_when_queue_empty=f)
     
-elif sys.argv[2] == 'update_popcon':
+elif args[0] == 'update_popcon':
     update_popcon()
     
-elif sys.argv[2] == 'peek_queue':
+elif args[0] == 'peek_queue':
     thesqldb=SQL_queue(sqlite3_queue)
     print thesqldb.queue_peek()
     
-elif sys.argv[2] == 'create_one_delta':
+elif args[0] == 'create_one_delta':
     create_one_delta()
     
-elif sys.argv[2] == 'daemonize_test':
+elif args[0] == 'daemonize_test':
     daemonize_maybe_mail('daemon_test',daemon_test,'barfoo')
     
-elif  sys.argv[2] == 'start_gpg_agent':
+elif  args[0] == 'start_gpg_agent':
     sys.exit(start_gpg_agent())
     
 elif '--help' in sys.argv or '-h' in sys.argv:
