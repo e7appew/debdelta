@@ -65,9 +65,9 @@ else:
 
 if len(sys.argv) > 1:
     # do this before going into daemon mode, since this changes the CWD
-    sys_argv_1_abspath = os.path.abspath(sys.argv[1])
+    config_abspath = os.path.abspath(sys.argv[1])
 else:
-    sys_argv_1_abspath = None
+    config_abspath = None
 
 
 if len(sys.argv) <= 2:
@@ -79,7 +79,7 @@ if len(sys.argv) <= 2:
 import debdelta
 
 #### configuration 
-execfile(sys.argv[1])
+execfile(config_abspath)
 
 tmp_dir=tmp_dir.rstrip('/')
 
@@ -693,7 +693,7 @@ def publish(publisher, created=[]):
     if publisher:
         if os.path.isfile(publisher):
             now=time.time()
-            args=[publisher, sys_argv_1_abspath]
+            args=[publisher, config_abspath]
             p=my_subprocess_Popen(args+created)
             p.wait()
             if p.returncode:
@@ -739,7 +739,7 @@ def backup_then_scan_and_queue_deltas():
     backup_Packages()
     scan_backups_queue_deltas()
     if not os.path.exists(join(lock_dir,'worker_creates_deltas.lock')): # <- FIXME may do it better
-        args=[sys_argv_0_abspath, sys_argv_1_abspath, 'start_worker_d', '--EQE']
+        args=[sys_argv_0_abspath, config_abspath, 'start_worker_d', '--EQE']
         if not sys_argv_0_abspath:
             logger.warn(' cannot spawn start_worker_d ')
             return
