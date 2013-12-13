@@ -1,6 +1,10 @@
 #!/usr/bin/python
 
-"""Usage: debdelta_server   config_file   command
+"""Usage: debdelta_server [ -D | -M]  config_file   command
+
+Options:
+ -D  daemonize before executing the command
+ -M  mail any stdout or stderr to 'email' (see config)
  
 Possible commands:
  
@@ -28,7 +32,7 @@ Possible commands:
 #License: GNU GPL v2 
 
 
-import os, sys, time, string, shutil, pickle, tempfile, subprocess, lockfile, logging, logging.handlers
+import os, sys, atexit, tempfile, subprocess
 from os.path import join
 from copy import copy
 
@@ -36,6 +40,105 @@ try:
     import daemon
 except ImportError:
     daemon=None
+
+if len(sys.argv) <= 2:
+    print __doc__
+    sys.exit(0)
+
+if sys.argv :
+    # do this before going into daemon mode, since this changes the CWD
+    sys_argv_0_abspath = os.path.abspath(sys.argv[0])
+else:
+    if __name__ == '__main__':
+        raise Exception(' why is sys.argv empty?? ')
+
+args=None
+config_abspath=None
+
+#final exit code of this module, if run as a script
+return_code=0
+#temporary file to redirect input and output of this module to
+temp_out=None
+
+DO_DAEMON=False
+DO_MAIL=False
+
+if __name__ == '__main__':
+    args=copy(sys.argv[1:])
+    while args and args[0] and args[0][0] == '-':
+        if args[0] == '--help':
+            print __doc__
+            sys.exit(0)
+        else:
+            for j in args[0][1:]:
+                if 'D' == j:
+                    if daemon == None:
+                        sys.stderr.write('Sorry, needs "python-daemon" \n')
+                        sys.exit(3)
+                    DO_DAEMON=True
+                elif 'M' == j:
+                    DO_MAIL=True
+                elif 'h' == j:
+                    print __doc__
+                    sys.exit(0)
+                else:
+                    sys.stderr.write('Unrecognized option, use --help\n')
+                    sys.exit(1)
+        args=args[1:]
+
+    if  len(args) > 1 :
+        # do this before going into daemon mode, since this changes the CWD
+        config_abspath = os.path.abspath(args[0])
+        if not os.path.isfile(config_abspath):
+            sys.stderr.write('Config_file option is not a file : %r\n' % config_abspath)
+            sys.exit(1)
+        args=args[1:]
+    else:
+        sys.stderr.write( 'Needs a config_file and a command. Use --help \n')
+        sys.exit(2)
+
+daemon_context=None
+if DO_DAEMON:
+    daemon_context=daemon.DaemonContext(umask=0o022)
+    daemon_context.open()
+
+### redirect stdin and stderr
+
+email=None
+logger=None #make sure it is defined, in case of early crash
+
+def send_temp_out_as_mail(out):
+    out.flush()
+    sys.stderr.flush()
+    sys.stdout.flush()
+    if os.path.getsize(out.name) > 0:
+        if logger: logger.debug('there was output, sending email')
+        if email:
+            p=subprocess.Popen(['mail','-s',repr(args), email], stdin=open(out.name))
+            p.wait()
+            if p.returncode:
+                if logger: logger.warn('email failed, file is %r ', out.name)
+            else:
+                os.unlink(out.name)
+        # else, do not delete the temp file
+    else:
+        if logger: logger.debug('there was no output, not sending email')
+        os.unlink(out.name)
+    z=open(os.devnull,'a')
+    os.dup2(z.fileno(),1)
+    os.dup2(z.fileno(),2)
+    out.close()    # <- warning from here on, output to stdout and stderr are lost
+
+if DO_MAIL:
+    if temp_out == None:
+        temp_out=tempfile.NamedTemporaryFile(prefix='debdeltas_server_out', delete=False)
+        os.dup2(temp_out.fileno(),1)
+        os.dup2(temp_out.fileno(),2)
+        atexit.register(send_temp_out_as_mail,temp_out)
+
+###
+
+import time, string, shutil, pickle, lockfile, logging, logging.handlers
 
 
 ###
@@ -56,25 +159,6 @@ try:
     debian_deb822 = debian.deb822
 except ImportError:
     debian_deb822 = None
-
-if sys.argv :
-    # do this before going into daemon mode, since this changes the CWD
-    sys_argv_0_abspath = os.path.abspath(sys.argv[0])
-else:
-    sys_argv_0_abspath = None
-
-if len(sys.argv) > 1:
-    # do this before going into daemon mode, since this changes the CWD
-    config_abspath = os.path.abspath(sys.argv[1])
-else:
-    config_abspath = None
-
-
-if len(sys.argv) <= 2:
-    print __doc__
-    sys.exit(0)
-
-args=copy(sys.argv[2:])
 
 
 #####
@@ -117,6 +201,12 @@ logger_formatter = logging.Formatter('%(asctime)s %(levelname)s %(funcName)s %(m
 logger_hdlr.setFormatter(logger_formatter)
 logger.addHandler(logger_hdlr)
 logger.setLevel(getattr(logging,logging_level))
+
+
+if DO_MAIL and temp_out :
+        logger.debug('sendind stdout stderr to %r', temp_out.name)
+
+
 
 
 #http://stackoverflow.com/questions/9410760/redirect-stdout-to-logger-in-python
