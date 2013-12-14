@@ -14,11 +14,10 @@ Possible commands:
  scan_backups_queue_deltas      scan all Packages.bz2 in 'mirrorsdir' and backups,
                                 and queue all deltas that should be created
  
- backup_then_scan_and_queue_deltas   as above two, and in daemon mode
-                                     then start worker if not already running
- 
- start_worker_d   [--EQE]            start a daemon that creates the deltas
+ start_worker   [--EQE]             worker that creates the deltas
                             --EQE    exit when queue is empty
+ 
+ backup,queue,worker             as above three
  
  start_gpg_agent                     starts the agent and loads the gpg key 
                                     (FIXME)
@@ -457,12 +456,16 @@ def iterate_Packages_in_dict_of_mirrors(distrib,mirrorsdir=mirrorsdir):
                     for a in distrib[m][d][k]:
                         yield distrib[m][d][k][a]
 
+backup_Packages_lockname=join(lock_dir,'backup_Packages')
 def backup_Packages():
     #similar to rfc-3339
     now= time.strftime('%Y-%m-%d_%H:%M:%S', time.gmtime())
     tmpdir=tempfile.mkdtemp(dir=backup_Packages_dir)
     try:
-        _backup_Packages(now, tmpdir)
+        logger.debug('start')
+        with lockfile.FileLock(backup_Packages_lockname):
+            _backup_Packages(now, tmpdir)
+        logger.debug('end')
     except Exception, e:
         if os.path.isdir(tmpdir):
             logger.warn('on exception, deleting tmp dir %r ', tmpdir)
@@ -677,8 +680,14 @@ class Compute_Priority(object):
         return int(priority_for_mirrors.get(m,0.) +  \
                    priority_by_popcon * ( 1. - self.popcon_dict.get(old['Package'],0.)))
 
-
+scan_backups_queue_deltas_lockname=join(lock_dir,'scan_backups_queue_deltas')
 def scan_backups_queue_deltas(bPd=backup_Packages_dir):
+    with lockfile.FileLock(scan_backups_queue_deltas_lockname):
+        logger.debug('start')
+        _scan_backups_queue_deltas(bPd)
+        logger.debug('end')
+
+def _scan_backups_queue_deltas(bPd=backup_Packages_dir):
     
     compute_priority=Compute_Priority()
     
@@ -729,7 +738,14 @@ def create_one_delta():
             logger.warn('failed %r',  x[E.delta] )
             #FIXME, REQUE
 
+worker_creates_deltas_lockname=join(lock_dir,'worker_creates_deltas')
 def worker_creates_deltas(exit_when_queue_empty=False):
+    with lockfile.FileLock(worker_creates_deltas_lockname):
+        logger.debug('start , EQE=%r' % exit_when_queue_empty)
+        _worker_creates_deltas(exit_when_queue_empty=exit_when_queue_empty)
+        logger.debug('end')
+
+def _worker_creates_deltas(exit_when_queue_empty=False):
     set_environ_gpg_agent()
     created=[]
     last_publishing=time.time()
@@ -828,22 +844,8 @@ def update_popcon():
     else:
         print 'failed to download or parse file'
 
-def backup_then_scan_and_queue_deltas():
-    backup_Packages()
-    scan_backups_queue_deltas()
-    if not os.path.exists(join(lock_dir,'worker_creates_deltas.lock')): # <- FIXME may do it better
-        args=[sys_argv_0_abspath, config_abspath, 'start_worker_d', '--EQE']
-        if not sys_argv_0_abspath:
-            logger.warn(' cannot spawn start_worker_d ')
-            return
-        p=my_subprocess_Popen(args)
-        p.wait()
-        if p.returncode:
-            logger.error('failed: exitstatus %r args %r ', p, args)
-        ##nope it does not really detach from this process
-        #daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, True)
-
 def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
+    " now unused"
     if daemon == None:
         print 'Sorry, needs "python-daemon" '
         sys.exit(3)
@@ -959,16 +961,26 @@ elif args[0] == 'scan_backups_for_deltas':
 elif args[0] == 'scan_backups_queue_deltas':
     scan_backups_queue_deltas()
     
-elif args[0] == 'backup_then_scan_and_queue_deltas':
-    daemonize_maybe_mail('backup_then_scan_and_queue_deltas', backup_then_scan_and_queue_deltas)
-    
-elif args[0] == 'start_worker':
-    f=len(sys.argv)>3 and args[1] == '--EQE'
-    worker_creates_deltas(exit_when_queue_empty=f)
+    #### kept for backward compatibility
+elif args[0] == 'backup_then_scan_and_queue_deltas' and not DO_DAEMON:
+    os.execv(sys_argv_0_abspath,['-D',config_abspath,'backup,queue,worker'])
     
 elif args[0] == 'start_worker_d':
-    f=len(sys.argv)>3 and args[1] == '--EQE'
-    daemonize_maybe_mail('worker_creates_deltas',  worker_creates_deltas, exit_when_queue_empty=f)
+    f=len(args)>1 and args[1] == '--EQE'
+    if not DO_DAEMON:
+        os.execv(sys_argv_0_abspath,['-D',config_abspath]+args)
+    else:
+        worker_creates_deltas(exit_when_queue_empty=f)
+    #### end of stuff for backward compatibility
+    
+elif args[0] in ('backup,queue,worker', 'backup_then_scan_and_queue_deltas'):
+    backup_Packages()
+    scan_backups_queue_deltas()
+    worker_creates_deltas(exit_when_queue_empty=True)
+    
+elif args[0] == 'start_worker':
+    f=len(args)>1 and args[1] == '--EQE'
+    worker_creates_deltas(exit_when_queue_empty=f)
     
 elif args[0] == 'update_popcon':
     update_popcon()
@@ -981,14 +993,17 @@ elif args[0] == 'create_one_delta':
     create_one_delta()
     
 elif args[0] == 'daemonize_test':
-    daemonize_maybe_mail('daemon_test',daemon_test,'barfoo')
+    daemon_test('barfoo')
     
-elif  args[0] == 'start_gpg_agent':
-    sys.exit(start_gpg_agent())
+elif args[0] == 'start_gpg_agent':
+    return_code=start_gpg_agent()
     
-elif '--help' in sys.argv or '-h' in sys.argv:
+elif '--help' in args or '-h' in args:
     print __doc__
 else:
-    print 'Command not recognized. Use --help'
+    sys.stderr.write( 'Command not recognized. Use -h \n')
+    sys.exit(2)
 
-sys.exit(0)
+
+if __name__ == '__main__':
+    raise SystemExit(return_code)
