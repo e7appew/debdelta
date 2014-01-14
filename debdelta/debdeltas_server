@@ -185,6 +185,13 @@ debdelta.tempfile.tempdir=tmp_dir
 tempfile.tempdir=tmp_dir
 os.environ['TMPDIR']=tmp_dir
 
+if not os.path.exists(lock_dir):
+    try:
+        os.makedirs(lock_dir)
+    except:
+        logging.exception(' while creating %r',lock_dir)
+        raise
+
 for d in mirrorsdir , backup_Packages_dir, deltas_www_dir,  forensic_www_dir:
     if not os.path.isdir(d) : # todo: or if cannot write there
         logging.critical('config variable is not a a directory :'+repr(d))
