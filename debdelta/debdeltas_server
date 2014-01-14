@@ -474,6 +474,7 @@ def backup_Packages():
             _backup_Packages(now, tmpdir)
         logger.debug('end')
     except Exception, e:
+        logger.exception('')
         if os.path.isdir(tmpdir):
             logger.warn('on exception, deleting tmp dir %r ', tmpdir)
             shutil.rmtree(tmpdir)
