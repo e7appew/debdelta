@@ -565,6 +565,19 @@ class cache_sequence(object):
       if ACT: os.unlink(self.cache_filename)
       self.broken=True
 
+class cache_same_dict(cache_sequence):
+  "cache occurrences of a dict that uses always the same keys; omit the keys to optimize"
+  def __init__(self, filename, keys):
+    super(cache_same_dict, self).__init__(filename)
+    self.keys=keys
+  
+  def write(self, s):
+    n=[s[k] for k in self.keys]
+    super(cache_same_dict, self).write(n)
+  
+  def next(self):
+    n=super(cache_same_dict, self).next()
+    return dict(map(lambda x,y: (x,y) , self.keys, n)) # dict comprehension may be used instead
 
 #####################################################################
 
