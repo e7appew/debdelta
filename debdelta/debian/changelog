@@ -1,3 +1,10 @@
+debdelta (0.55) unstable; urgency=medium
+
+  * update git location
+  * add debian backports to sources.conf
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 30 Nov 2014 18:30:51 +0100
+
 debdelta (0.54) unstable; urgency=medium
 
   * [INTL:pt] Portuguese translation, thanks to Américo Monteiro
