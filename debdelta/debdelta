@@ -363,7 +363,10 @@ except:
     print ' Warning, /proc not mounted, using bogus BOGOMIPS'
   BOGOMIPS=3000.0
 
-HOSTID=hashlib.md5( subprocess.Popen(['hostname','-f'], shell=False, stdout=subprocess.PIPE).stdout.read() ).hexdigest()
+SP=subprocess.Popen(['hostname','-f'], shell=False, stdout=subprocess.PIPE)
+HOSTID=hashlib.md5( SP.stdout.read() ).hexdigest()
+SP.wait()
+del SP
 
 TMPDIR = ( os.getenv('TMPDIR') or '/tmp' ).rstrip('/')
 
