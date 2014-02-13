@@ -3508,6 +3508,15 @@ def do_deltas(debs):
       sys.stderr.write('Error: pathname "%s" does not contain "dists"\n' % packages)
       return
     base = string.join(dir[:a],'/')
+    #
+    cache=cache_same_dict(packages, fields)
+    if DO_CACHE and cache.exists:
+      for i in cache:
+        i['Basepath'] = base
+        yield i
+      if not cache.broken:
+        return
+    #
     if packages[-3:] == '.gz':
       import gzip
       F=gzip.GzipFile(packages)
@@ -3518,14 +3527,6 @@ def do_deltas(debs):
       F=subprocess.Popen(["xzcat",packages], stdout=subprocess.PIPE, stdin=open(os.devnull), close_fds=True).stdout
     else:
       F=open(packages)
-    #
-    cache=cache_same_dict(packages, fields)
-    if DO_CACHE and cache.exists:
-      for i in cache:
-        i['Basepath'] = base
-        yield i
-      if not cache.broken:
-        return
     #
     if debian_deb822 and use_debian_822: #use faster implementation
       #P=debian_deb822.Packages(F,fields=fields)
