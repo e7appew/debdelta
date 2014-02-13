@@ -3499,13 +3499,17 @@ def iterate_Packages(packages, use_debian_822=True):
     if packages[-3:] == '.gz':
       import gzip
       F=gzip.GzipFile(packages)
+      SP=None
     elif packages[-4:] == '.bz2':
       import bz2
       F=bz2.BZ2File(packages)
+      SP=None
     elif packages[-3:] == '.xz':
-      F=subprocess.Popen(["xzcat",packages], stdout=subprocess.PIPE, stdin=open(os.devnull), close_fds=True).stdout
+      SP=subprocess.Popen(["xzcat",packages], stdout=subprocess.PIPE, stdin=open(os.devnull), close_fds=True)
+      F=SP.stdout
     else:
       F=open(packages)
+      SP=None
     #
     if debian_deb822 and use_debian_822: #use faster implementation
       #P=debian_deb822.Packages(F,fields=fields)
@@ -3513,6 +3517,9 @@ def iterate_Packages(packages, use_debian_822=True):
         if DO_CACHE and not cache.exists: cache.write(a)
         a['Basepath'] = base
         yield a
+      if SP:
+        F.read()
+        SP.wait()
       return
     #
     of,pack,vers,arch=None,None,None,None
@@ -3542,6 +3549,9 @@ def iterate_Packages(packages, use_debian_822=True):
         a['Basepath'] = base
         yield a
         of,pack,vers,arch=None,None,None,None
+    if SP:
+      F.read()
+      SP.wait()
 
 
 def scan_deb_dir(d, debname, label, lazy, info_by_pack_arch, info_by_file):
