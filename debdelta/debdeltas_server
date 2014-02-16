@@ -748,8 +748,9 @@ def create_one_delta():
 
 worker_creates_deltas_lockname=join(lock_dir,'worker_creates_deltas')
 def worker_creates_deltas(exit_when_queue_empty=False):
-    with lockfile.FileLock(worker_creates_deltas_lockname):
+    with lockfile.FileLock(worker_creates_deltas_lockname) as L:
         logger.debug('start , EQE=%r' % exit_when_queue_empty)
+        open(L.path,'w').write(pickle.dumps({'exit_when_queue_empty':exit_when_queue_empty}))
         _worker_creates_deltas(exit_when_queue_empty=exit_when_queue_empty)
         logger.debug('end')
 
