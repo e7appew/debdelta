@@ -985,7 +985,20 @@ elif args[0] == 'start_worker_d':
 elif args[0] in ('backup,queue,worker', 'backup_then_scan_and_queue_deltas'):
     backup_Packages()
     scan_backups_queue_deltas()
-    worker_creates_deltas(exit_when_queue_empty=True)
+    L=lockfile.FileLock(worker_creates_deltas_lockname)
+    D={}
+    if L.is_locked():
+        try:
+            D=pickle.load(open(L.path))
+        except:
+            logger.exception(' while reading lock info %r',L.path)
+        if D.get('exit_when_queue_empty'):
+            #after this time, either it has exited, or it has noted that other deltas have been queued
+            time.sleep(120)
+        else:
+            logger.debug(' backup,queue,worker : a persistent worker is present, exiting')
+    if not L.is_locked():
+        worker_creates_deltas(exit_when_queue_empty=True)
     
 elif args[0] == 'start_worker':
     f=len(args)>1 and args[1] == '--EQE'
