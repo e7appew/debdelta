@@ -817,6 +817,20 @@ def gpg_base_commandline():
 def gpg_sign_command():
   return gpg_base_commandline()+["--batch","--armor","--clearsign","--default-key",GPG_SIGNING_KEY,"--sign"]
 
+def compute_md5_up_to_len(o, length):
+  "hash initial part of a file using MD5. 'o' may be a string (in which case the file is opened) or a file type; returns MD5 and bytes effectively read"
+  assert type(length) in (int,long) and length >= 0
+  if type(o) in string_types:
+    o = open(o)
+  m=hashlib.md5()
+  a=True
+  l=length
+  while l>0 and a:
+    a=o.read(min(1024,l))
+    l -= len(a)
+    m.update(a)
+  return m.hexdigest(), length-l
+
 
 def compute_md5_len(o):
   "hash the file using MD5. 'o' may be a string (in which case the file is opened) or a file type; returns MD5 and length"
