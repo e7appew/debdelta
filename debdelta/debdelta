@@ -2794,7 +2794,54 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     os.rename(TD+p+'.faked.gz',TD+o)
     if DEBUG > 1 :
       script.md5_check_file(o, compute_md5(TD+o))
-
+  
+  def guess_gz_command(o, check=True):
+    """tries to guess the parameters used to compress, returns a command vector
+      if it fails, returns False 
+      o may be a file name, a function returning a stream, or a stream
+    """
+    h=parse_gzip_header(o)
+    if h==None:
+      return False
+    if type(o) in (FunctionType,LambdaType):
+      o=o()
+    elif type(o) in (str,unicode):
+      o=open(o)
+    z=tempfile.NamedTemporaryFile(suffix='.gz',delete=False)
+    shutil.copyfileobj(o,z)
+    z.flush()
+    pack_list,orig_name=h
+    pack_list.reverse()
+    cmd_list=[(['gzip','-nc'],l) for l in pack_list]
+    cmd_list.append(([minigzip],9)) ##old method up to dpkg-deb in 2014-01-15
+    wcmd=False #fixme, there is no way to distinguish output of minigzip or gzip from header
+    if check:
+      redo=True
+      while redo and cmd_list:
+        cmd,par=cmd_list.pop()
+        y=subprocess.Popen(['zcat',z.name],stdout=subprocess.PIPE)
+        wcmd=copy(cmd)
+        wcmd.append('-'+str(par))
+        if VERBOSE > 2 : print '   Testing command ',wcmd
+        w=subprocess.Popen(wcmd,stdin=y.stdout,stdout=subprocess.PIPE,close_fds=True)
+        y.stdout.close()
+        redo=False
+        c=subprocess.Popen(['cmp','-',z.name],stdin=w.stdout,stdout=open(os.devnull,'w'),close_fds=True)
+        w.stdout.close()
+        c.wait()
+        #assert y.wait() == 0  <- when cmp fails, those get broken pipe
+        #assert w.wait() == 0
+        if c.returncode :
+          redo=True
+          if VERBOSE or DEBUG : print ' Tried gzip options but failed: ',par
+        elif VERBOSE > 2 : print '   Success with command ',wcmd
+        if redo and not cmd_list:
+          print '  HO FINITO LE OPZIONI !'
+          os.unlink(z.name)
+          return False
+    os.unlink(z.name)
+    return wcmd
+  
   def guess_xz_parameters(o, check=True):
     """tries to guess the parameters used to compress, returns a  a string of options 
       if it fails, returns False 
