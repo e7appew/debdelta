@@ -1894,6 +1894,8 @@ def do_patch_(delta, olddeb, newdeb, TD, runtime,
   temp_err_name_fd, temp_err_name = tempfile.mkstemp(prefix='debdeltaE')
   temp_name_fd, temp_name = tempfile.mkstemp(prefix='debdeltaO')
   cmd=[SHELL,'-e','PATCH/patch.sh']
+  if DEBUG > 2 :
+    cmd=[SHELL,'-evx','PATCH/patch.sh']
   if this_deb_format == 'unzipped':
     cmd+=['unzipped']
   elif this_deb_format == 'preunpacked':
