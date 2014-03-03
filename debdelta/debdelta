@@ -134,7 +134,7 @@ from stat    import ST_SIZE, ST_MTIME, ST_MODE, S_IMODE, S_IRUSR, S_IWUSR, S_IXU
 from os.path import abspath, expanduser
 from copy    import copy
 
-from types import FunctionType
+from types import FunctionType, LambdaType
 
 string_types = (str, unicode)  # change this for python3
 
