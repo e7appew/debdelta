@@ -2376,9 +2376,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         assert(os.path.isfile(TD+n))
         md5=compute_md5(TD+n)
       print "    adding extra MD5 for ",n
-      self.fd.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet\n')
-      # if it is too quiet, try
-      #script.write('echo "'+md5+'  '+n+'" | md5sum -c --quiet  || { echo '+repr(n)+' is corrupt ; exit 1 ;}\n')
+      self.fd.write('if ! echo "%s  %s" | md5sum -c --quiet ; then echo "%s is currupt!"; exit 1; fi\n' % (md5,n,n))
   
   ####################### end of class Script ########################
   
