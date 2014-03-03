@@ -3397,6 +3397,19 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     control_forensic=[]
     data_forensic=[]
   
+  def decompress_pipe_from_ar(name, p):
+    " use p=None to not decompress"
+    db={'.gz':'gzip -cd', '.bz2': 'bzip2 -cd', '.lzma':'unlzma -c', '.xz':'unxz -c', \
+        '.tar':None, None:None}
+    assert p in db
+    if p=='.tar' or p==None:
+      def x():
+        return my_popen_read('cd '+TD+'; ar p OLD.file %s '% (name,))
+    else:
+      def x():
+        return my_popen_read('cd '+TD+'; ar p OLD.file %s | %s' % (name,db[p]))
+    return x
+  
   for name in ar_list_new :
     newname = 'NEW/'+name
     system(('ar','x',TD+'NEW.file',name), TD+'/NEW/')
