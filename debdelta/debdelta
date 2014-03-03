@@ -2694,22 +2694,17 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       l+=2
     if oa or na: return l
     return True
-    
-  def delta_gzipped_files(o,n):
-    "delta o and n, replace o with n"
-    assert(o[-3:] == '.gz' and n[-3:] == '.gz')
-    before=cmp_gz(TD+o,TD+n)
-    if before == True:
-      if VERBOSE > 3: print '    equal but for header: ',n
-      return
-    #compare the cost of leaving as is , VS the minimum cost of delta
-    newsize=os.path.getsize(TD+n)
-    if ( newsize - before + 10 ) < 200 :
-      if VERBOSE > 3: print '    not worthwhile gunzipping: ',n
-      return
-    f=open(TD+n)
-    a=f.read(10)
-    f.close()
+  
+  def parse_gzip_header(n):
+    " n may be a file name, a function returning a stream, or a stream"
+    if type(n) in (str, unicode):
+      f=open(TD+n)
+      a=f.read(10)
+      f.close()
+    elif type(n) in (FunctionType,LambdaType):
+      a=n().read(10)
+    else:
+      a=n.read(10)
     if a[:3] != '\037\213\010' :
       print ' Warning: was not created with gzip: ',n
       return
@@ -2736,6 +2731,29 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       return
     if a[9] != '\003' :
       if VERBOSE : print ' Warning: unknown OS in .gz format: ',oct(ord(a[9])),n
+    pack_list=[1,2,3,4,5,6,7,8,9]
+    del pack_list[pack_level]
+    pack_list.append(pack_level)
+    pack_list.reverse()
+    return pack_list,orig_name
+  
+  def delta_gzipped_files(o,n):
+    "delta o and n, replace o with n"
+    assert(o[-3:] == '.gz' and n[-3:] == '.gz')
+    before=cmp_gz(TD+o,TD+n)
+    if before == True:
+      if VERBOSE > 3: print '    equal but for header: ',n
+      return
+    #compare the cost of leaving as is , VS the minimum cost of delta
+    newsize=os.path.getsize(TD+n)
+    if ( newsize - before + 10 ) < 200 :
+      if VERBOSE > 3: print '    not worthwhile gunzipping: ',n
+      return
+    z=parse_gzip_header(n)
+    if z==None:
+      return
+    pack_list,orig_name=z
+    pack_level=pack_list[0]
     #OK, it seems we can play our trick
     p='_tmp_'
     #unzip new file
@@ -2743,13 +2761,9 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     pro.wait()
     if pro.returncode: raise DebDeltaError('argghh, zcat failed on us')
     #test our ability of recompressing
-    l=[1,2,3,4,5,6,7,8,9]
-    del l[pack_level]
-    l.append(pack_level)
-    l.reverse()
     best_r=0
     best_flag=None
-    for i in l:
+    for i in pack_list:
       #force -n  ... no problem with timestamps
       gzip_flags="-"+str(i)
       pro=subprocess.Popen(("gzip",'-c','-n',gzip_flags,TD+p+'.new'),stdout=open(TD+p+'.faked.gz','w'))
