@@ -2277,6 +2277,8 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         self.the_fifo=None
       #this is used when recompressing data.tar.zx
       self.xz_parameters=None
+      #this is used when recompressing data.tar.gz
+      self.gz_command=None
       
     def write(self,s):
       "verbatim write in the script"
@@ -2296,11 +2298,12 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     def zip_piped(self, cn, newhead=None):
       "inverts the unzip() function, with piped behaviour"
       if cn == '.gz' :
+        cmd=string.join(self.gz_command,' ')
         if newhead:
           s=prepare_for_echo(newhead)
-          self.fd.write("($E '"+ s +"' && ./minigzip -9 | tail -c +"+str(len(newhead)+1)+')')
+          self.fd.write("($E '"+ s +"' && "+cmd+" | tail -c +"+str(len(newhead)+1)+')')
         else:
-          self.fd.write('./minigzip -9')
+          self.fd.write(cmd)
       elif  cn == '.bz2' :
         info_append('needs-minibzip2')
         self.fd.write('./minibzip2 -9')
@@ -3434,49 +3437,41 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       #pad new deb
       if extrachar :
         append_NEW_file(extrachar)
-    elif not NEEDSOLD and name[:11] == 'control.tar' :
+    elif not NEEDSOLD and ( name[:11] == 'control.tar' or name[:8] == 'data.tar'):
       script.start_member(ar_line, newname, extrachar)
-      #(mm this is almost useless, just saves a few bytes)
-      oldname = 'OLD/'+name
-      system(('ar','x',TD+'OLD.file',name), TD+'OLD')
-      ##avoid using strange files that dpkg may not install in /var...info/
-      skip=[]
-      for a in os.listdir(TD+'OLD/CONTROL') :
-        if a not in dpkg_keeps_controls:
-          skip.append(a)
+      ext=os.path.splitext(name)[1]
+      x=decompress_pipe_from_ar(name, ext)
+      xd=decompress_pipe_from_ar(name,None)
       #delta it
-      delta_tar(oldname,newname,'CONTROL',control_forensic,skip)
-      script.end_member()
-    elif not NEEDSOLD and name[:8] == 'data.tar'  :
-      script.start_member(ar_line, newname, extrachar)
-      #
-      if 'data.tar.lzma' == name :
+      if '.lzma' == ext :
         info_append('needs-lzma')
-      elif 'data.tar.xz' == name :
+      elif '.xz' == ext :
         info_append('needs-xz')
-        script.xz_parameters=guess_xz_parameters(my_popen_read('cd '+TD+'; ar p NEW.file data.tar.xz'))
+        script.xz_parameters=guess_xz_parameters(xd)
         if script.xz_parameters==False:
           raise DebDeltaError('Cannot guess XZ parameters')
-      #
-      if 'data.tar.gz' in ar_list_old  :
-        def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.gz | gzip -cd')
-      elif 'data.tar.bz2' in ar_list_old :
-        def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.bz2 | bzip2 -cd')
-      elif 'data.tar.lzma' in ar_list_old :
-        info_append('needs-lzma')
-        def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.lzma | unlzma -c')
-      elif 'data.tar.xz' in ar_list_old :
-        info_append('needs-xz')
-        def x():
-          return my_popen_read('cd '+TD+'; ar p OLD.file data.tar.xz | unxz -c')
-      else: assert(0)
-      delta_tar(x,newname,'DATA',data_forensic,old_conffiles,old_md5,new_md5,\
-                debdelta_conf_skip=debdelta_conf_skip)
+      elif '.gz' == ext :
+        script.gz_command=guess_gz_command(xd)
+        if script.gz_command==False:
+          raise DebDeltaError('Cannot guess GZ parameters')
+      if name[:11] == 'control.tar':
+        skip=[]
+        ##avoid using strange files that dpkg may not install in /var...info/
+        for a in os.listdir(TD+'OLD/CONTROL') :
+          if a not in dpkg_keeps_controls:
+            skip.append(a)
+        delta_tar(x,newname,'CONTROL',control_forensic,skip)
+      else:
+        delta_tar(x,newname,'DATA',data_forensic,old_conffiles,old_md5,new_md5,\
+                  debdelta_conf_skip=debdelta_conf_skip)
       del x
+      del xd
       script.end_member()
+      if DEBUG>3 and name[:11] == 'control.tar':
+        length=newdeb_file.tell()
+        md5_len=compute_md5_up_to_len(newdeb, length)
+        assert md5_len[1] == length
+        script.md5_check_file('NEW.file', md5_len[0])
     elif  not NEEDSOLD  or name not in ar_list_old :   #or it is not in old deb
       append_NEW_file(ar_line)
       patchname=verbatim(newname)
