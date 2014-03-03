@@ -2845,9 +2845,16 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     return wcmd
   
   def guess_xz_parameters(o, check=True):
-    "tries to guess the parameters used to compress, returns a string of options ; if check=True and it fails, returns False "
+    """tries to guess the parameters used to compress, returns a  a string of options 
+      if it fails, returns False 
+      o may be a file name, a function returning a stream, or a stream
+    """
     par=''
     crc=''
+    if type(o) in (FunctionType,LambdaType):
+      o=o()
+    elif type(o) in (str,unicode):
+      o=open(o)
     z=tempfile.NamedTemporaryFile(suffix='.xz',delete=False)
     #unfortunately 'xz --list' does not work on pipes!
     shutil.copyfileobj(o,z)
