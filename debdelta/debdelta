@@ -3037,10 +3037,13 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     if type(old_filename) in string_types :
       (old_filename,old_filename_ext) = unzip(old_filename)
       oldtar = tarfile.open(TD+old_filename, "r")
-    else:
+    elif type(old_filename) in (FunctionType,LambdaType) :
       old_filename_ext=None
       oldfileobj = old_filename()
       oldtar = tarfile.open(mode="r|", fileobj=oldfileobj)
+    else:
+      old_filename_ext=None
+      oldtar = tarfile.open(mode="r|", fileobj=old_filename)
     oldnames = []
     oldtarinfos = {}
     for oldtarinfo in oldtar:
@@ -3397,17 +3400,20 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     control_forensic=[]
     data_forensic=[]
   
-  def decompress_pipe_from_ar(name, p):
-    " use p=None to not decompress"
+  def decompress_pipe_from_ar(oldnew, name, p=None):
+    " use p=False to not decompress"
+    assert oldnew in ('OLD','NEW')
+    if p==None:
+      p=os.path.splitext(name)[1]
     db={'.gz':'gzip -cd', '.bz2': 'bzip2 -cd', '.lzma':'unlzma -c', '.xz':'unxz -c', \
-        '.tar':None, None:None}
-    assert p in db
-    if p=='.tar' or p==None:
+        '.tar':None}
+    assert p==False or p in db
+    if p=='.tar' or p==False:
       def x():
-        return my_popen_read('cd '+TD+'; ar p OLD.file %s '% (name,))
+        return my_popen_read('cd '+TD+'; ar p %s.file %s '% (oldnew, name,))
     else:
       def x():
-        return my_popen_read('cd '+TD+'; ar p OLD.file %s | %s' % (name,db[p]))
+        return my_popen_read('cd '+TD+'; ar p %s.file %s | %s' % (oldnew, name,db[p]))
     return x
   
   for name in ar_list_new :
@@ -3438,9 +3444,8 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         append_NEW_file(extrachar)
     elif not NEEDSOLD and ( name[:11] == 'control.tar' or name[:8] == 'data.tar'):
       script.start_member(ar_line, newname, extrachar)
-      ext=os.path.splitext(name)[1]
-      x=decompress_pipe_from_ar(name, ext)
-      xd=decompress_pipe_from_ar(name,None)
+      basename,ext=os.path.splitext(name)
+      xd=decompress_pipe_from_ar('NEW',name,False)
       #delta it
       if '.lzma' == ext :
         info_append('needs-lzma')
@@ -3453,6 +3458,13 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         script.gz_command=guess_gz_command(xd)
         if script.gz_command==False:
           raise DebDeltaError('Cannot guess GZ parameters')
+      del xd
+      x=None
+      for oldext in ('','.gz','.bz2','.lzma','.xz'):
+        if basename+oldext in ar_list_old:
+          x=decompress_pipe_from_ar('OLD',basename+oldext)
+          break
+      assert x
       if name[:11] == 'control.tar':
         skip=[]
         ##avoid using strange files that dpkg may not install in /var...info/
@@ -3463,8 +3475,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
       else:
         delta_tar(x,newname,'DATA',data_forensic,old_conffiles,old_md5,new_md5,\
                   debdelta_conf_skip=debdelta_conf_skip)
-      del x
-      del xd
+      del x, basename, oldext
       script.end_member()
       if DEBUG>3 and name[:11] == 'control.tar':
         length=newdeb_file.tell()
