@@ -2802,7 +2802,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
   def guess_gz_command(o, check=True):
     """tries to guess the parameters used to compress, returns a command vector
       if it fails, returns False 
-      o may be a file name, a function returning a stream, or a stream
+     o may be a file name, a function returning a stream, or a stream
     """
     h=parse_gzip_header(o)
     if h==None:
@@ -2837,7 +2837,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         #assert w.wait() == 0
         if c.returncode :
           redo=True
-          if VERBOSE or DEBUG : print ' Tried gzip options but failed: ',par
+          if VERBOSE or DEBUG : print ' Tried gzip options but failed: ',wcmd
         elif VERBOSE > 2 : print '   Success with command ',wcmd
         if redo and not cmd_list:
           print '  HO FINITO LE OPZIONI !'
@@ -2849,7 +2849,7 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
   def guess_xz_parameters(o, check=True):
     """tries to guess the parameters used to compress, returns a  a string of options 
       if it fails, returns False 
-      o may be a file name, a function returning a stream, or a stream
+       o may be a file name, a function returning a stream, or a stream
     """
     par=''
     crc=''
@@ -2861,9 +2861,6 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     #unfortunately 'xz --list' does not work on pipes!
     shutil.copyfileobj(o,z)
     z.flush()
-    #assert os.path.exists(z.name)
-    #os.system('file '+z.name)
-    #os.system('xz -cc --list '+z.name)
     b=subprocess.Popen(['xz','-vv','--robot','--list',z.name],stdout=subprocess.PIPE)
     for a in b.stdout:
       a=a.rstrip('\n')
@@ -2902,6 +2899,8 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
         redo=False
         c=subprocess.Popen(['cmp','-',z.name],stdin=w.stdout,stdout=open(os.devnull,'w'),close_fds=True)
         w.stdout.close()
+        #assert y.wait() == 0  <- when cmp fails, those get broken pipe
+        #assert w.wait() == 0
         if c.wait() :
           redo=True
           if VERBOSE or DEBUG : print ' Tried XZ options but failed: ',par,crc
