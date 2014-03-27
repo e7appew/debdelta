@@ -2726,18 +2726,19 @@ def do_delta_(olddeb,newdeb,delta,TD,forensic_file=None):
     if format ==  0 :
       pass
     elif format ==  FAST :
-      pack_level == 1
+      pack_level = 1
     elif format ==  SLOW :
-      pack_level == 9
+      pack_level = 9
     else:
       print ' Warning: unsupported compression .gz format: ',oct(format),n
       return
     if a[9] != '\003' :
       if VERBOSE : print ' Warning: unknown OS in .gz format: ',oct(ord(a[9])),n
     pack_list=[1,2,3,4,5,6,7,8,9]
-    del pack_list[pack_level]
+    del pack_list[pack_level-1]
     pack_list.append(pack_level)
     pack_list.reverse()
+    #print 'format ', repr(format), type(format), format==FAST, pack_list
     return pack_list,orig_name
   
   def delta_gzipped_files(o,n):
