@@ -96,6 +96,9 @@ Options:
  -A         accept unsigned deltas
 --format FORMAT
             format of created debs
+--timeout SECONDS
+            adjust timeout for connections, default is
+            15 seconds
 """)
 
 doc['patch-url']=_("""\
@@ -167,6 +170,7 @@ N_DELTAS=None
 
 USE_DELTA_ALGO  = 'bsdiff'
 
+TIMEOUT = 15
 DEBUG   = 0
 VERBOSE = 0
 KEEP    = False
@@ -254,7 +258,7 @@ else:
     ( opts, argv ) = getopt.getopt(sys.argv[1:], 'vkhdM:n:A' ,
                  ('help','info','needsold','dir=','no-act','alt=','old=','delta-algo=',
                     'max-percent=','deb-policy=','clean-deltas','clean-alt','no-md5','debug','forensicdir=','forensic=',
-                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test", "format=","cache") )
+                    'signing-key=', "accept-unsigned", "gpg-home=", "disable-feature=", "test", "format=", "cache", "timeout=") )
   except getopt.GetoptError,a:
       sys.stderr.write(sys.argv[0] +': '+ str(a)+'\n')
       raise SystemExit(3)
@@ -273,6 +277,11 @@ else:
     elif o == '--delta-algo': USE_DELTA_ALGO=v
     elif o == '--max-percent': MAX_DELTA_PERCENT=int(v)
     elif o == '--deb-policy' : DEB_POLICY = [j[0] for j in v.split(',') if j]
+    elif o == '--timeout' :
+      if int(v) < 0:
+        print 'Error: "--timeout ',int(v),'" is too small.'
+        raise SystemExit(3)
+      TIMEOUT = int(v)
     elif o == '-M' :
       if int(v) <= 1:
         print 'Error: "-M ',int(v),'" is too small.'
@@ -4549,7 +4558,7 @@ def delta_upgrade_(args):
     url=urlparse(url)[1]
     if url not in http_conns:
       if VERBOSE > 1 : print '  Opening connection to: ',url
-      http_conns[url] = httplib.HTTPConnection(url, timeout=15)
+      http_conns[url] = httplib.HTTPConnection(url, timeout=TIMEOUT)
     return http_conns[url]
 
   def conn_close(url,fatal=False):
