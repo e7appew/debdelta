@@ -1,6 +1,8 @@
-#!/bin/bash -e
+#!/bin/bash
 
-# Copyright (C) 2008 Andrea Mennucci.
+set -e
+
+# Copyright (C) 2008-2014 Andrea Mennucci.
 # License: GNU Library General Public License, version 2 or later
 
 # this small script is capable of applying a deb delta,
@@ -31,12 +33,17 @@ ln -s '/usr/lib/debdelta/minigzip' '/usr/lib/debdelta/minibzip2' $TD/
 
 ar p $olddeb control.tar.gz  | tar -x -z -p -f - -C $TD/OLD/CONTROL
 
-if ar t $olddeb | grep -q data.tar.lzma ; then
+if ar t $olddeb | grep -q data.tar.xz ; then
+ ar p $olddeb data.tar.xz  | unxz -c | tar -x -p -f - -C $TD/OLD/DATA
+elif ar t $olddeb | grep -q data.tar.lzma ; then
  ar p $olddeb data.tar.lzma  | unlzma -c | tar -x -p -f - -C $TD/OLD/DATA
 elif ar t $olddeb | grep -q data.tar.bz2 ; then
  ar p $olddeb data.tar.bz2  | tar -x --bzip2 -p -f - -C $TD/OLD/DATA
-else
+elif ar t $olddeb | grep -q data.tar.gz ; then
  ar p $olddeb data.tar.gz  | tar -x -z -p -f - -C $TD/OLD/DATA
+else
+ echo "data format not supported"
+ exit 2
 fi
 
 pushd $TD > /dev/null
@@ -45,7 +52,9 @@ cd PATCH
 ar x "$delta"
 cd $TD
 
-if test -r  PATCH/patch.sh.lzma  ; then
+if test -r  PATCH/patch.sh.xz  ; then
+ unxz PATCH/patch.sh.xz
+elif test -r  PATCH/patch.sh.lzma  ; then
  unlzma PATCH/patch.sh.lzma
 elif test -r  PATCH/patch.sh.gz  ; then
  gunzip PATCH/patch.sh.gz
