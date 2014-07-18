@@ -13,7 +13,7 @@ def publish(rsync_args, basedir, rsync_destination, files=[]):
     """ rsync basedir to a remote destination 
        rsync_args is the list of args 
        files is the list of files , if relative paths, relative to basedir;
-         but if no file is given , then publish all """
+         but if no file is given , then publish all, and add --delete to arguments"""
     
     # rsync gives a special meaning to paths ending in '/'
     if basedir[-1] != '/':
@@ -24,7 +24,7 @@ def publish(rsync_args, basedir, rsync_destination, files=[]):
     assert os.path.isdir(basedir) and os.path.isabs(basedir)
     
     if len(files)<1:
-        r=subprocess.call(rsync_args + [ basedir, rsync_destination ], cwd=basedir)
+        r=subprocess.call(rsync_args + ['--delete', basedir, rsync_destination ], cwd=basedir)
     else:
         args=[]
         l=len(basedir)
