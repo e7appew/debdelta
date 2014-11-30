@@ -1,3 +1,14 @@
+debdelta (0.54) unstable; urgency=medium
+
+  * [INTL:pt] Portuguese translation, thanks to Américo Monteiro
+  (Closes: #760731).
+  * bump standards version to 3.9.6.0
+  * debian/rules : add build-arch, build-indep
+  * add new keys into keyring
+  * import some code from GIT server branch
+
+ -- A Mennucc1 <mennucc1@debian.org>  Sun, 30 Nov 2014 17:00:39 +0100
+
 debdelta (0.53) experimental; urgency=low
 
   * merge changes uploaded in wheezy, and changelogs as well
