@@ -32,9 +32,13 @@ minibzip2: minigzip.c
 minigzip: minigzip.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) minigzip.c -o minigzip $(LDFLAGS) -lz
 
-build: minibzip2 minigzip
+build-arch: minibzip2 minigzip
 	$(checkdir)
 	touch build
+
+build-indep:
+
+build: build-arch build-indep
 
 clean:
 	$(checkdir)
