@@ -5,7 +5,7 @@ Build-Depends: zlib1g-dev, libbz2-dev
 Maintainer: A Mennucc1 <mennucc1@debian.org>
 Standards-Version: 3.9.6.0
 Homepage: http://debdelta.debian.net
-Vcs-git: http://debdelta.debian.net/debdelta-suite.git
+Vcs-git: git://anonscm.debian.org/collab-maint/debdelta.git
 
 Package: debdelta
 Architecture: any
