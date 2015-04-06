@@ -686,7 +686,14 @@ def version_demangle(v):
     return join(v.split('%3a'),':')
   else:
     return v
-  
+
+def delta_base_name(pkg, old_ver, new_ver, arch, ext='.debdelta'):
+  assert(':' not in pkg)
+  return pkg + \
+         '_' + version_mangle(old_ver) + \
+         '_' + version_mangle(new_ver) + \
+         '_' + arch + ext
+
 def tempo():
   TD = abspath(tempfile.mkdtemp(prefix='debdelta',dir=TMPDIR))
   for i in 'OLD','NEW','PATCH' :
@@ -3861,8 +3868,7 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
           continue
         
         assert( old['Package'] == pa and pa == new['Package'] )
-        deltabasename = pa +'_'+  version_mangle(old['Version']) +\
-                        '_'+ version_mangle(new['Version']) +'_'+ar+'.debdelta'
+        deltabasename = delta_base_name(pa, old['Version'], new['Version'], ar)
 
         if 'Filename' in new:
           deltadirname=delta_dirname(os.path.dirname(new['Filename']),thedir)
@@ -4827,13 +4833,13 @@ def delta_upgrade_(args):
       deb_path=string.join(deb_path[(thepoolindex):],'/')
       
       #try all possible variants of the filename
-      newdebs=[p.name+'_'+candidate_version+'_'+arch+'.deb',
+      newdebs=[p.shortname+'_'+candidate_version+'_'+arch+'.deb',
                os.path.basename(deb_uri)]
       if ':' in candidate_version:
         a=candidate_version.split(':')
-        newdebs.append(p.name+'_'+a[1]+'_'+arch+'.deb')
-        newdebs.append(p.name+'_'+a[0]+'%3A'+a[1]+'_'+arch+'.deb')
-        newdebs.append(p.name+'_'+a[0]+'%3a'+a[1]+'_'+arch+'.deb')
+        newdebs.append(p.shortname+'_'+a[1]+'_'+arch+'.deb')
+        newdebs.append(p.shortname+'_'+a[0]+'%3A'+a[1]+'_'+arch+'.deb')
+        newdebs.append(p.shortname+'_'+a[0]+'%3a'+a[1]+'_'+arch+'.deb')
       
       for newdeb in newdebs:
         if os.path.exists(DEB_DIR+'/'+newdeb) or \
@@ -4861,9 +4867,8 @@ def delta_upgrade_(args):
       assert(a[0] == 'http')
 
       #delta name
-      delta_name=p.name.split(':')[0]+'_'+version_mangle(installed_version)+\
-                  '_'+ version_mangle(candidate_version)+'_'+\
-                  arch+'.debdelta'
+      delta_name = delta_base_name(p.shortname, installed_version,
+                                   candidate_version, arch)
 
       uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
       
@@ -5248,9 +5253,8 @@ elif action == 'patch-url':
       continue
 
     #delta name
-    delta_name=p.name+'_'+version_mangle(installed_version)+\
-                '_'+ version_mangle(candidate_version)+'_'+\
-                arch+'.debdelta'
+    delta_name = delta_base_name(p.shortname, installed_version,
+                                 candidate_version, arch)
   
     uri=delta_uri_base+'/'+os.path.dirname(deb_path)+'/'+delta_name
 
