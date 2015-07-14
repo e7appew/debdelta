@@ -3885,8 +3885,6 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
           if VERBOSE > 3 : print '    Skip , already considered: ',delta
           continue
         
-        seen_versions.append(old['Package'])
-        
         if os.path.exists(delta+'-too-big'):
           if VERBOSE > 1 : print '  Skip , tried and too big: ',delta
           continue
@@ -3909,7 +3907,9 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
             assert(0)
           forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
           forensicfile=os.path.join(forensicdirname,forensicbasename)
-          
+        
+        seen_versions.append(old['Package'])
+        
         yield (old,new, delta, forensicfile)
 
 
