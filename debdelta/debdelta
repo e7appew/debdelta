@@ -3575,6 +3575,7 @@ def info_by_pack_arch_add(f, info_by_pack_arch):
       info_by_pack_arch[ (pack,arch) ]=[]
     info_by_pack_arch[ (pack,arch) ].append( f )
 
+
 def iterate_Packages(packages, use_debian_822=True):
     fields=('Package','Architecture','Version','Filename')
     for f in fields: intern(f)
@@ -3908,9 +3909,9 @@ def iter_deltas_one_pack_arch(pa,ar,info_pack,thedir,theforensicdir,VersionCompa
             assert(0)
           forensicbasename = pa +'_'+  version_mangle(old['Version']) +'_'+ar+'.forensic'
           forensicfile=os.path.join(forensicdirname,forensicbasename)
-        
+
         seen_versions.append(old['Package'])
-        
+
         yield (old,new, delta, forensicfile)
 
 
@@ -4016,7 +4017,7 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
             gpg_hashes['info']=hashes_info
             sign_delta(deltatmp,gpg_hashes)
         except:
-          puke('debdeltas')
+          puke('debdeltas signing')
           if os.path.exists(deltatmp):
             os.unlink(deltatmp)
         
@@ -4027,9 +4028,7 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
         else:
           return max(exitstatus, 4)
 
-
-
-
+        
 def init_apt_return_VersionCompare():
   try:
     import apt_pkg

@@ -1,0 +1,1031 @@
+#!/usr/bin/python
+
+"""Usage: debdelta_server [ -D | -M]  config_file   command
+
+Options:
+ -D  daemonize before executing the command
+ -M  mail any stdout or stderr to 'email' (see config)
+ 
+Possible commands:
+ 
+ backup_Packages                backup all Packages.bz2  from all mirrors
+                                in 'mirrorsdir' into  'backup_Packages_dir'
+ 
+ scan_backups_queue_deltas      scan all Packages.bz2 in 'mirrorsdir' and backups,
+                                and queue all deltas that should be created
+ 
+ start_worker   [--EQE]             worker that creates the deltas
+                            --EQE    exit when queue is empty
+ 
+ backup,queue,worker             as above three
+ 
+ start_gpg_agent                     starts the agent and loads the gpg key 
+                                    (FIXME)
+ 
+ update_popcon                     update cache of popularity contest
+ 
+ peek_queue                      print the first item in the queue of deltas
+"""
+
+#Copyright (c) 2013 A. Mennucci
+#License: GNU GPL v2 
+
+
+import os, sys, atexit, tempfile, subprocess
+from os.path import join
+from copy import copy
+
+try:
+    import daemon
+except ImportError:
+    daemon=None
+
+if len(sys.argv) <= 2:
+    print __doc__
+    sys.exit(0)
+
+if sys.argv :
+    # do this before going into daemon mode, since this changes the CWD
+    sys_argv_0_abspath = os.path.abspath(sys.argv[0])
+else:
+    if __name__ == '__main__':
+        raise Exception(' why is sys.argv empty?? ')
+
+args=None
+config_abspath=None
+
+#final exit code of this module, if run as a script
+return_code=0
+#temporary file to redirect input and output of this module to
+temp_out=None
+
+DO_DAEMON=False
+DO_MAIL=False
+
+if __name__ == '__main__':
+    args=copy(sys.argv[1:])
+    while args and args[0] and args[0][0] == '-':
+        if args[0] == '--help':
+            print __doc__
+            sys.exit(0)
+        else:
+            for j in args[0][1:]:
+                if 'D' == j:
+                    if daemon == None:
+                        sys.stderr.write('Sorry, needs "python-daemon" \n')
+                        sys.exit(3)
+                    DO_DAEMON=True
+                elif 'M' == j:
+                    DO_MAIL=True
+                elif 'h' == j:
+                    print __doc__
+                    sys.exit(0)
+                else:
+                    sys.stderr.write('Unrecognized option, use --help\n')
+                    sys.exit(1)
+        args=args[1:]
+
+    if  len(args) > 1 :
+        # do this before going into daemon mode, since this changes the CWD
+        config_abspath = os.path.abspath(args[0])
+        if not os.path.isfile(config_abspath):
+            sys.stderr.write('Config_file option is not a file : %r\n' % config_abspath)
+            sys.exit(1)
+        args=args[1:]
+    else:
+        sys.stderr.write( 'Needs a config_file and a command. Use --help \n')
+        sys.exit(2)
+
+daemon_context=None
+if DO_DAEMON:
+    daemon_context=daemon.DaemonContext(umask=0o022)
+    daemon_context.open()
+
+### redirect stdin and stderr
+
+email=None
+logger=None #make sure it is defined, in case of early crash
+
+def send_temp_out_as_mail(out):
+    out.flush()
+    sys.stderr.flush()
+    sys.stdout.flush()
+    if os.path.getsize(out.name) > 0:
+        if logger: logger.debug('there was output, sending email')
+        if email:
+            p=subprocess.Popen(['mail','-s',repr(args), email], stdin=open(out.name))
+            p.wait()
+            if p.returncode:
+                if logger: logger.warn('email failed, file is %r ', out.name)
+            else:
+                os.unlink(out.name)
+        # else, do not delete the temp file
+    else:
+        if logger: logger.debug('there was no output, not sending email')
+        os.unlink(out.name)
+    z=open(os.devnull,'a')
+    os.dup2(z.fileno(),1)
+    os.dup2(z.fileno(),2)
+    out.close()    # <- warning from here on, output to stdout and stderr are lost
+
+if DO_MAIL:
+    if temp_out == None:
+        temp_out=tempfile.NamedTemporaryFile(prefix='debdeltas_server_out', delete=False)
+        os.dup2(temp_out.fileno(),1)
+        os.dup2(temp_out.fileno(),2)
+        atexit.register(send_temp_out_as_mail,temp_out)
+
+###
+
+import time, string, shutil, pickle, lockfile, logging, logging.handlers
+
+
+###
+#http://stackoverflow.com/questions/36932/how-can-i-represent-an-enum-in-python
+#from enum import Enum
+class Enum(object):
+    def __init__(self, *k):
+        pass
+
+def enum(*enums):
+    d=dict([ (enums[k],k)    for k in range(len(enums)) ])
+    return type('Enum', (object,), d)
+
+###
+
+try:
+    import debian.deb822 
+    debian_deb822 = debian.deb822
+except ImportError:
+    debian_deb822 = None
+
+
+#####
+
+import debdelta
+
+#### configuration 
+execfile(config_abspath)
+
+tmp_dir=tmp_dir.rstrip('/')
+
+debdelta.DEBUG = DEBUG
+debdelta.VERBOSE = VERBOSE
+debdelta.DO_TEST = DO_TEST
+#debdelta.ACT = ACT
+debdelta.DO_CACHE = True
+
+debdelta.DO_GPG = True
+debdelta.USE_DELTA_ALGO = 'xdelta3'
+debdelta.GPG_SIGNING_KEY = gnupg_key
+debdelta.GPG_HOME = gnupg_home
+
+debdelta.TMPDIR=tmp_dir
+debdelta.tempfile.tempdir=tmp_dir
+tempfile.tempdir=tmp_dir
+os.environ['TMPDIR']=tmp_dir
+
+if not os.path.exists(lock_dir):
+    try:
+        os.makedirs(lock_dir)
+    except:
+        logging.exception(' while creating %r',lock_dir)
+        raise
+
+for d in mirrorsdir , backup_Packages_dir, deltas_www_dir,  forensic_www_dir:
+    if not os.path.isdir(d) : # todo: or if cannot write there
+        logging.critical('config variable is not a a directory :'+repr(d))
+
+######
+
+#http://stackoverflow.com/questions/14758299/python-logging-daemon-destroys-file-handle
+logger = logging.getLogger(__name__)
+#logger_hdlr = logging.handlers.TimedRotatingFileHandler(join(logs_dir,'debdeltas_server'),
+#                                          when='d', interval=1, backupCount=30,  utc=True)
+logger_hdlr = logging.handlers.RotatingFileHandler(join(logs_dir,'debdeltas_server'),maxBytes=2**24, backupCount=30)
+logger_formatter = logging.Formatter('%(asctime)s %(levelname)s %(funcName)s %(message)s')
+logger_hdlr.setFormatter(logger_formatter)
+logger.addHandler(logger_hdlr)
+logger.setLevel(getattr(logging,logging_level))
+
+
+if DO_MAIL and temp_out :
+        logger.debug('sendind stdout stderr to %r', temp_out.name)
+
+
+
+
+#http://stackoverflow.com/questions/9410760/redirect-stdout-to-logger-in-python
+class LoggerWriter(object):
+    def __init__(self, prefix='', logger=logger, level=logging.DEBUG):
+        self.logger = logger
+        self.handler = None
+        self.dupfile = None
+        for i in logger.handlers: # look for a handler that has a stream
+            if hasattr(i,'stream'):
+                self.handler = i
+                self.dupfile = os.fdopen(os.dup(self.handler.stream.fileno()),'a')
+                break
+        if self.dupfile == None:
+                logger.error(' cannot find a stream in the logger, send to devnull')
+                self.dupfile=open(os.devnull,'w')
+        self.level = level
+        self.prefix = prefix
+
+    def write(self, message):
+        if message != '\n':
+            self.logger.log(self.level, self.prefix+message)
+            
+    def close(self):
+        return self.dupfile.close()
+
+    def flush(self):
+        return self.dupfile.flush()
+
+    def __str__(self):
+        return str(self.dupfile)
+
+    def __repr__(self):
+        return repr(self.dupfile)
+    
+    def fileno(self):
+        return self.dupfile.fileno()
+
+
+######
+
+def my_subprocess_Popen(cmd, **kwargs):
+    if 'stdin' not in kwargs:
+        kwargs['stdin']=open(os.devnull)
+    if 'stdout' not in kwargs:
+        kwargs['stdout']=LoggerWriter(prefix=('%r stdout=' % cmd[0]),  level=logging.INFO)
+    if 'stderr' not in kwargs:
+        kwargs['stderr']=LoggerWriter(prefix=('%r stderr=' % cmd[0]),  level=logging.ERROR)
+    if 'close_fds' not in kwargs:
+        kwargs['close_fds'] =True
+    return subprocess.Popen(cmd, **kwargs)
+
+######
+
+try:
+    from pysqlite2 import dbapi2 as dbapi
+except ImportError:
+    dbapi = None
+
+if dbapi != None:
+    pass
+    # ===== sqlite machinery
+    #def convert_blob(s):
+    #   return s #this is always a string
+    #
+    # Register the adapter
+    #sqlite.register_adapter(StringType, adapt_blob)
+    #
+    # Register the converter
+    #dbapi.register_converter("blob", convert_blob)
+    #dbapi.register_converter("text", convert_blob)
+
+class SQL_queue:
+    dbname=None
+    sql_connection=None
+    sql_connection_add=None
+    cursor_add=None
+    fields=('id','priority','old_name','new_name','delta','forensic','other_info','ctime')
+    fields_enum=enum(*fields)
+
+    schema="""
+    create table deltas_queue (
+    id integer unique primary key autoincrement,
+    priority integer,
+    old_name text,
+    new_name text,
+    delta text,
+    forensic text,
+    other_info text,
+    ctime integer
+    ) ;
+    CREATE INDEX IF NOT EXISTS deltas_queue_priority ON deltas_queue ( priority );
+    """
+
+    def __init__(self,dbname):
+        assert type(dbname) in (str, unicode)
+        if not os.path.exists(dbname):
+            r=my_subprocess_Popen(['sqlite3',dbname], stdin=subprocess.PIPE)
+            r.stdin.write(self.schema)
+            r.stdin.close()
+            r.wait()
+            assert 0 == r.returncode
+        assert os.path.exists(dbname)
+        self.dbname=dbname
+        #
+        #hack, FIXME: something is messing up with fd 4 when creating the delta,
+        #             and this haywires the sql connection
+        #             so we recreate it at each call
+        #self.sql_connection = self._connect()
+        self.sql_connection = None
+        #
+        # will be created when needed
+        self.sql_connection_add = None
+        self.cursor_add = None
+    
+    def _connect(self):
+        return dbapi.connect(self.dbname, isolation_level='DEFERRED')   # detect_types=dbapi.PARSE_DECLTYPES | dbapi.PARSE_COLNAMES)
+    
+    def __del__(self):
+        if self.cursor_add != None:
+            self.cursor_add.close()
+        if self.sql_connection != None:
+            self.sql_connection.close()
+        if self.sql_connection_add != None:
+            self.sql_connection_add.close()
+
+    def _get_connection_cursor(self):
+        connection =  self.sql_connection if (self.sql_connection != None) else  self._connect()
+        cursor = connection.cursor()
+        return connection, cursor
+    
+    def queue_add_begin(self):
+        assert self.sql_connection_add == None and  self.cursor_add == None
+        self.sql_connection_add = self._connect()
+        self.cursor_add = self.sql_connection_add.cursor()
+        #http://stackoverflow.com/questions/15856976/transactions-with-python-sqlite3
+        #damn broken DBAPI!
+        ## self.cursor_add.executescript('begin deferred transaction')
+    
+    def queue_add(self, priority, old_name, new_name, delta, forensic, other_info='', ctime=None):
+        if self.cursor_add == None:
+            raise Exception(' should use queue_add_begin() before ')
+        if ctime==None:
+            ctime=int(time.time())
+        self.cursor_add.execute('INSERT INTO deltas_queue VALUES (null, ?, ?, ?, ?, ?, ?, ?)',\
+                                    (priority, old_name, new_name, delta, forensic, other_info, ctime))
+    
+    def queue_add_commit(self):
+        if self.cursor_add == None:
+            raise Exception(' should use queue_add_begin() before ')
+        self.sql_connection_add.commit()
+        self.sql_connection_add = None
+        #http://stackoverflow.com/questions/15856976/transactions-with-python-sqlite3
+        #damn broken DBAPI!
+        ## self.cursor_add.execute('commit transaction')
+        self.cursor_add = None
+    
+    
+    def queue_peek(self):
+        conn,cursor = self._get_connection_cursor()
+        cursor.execute('SELECT * FROM deltas_queue ORDER BY priority ')
+        return cursor.fetchone()
+    
+    def queue_get(self, id_):
+        conn,cursor = self._get_connection_cursor()
+        cursor.execute('SELECT * FROM deltas_queue WHERE id = ? ', (id_,))
+        return cursor.fetchone()
+    
+    def queue_pop(self, id_=None):
+        "pop one value, if 'id' is set that value"
+        #http://stackoverflow.com/questions/15856976/transactions-with-python-sqlite3
+        connection, cursor = self._get_connection_cursor()
+        try:
+            #cursor.executescript('begin deferred transaction')
+            if id_ == None:
+                cursor.execute('SELECT * FROM deltas_queue ORDER BY priority ')
+            else:
+                cursor.execute('SELECT * FROM deltas_queue WHERE id = ? ', (id_,))
+            x=cursor.fetchone()
+            if x == None: #
+                return None
+            id_ = x[0]
+            cursor.execute('DELETE FROM deltas_queue where id = ? ', (id_,))
+            connection.commit() #cursor.executescript('commit transaction')
+        except:
+            connection.rollback() #cursor.executescript('rollback')
+            raise
+        return x
+
+    def queue_del(self, id_):
+        "delete queued item by 'id'"
+        connection, cursor = self._get_connection_cursor()
+        try:
+            cursor.execute('DELETE FROM deltas_queue where id = ? ', (id_,))
+            connection.commit() #cursor.executescript('commit transaction')
+        except:
+            connection.rollback() #cursor.executescript('rollback')
+            raise
+        return x
+
+######
+mirrors_binary_Packages_enum = enum('distribution', '"dists"', 'codename', 'component', 'architecture', 'filename')
+
+def mirrors_binary_Packages(mirrorsdir=mirrorsdir,archs=architectures):
+    """ returns a nested family of dictionaries, indexed succesively
+       distribution, codename, component, architecture
+     (note that codename may be 'wheezy/updates' )
+    the last one contains tuples indexed by mirrors_binary_Packages_enum
+      (that when joined together form a path)"""
+    distrib={}
+    #iterate to list mirrors
+    for m in os.listdir(mirrorsdir):
+        if os.path.isdir(join(mirrorsdir,m)):
+            distrib[m]={}
+    # iterate to find distributions in mirrors
+    for m in distrib:
+        magic = '/updates' if m[-8:] == 'security' else ''
+        # iterate on distribution codenames, such as wheezy, jessie
+        for j in os.listdir(join(mirrorsdir,m,'dists')) :
+            mj=join(mirrorsdir,m,'dists',j)
+            if ( os.path.isdir(mj) and not os.path.islink(mj)):
+                distrib[m][j+magic] = {}
+                #print 'dist',m,j,magic,mj
+    # iterate to find binary package lists in distributions in mirrors
+    for m in distrib:
+        for d in distrib[m]:
+            #iterate on components
+            for k in components:
+                for a in archs:
+                    md=join(mirrorsdir,m,'dists',d,k,'binary-'+a)
+                    #print 'bin',m,d,k,a,os.path.isdir(md)
+                    if os.path.isdir(md):
+                        for p in ('.xz','.bz2','.gz'):
+                            mdp=join(md,'Packages'+p)
+                            if os.path.isfile(mdp):
+                                if k not in distrib[m][d]:
+                                    distrib[m][d][k] = {}
+                                distrib[m][d][k][a]=m,'dists',d,k,'binary-'+a,'Packages'+p
+                                break
+    return distrib
+
+
+def iterate_Packages_in_dict_of_mirrors(distrib,mirrorsdir=mirrorsdir):
+    for m in distrib:
+        for d in distrib[m]:
+            for k in components:
+                if k in distrib[m][d]:
+                    for a in distrib[m][d][k]:
+                        yield distrib[m][d][k][a]
+
+backup_Packages_lockname=join(lock_dir,'backup_Packages')
+def backup_Packages():
+    #similar to rfc-3339
+    now= time.strftime('%Y-%m-%d_%H:%M:%S', time.gmtime())
+    tmpdir=tempfile.mkdtemp(dir=backup_Packages_dir)
+    try:
+        logger.debug('start')
+        with lockfile.FileLock(backup_Packages_lockname):
+            _backup_Packages(now, tmpdir)
+        logger.debug('end')
+    except Exception, e:
+        logger.exception('')
+        if os.path.isdir(tmpdir):
+            logger.warn('on exception, deleting tmp dir %r ', tmpdir)
+            shutil.rmtree(tmpdir)
+        raise
+    os.rename(tmpdir, join(backup_Packages_dir,now))
+
+def _backup_Packages(now, where):
+    distrib=mirrors_binary_Packages() 
+    
+    thehash='sha1' # hash used to deduplicate
+    
+    lb=list_backups() #list previous backups
+    
+    if max_backup_age :
+        for z in lb[2:]: # keep at least two backups
+            a=join(backup_Packages_dir,z)
+            if os.path.getmtime(a) <  (time.time() - max_backup_age * 24 * 3600 ):
+                try:
+                    logger.info('deleting old backup '+repr(a))
+                    shutil.rmtree(a)
+                except: #swallow exception, if any
+                    logger.exception(' while removing tree '+repr(a)) 
+    
+    oldwhere = join(backup_Packages_dir,lb[0]) if lb else None
+    
+    NewRelease={}
+    OldRelease={}
+    if debian_deb822 == None:
+        logger.warn(" please install package 'python-debian' ")
+    for m in distrib:
+            for d in distrib[m]:
+                OldRelease[(m,d)]=([],None)
+                if oldwhere and debian_deb822 != None:
+                    a=join(oldwhere,m,'dists',d,'Release')
+                    if os.path.isfile(a):
+                        OldRelease[(m,d)]=(debian_deb822.Release(open(a))[thehash],a)
+                    else:
+                        logger.warn('file not found:'+repr(a))
+                b=join(mirrorsdir,m,'dists',d,'Release')
+                NewRelease[(m,d)]=([],None)
+                if os.path.isfile(b):
+                    if  debian_deb822 != None:
+                        NewRelease[(m,d)]=(debian_deb822.Release(open(b))[thehash],b)
+                    os.makedirs(join(where,m,'dists',d))
+                    shutil.copy2( b, join(where,m,'dists',d,'Release') )
+                else:
+                    logger.warn('file not found:'+repr(b))
+                if os.path.isfile(b+'.gpg'):
+                    shutil.copy2( b+'.gpg', join(where,m,'dists',d,'Release.gpg') )
+                    #check signature. TODO currently if signature fails there is no consequence
+                    p=my_subprocess_Popen(['gpgv','-q', b+'.gpg',b ], stdout = subprocess.PIPE, stderr=subprocess.STDOUT)
+                    e=p.stdout.read()
+                    p.wait()
+                    if p.returncode:
+                        logger.error(' gpgv failed for '+repr(b)+' message:'+repr(e) )
+                else:
+                    logger.error('file not found:'+repr(b+'.gpg'))
+
+
+    for p in iterate_Packages_in_dict_of_mirrors( distrib ):
+        os.makedirs(join(where,*(p[:-1])))
+        m_d = (p[0], p[2])
+        linked_p=None
+        m_p = join(mirrorsdir,*p)
+        n_p = join(where,*p)
+        o_p = join(oldwhere,*p) if oldwhere else None
+        if oldwhere and os.path.isfile(o_p):
+            if debian_deb822 != None and OldRelease[m_d][1] and NewRelease[m_d][1]:
+                B=os.path.splitext(join(*(p[-3:])))[0]
+                old=[z[thehash] for z in OldRelease[m_d][0] if (z['name'] ==  B )]
+                new=[z[thehash] for z in NewRelease[m_d][0] if (z['name'] ==  B )]
+                if not new:
+                    logger.warn(' failed to get %r for %r from new Release %r' % (thehash,B,NewRelease[m_d][1]))
+                elif not old :
+                    logger.warn(' failed to get %r for %r from old Release %r' % (thehash,B,OldRelease[m_d][1]))
+                elif old[0] == new[0]:
+                    linked_p=True
+                    logger.debug(' by Release os.link  %r %r ', o_p , n_p)
+                    os.link(o_p, n_p)
+                else:
+                    linked_p=False
+            if linked_p == None:
+                r=subprocess.call(['cmp','--quiet', o_p, m_p])
+                if r==0:
+                    linked_p=True
+                    logger.debug(' by cmp os.link %r %r ' , o_p, n_p)
+                    os.link(o_p , n_p)
+        if linked_p != True:
+            shutil.copy2(m_p, n_p)
+        else:
+            o_c=debdelta.cache_sequence(o_p)
+            n_c=debdelta.cache_sequence(n_p)
+            if o_c.exists :
+                os.link(o_c.cache_filename, n_c.cache_filename)
+
+def list_backups(bPd=backup_Packages_dir):
+    "list backups timestamps (that are also subdirectories of 'backup_Packages_dir') sorted, newest first"
+    return tuple(reversed(sorted([a for a in os.listdir(backup_Packages_dir) 
+                            if ( a and os.path.isdir(join(backup_Packages_dir,a)) and a[0] == '2') ]))) # y3k bug ?
+
+
+def scan_packages(packages,label,ibpa):
+    for arg in packages:
+        m=join(mirrorsdir,arg[2])
+        logger.debug (' scan  %r',arg)
+        for a in debdelta.iterate_Packages(join(*arg), use_debian_822=False):
+            a['Label'] = label
+            #cheat, the Packages file is in backup_Packages_dir but
+            # the pool is in mirrorsdir
+            a['Basepath'] = m
+            a['Packages_file'] = arg  # <- deb822 crashes on this 
+            a['Timestamp'] = arg[1]
+            if os.path.isfile(join(m,a['Filename'])):
+                debdelta.info_by_pack_arch_add(a,ibpa)
+
+
+
+def stat_inode(s):
+    import stat
+    a=os.stat(s)
+    return a[stat.ST_INO], a[stat.ST_DEV]
+
+
+packages_path_as_list_enum = enum('backup_dir', 'backup_date', 'distribution', '"dists"', 'codename', 'component', 'architecture', 'filename')
+# this must be synched to mirrors_binary_Packages_enum
+assert mirrors_binary_Packages_enum.filename + 2 ==  packages_path_as_list_enum.filename
+
+def iter_backups_for_deltas(bPd=backup_Packages_dir):
+    VersionCompare = debdelta.init_apt_return_VersionCompare()
+    lb = list_backups(bPd)
+    if not lb:
+        logger.critical(' no backups in '+bPd)
+        return
+    # iterate on most recent backups of all Packages,
+    current_distrib=mirrors_binary_Packages(join(bPd,lb[0]))
+    for p in iterate_Packages_in_dict_of_mirrors(current_distrib):
+        # the fields in this list 'latest' are as in 'packages_path_as_list_enum' , and such that,
+        #  if os.path.joined, a valid fullpath is obtained
+        latest=[bPd,lb[0]]+list(p)
+        logger.debug('%s %r',' on ', p)
+        visited_inodes=[stat_inode(join(*latest))]
+        older=[]
+        # add some previous version of each Packages file
+        bj=1
+        while len(older) < max_backups  and bj < len(lb):
+                # the fields in this list 'a' are as in 'packages_path_as_list_enum' , and such that,
+                #  if os.path.joined, a valid fullpath is obtained
+                a=[bPd,lb[bj]] +list(p)
+                if os.path.isfile(join(*a)):
+                    ai=stat_inode(join(*a))
+                    if ai not in visited_inodes:
+                        older.append(a)
+                        visited_inodes.append(ai)
+                        logger.debug(' adding to older version %s for %r',lb[bj],p)
+                        bj = bj + skip_backups
+                    else:
+                        logger.debug(' skipping duplicate %s for %r',lb[bj],p)
+                        bj = bj + 1
+                else:
+                    logger.warn(' missing %s for %r',lb[bj],p)
+                    bj = bj + 1
+        
+        if p[0][-8:]=='security':
+            # for security, add also the corresponding stable packages
+            q=list(copy(p))
+            q[0]=p[0][:-9]
+            if p[2][-8:] == '/updates':
+                q[2] = p[2][:-8]
+            logger.debug('%s %r',' and on as well  ',q)
+            for b in (lb[0],): #currently we add only the most recent one
+                a=[bPd,b] +list(q)
+                if os.path.isfile(join(*a)):
+                    older.append(a)
+                else:
+                    logger.warn(' missing %s in %r',b,q)
+        # todo, for stable-updates we should also add stable
+        if older:
+            info_by_pack_arch={}
+            scan_packages((latest,),'CMDLINE',info_by_pack_arch)
+            scan_packages(older,'OLD',info_by_pack_arch)
+            logger.debug(' create list of deltas')
+            for pa,ar in info_by_pack_arch :
+                info_pack=info_by_pack_arch[ (pa,ar) ]
+                assert(info_pack)
+                for z in  debdelta.iter_deltas_one_pack_arch(pa,ar,info_pack, \
+                              deltas_www_dir+'/'+p[0]+'-deltas//',\
+                              forensic_www_dir+'//', VersionCompare):
+                    yield z
+
+def scan_backups_for_deltas(bPd=backup_Packages_dir):
+    for z in iter_backups_for_deltas(bPd):
+        logger.info('%r', z)
+
+class Compute_Priority(object):
+    warned=[]
+    def __init__(self):
+        self.warned=[]
+        self.popcon_dict={}
+        if  os.path.isfile(popcon_cache):
+            self.popcon_dict=pickle.load(open(popcon_cache))
+        else:
+            logger.warn(' popcon_cache is unavailable ')
+            
+    def __call__(self, old, new):
+        " compute priority . A lower number is an higher priority (with 0 being highest priority)"
+        # todo: add old packag age
+        m= old['Packages_file'][packages_path_as_list_enum.distribution]
+        if m not in priority_for_mirrors and m not in self.warned:
+            self.warned.append(m)
+            logger.warn('mirror %r not in configuration "priority_for_mirrors" ' % m)
+        return int(priority_for_mirrors.get(m,0.) +  \
+                   priority_by_popcon * ( 1. - self.popcon_dict.get(old['Package'],0.)))
+
+scan_backups_queue_deltas_lockname=join(lock_dir,'scan_backups_queue_deltas')
+def scan_backups_queue_deltas(bPd=backup_Packages_dir):
+    with lockfile.FileLock(scan_backups_queue_deltas_lockname):
+        logger.debug('start')
+        _scan_backups_queue_deltas(bPd)
+        logger.debug('end')
+
+def _scan_backups_queue_deltas(bPd=backup_Packages_dir):
+    
+    compute_priority=Compute_Priority()
+    
+    thesqldb=SQL_queue(sqlite3_queue)
+    
+    lb = list_backups(bPd)
+    
+    #db = dbapi.OPEN(sqlite3_database)
+    
+    thesqldb.queue_add_begin()
+    
+    for old, new, delta, forensicfile in iter_backups_for_deltas(bPd):
+        p=old['Packages_file']
+        priority=compute_priority(old,new)
+        thesqldb.queue_add(priority, old['File'], new['File'], delta, forensicfile)
+        #logger.info('%r' ,( priority, old, new, delta, forensicfile))
+        
+    thesqldb.queue_add_commit()
+
+
+def set_environ_gpg_agent():
+    if gnupg_agent_info == True:
+        pass #keep environment if available
+    elif type(gnupg_agent_info) in (str,unicode):
+        if os.path.isfile(gnupg_agent_info):
+            gpg_agent_info=open(gnupg_agent_info).readline().strip().split('=')[1]
+            os.environ['GPG_AGENT_INFO']=gpg_agent_info
+        else:
+            logger.error(' file not found: '+gnupg_agent_info)
+    elif gnupg_agent_info == False :
+        if'GPG_AGENT_INFO' in os.environ:
+            del os.environ['GPG_AGENT_INFO']
+    else:
+        logger.warn("configuration variable 'gpg_agent_info' set to a strange value: "+repr(gnupg_agent_info))
+
+def create_one_delta():
+    set_environ_gpg_agent()
+    
+    thesqldb=SQL_queue(sqlite3_queue)
+    x=thesqldb.queue_pop()
+    E=thesqldb.fields_enum
+    if x == None:
+        logger.info('queue is empty')
+    elif os.path.isfile(x[E.delta]):
+        logger.info('already exists, skipped', x[E.delta])
+    else:
+        if 0 < debdelta.do_delta_and_test(* (x[2:6])): # <- skip id and priority
+            logger.warn('failed %r',  x[E.delta] )
+            #FIXME, REQUE
+
+worker_creates_deltas_lockname=join(lock_dir,'worker_creates_deltas')
+def worker_creates_deltas(exit_when_queue_empty=False):
+    with lockfile.FileLock(worker_creates_deltas_lockname) as L:
+        logger.debug('start , EQE=%r' % exit_when_queue_empty)
+        open(L.path,'w').write(pickle.dumps({'exit_when_queue_empty':exit_when_queue_empty}))
+        _worker_creates_deltas(exit_when_queue_empty=exit_when_queue_empty)
+        logger.debug('end')
+
+def _worker_creates_deltas(exit_when_queue_empty=False):
+    set_environ_gpg_agent()
+    created=[]
+    last_publishing=time.time()
+    thesqldb=SQL_queue(sqlite3_queue)
+    E=thesqldb.fields_enum
+    while True:
+        x=None
+        try:
+            x=thesqldb.queue_pop()
+            if x==None and exit_when_queue_empty:
+                logger.info('queue empty, exiting')
+                break
+        except dbapi.OperationalError, e:
+            logger.exception(' sqlite3 OperationalError ')
+        if x == None: #queue is empty, or error
+            time.sleep(60)
+        else:
+            now=int(time.time())
+            if x[E.ctime] < (now - max_queue_age * 24 * 3600):
+                logger.debug('queue item too old %r' ,  x[E.delta] )
+            elif not os.path.isfile(x[E.old_name]):
+                logger.warn('missing old deb %r for %r' ,   x[E.old_name], x[E.delta])
+            elif not os.path.isfile(x[E.new_name]):
+                logger.warn('missing new deb %r for %r' ,  x[E.new_name], x[E.delta])
+            elif os.path.isfile(x[E.delta]):
+                logger.info('already available delta %r' ,  x[E.delta])
+            elif os.path.isfile(x[E.delta]+'-too-big'):
+                logger.info('tried, too big, delta %r' ,  x[E.delta])
+            elif os.path.isfile(x[E.delta]+'-fails'):
+                logger.info('tried, it failed, delta %r' ,  x[E.delta])
+            else:
+                try:
+                    r=debdelta.do_delta_and_test(* (x[2:6]))
+                    if  0 == r:
+                        logger.info('created %r' , repr(x[E.delta]))
+                        if os.path.exists(x[E.delta]): # do not append if the delta was too big
+                            created.append(x[E.delta])
+                    else:
+                        logger.warn('failed %r' , repr(x[E.delta]))
+                        # FIXME REQUEUE if r == 1
+                except Exception, e:
+                    logger.exception('while do_delta_and_test')
+            if (created and last_publishing > 600 + time.time()) or len(created)>20 :
+                publish(publisher, created)
+                created=[]
+                last_publishing = time.time()
+            else:
+                time.sleep(1)
+    
+    publish(publisher)
+
+
+def publish(publisher, created=[]):
+    if publisher:
+        if os.path.isfile(publisher):
+            now=time.time()
+            args=[publisher, config_abspath]
+            p=my_subprocess_Popen(args+created)
+            p.wait()
+            if p.returncode:
+                logger.error('failed: exitstatus %r args %r deltas %r' , p, args, created)
+            else:
+                if created:
+                    logger.info(' sent %d deltas in %d seconds' , len(created), time.time()-now )
+                else:
+                    logger.info(' full sync in %d seconds'  ,  time.time()-now )
+        else:
+            logger.warn(' does not exists: '+publisher)
+
+
+def update_popcon():
+    " prepare a cache in popcon_cache, a pickle of a dict where keys are names of packages, and values\
+    are popularity, normalized so that maximum popularity is 1.0 "
+    import cPickle as pickle
+    popcon_dict={}
+    maximum=None
+    for a in my_subprocess_Popen(popcon_update_command, shell=True, stdout=subprocess.PIPE).stdout:
+        if not a or a[0] == '#':
+            continue
+        b=[c for c in string.split(a) if c]
+        if len(b)<2 or b[1]=='Total':
+            continue
+        p,v=b[1],b[2]
+        if maximum==None: maximum=float(v)
+        v=float(v)/maximum
+        #skip too small values
+        if  v < (0.5/float(priority_by_popcon)) :
+            continue
+        # a lower number is an higher priority later on
+        popcon_dict[p]=v
+    if  popcon_dict:
+        #if there was a network error, avoid overwriting
+        print 'parsed popcon file, %d relevant entries' % len(popcon_dict)
+        pickle.dump(popcon_dict, open(popcon_cache+'~~','w'))
+        os.rename(popcon_cache+'~~',popcon_cache)
+    else:
+        print 'failed to download or parse file'
+
+def daemonize_maybe_mail(cmdname, cmd, *args, **kw):
+    " now unused"
+    if daemon == None:
+        print 'Sorry, needs "python-daemon" '
+        sys.exit(3)
+    if not os.path.isdir(lock_dir):
+        os.makedirs(lock_dir)
+    #http://www.python.org/dev/peps/pep-3143/
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        out=tempfile.NamedTemporaryFile(delete=False)
+        outerr=os.fdopen(os.dup(out.fileno()), 'w')
+        with daemon.DaemonContext(stdout=out, stderr=outerr, umask=0o022,
+                                  files_preserve = [out, outerr, logger_hdlr.stream],
+                                  pidfile=lockfile.FileLock(join(lock_dir,cmdname))):
+            logger.info('start '+cmdname)
+            try:
+                cmd(*args, **kw)
+            except SystemExit:
+                logger.warn('SystemExit from '+cmdname+' , output in '+out.name)
+                raise
+            except Exception, e:
+                logger.exception(cmdname+'--daemonized')
+                logger.warn('output was left in '+out.name)
+                raise
+            logger.info('end '+cmdname)
+        
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout=os.open(os.devnull, os.O_RDWR)
+        sys.stderr=os.open(os.devnull, os.O_RDWR)
+        outerr.close()
+        out.close()# <- warning from here on, output to stdout and stderr are lost
+        if os.path.getsize(out.name) > 0:
+            logger.debug('there was output, sending email')
+            p=my_subprocess_Popen(['mail','-s',cmdname,email], stdin=subprocess.PIPE)
+            o=open(out.name)
+            for a in o: 
+                p.stdin.write(a)
+            p.stdin.close()
+            p.wait()
+            if p.returncode:
+                logger.warn('email failed')
+        os.unlink(out.name)
+    
+    except SystemExit:
+        raise
+    except Exception, e:
+        logger.exception(cmdname)
+
+def start_gpg_agent():
+    # ignore environment ?
+    #gpg_agent_info=os.getenv('GPG_AGENT_INFO')
+    del os.environ['GPG_AGENT_INFO']
+    gpg_agent_info=None
+    if os.path.isfile(gnupg_agent_info_file):
+        gpg_agent_info=open(gnupg_agent_info_file).readline().strip().split('=')[1]
+    if gpg_agent_info:
+        if not os.path.exists(gpg_agent_info.split(':')[0]):
+            print ' agent info is obsolete ', gpg_agent_info
+            gpg_agent_info = None
+    if gpg_agent_info:
+        os.environ['GPG_AGENT_INFO']=gpg_agent_info
+        r=subprocess.call(['gpg-agent'])
+        if r:
+            print ' agent is not happy '
+            gpg_agent_info = None
+            del os.environ['GPG_AGENT_INFO']
+    if  gpg_agent_info:
+        print 'using existing agent', gpg_agent_info
+    else:
+        r=subprocess.call(['gpg-agent','--homedir', gnupg_home,'--daemon', '--write-env-file',gnupg_agent_info_file])
+        if r :
+            print 'starting agent failed:',r
+            return 4
+        gpg_agent_info=open(gnupg_agent_info_file).readline().strip().split('=')[1]
+        print 'started agent', gpg_agent_info
+    
+    os.environ['GPG_AGENT_INFO']=gpg_agent_info
+    n=tempfile.NamedTemporaryFile(delete=False)
+    n.write('pippo\n')
+    n.close()
+    
+    r=subprocess.Popen(['gpg', '--quiet', '--batch', '--homedir', gnupg_home,\
+                     '-o', '/dev/null', '--default-key' , gnupg_key , '--sign', n.name],
+                     stdin=sys.stdin, stderr=sys.stderr, stdout=sys.stdout)
+    if r: print 'test signing fails ',r
+    os.unlink(n.name)
+
+
+####
+
+
+
+def daemon_test(a='foobar'):
+    print a
+    os.system('date')
+    time.sleep(60)
+
+
+#########################################################
+
+if not args:
+    if  __name__ ==  '__main__':
+        sys.stderr.write('Please provide a command. Use -h\n')
+        sys.exit(2)
+    
+elif args[0] == 'backup_Packages':
+    backup_Packages()
+    
+elif args[0] == 'scan_backups_for_deltas':
+    scan_backups_for_deltas()
+    
+elif args[0] == 'scan_backups_queue_deltas':
+    scan_backups_queue_deltas()
+    
+    #### kept for backward compatibility
+elif args[0] == 'backup_then_scan_and_queue_deltas' and not DO_DAEMON:
+    os.execv(sys_argv_0_abspath,['-D',config_abspath,'backup,queue,worker'])
+    
+elif args[0] == 'start_worker_d':
+    f=len(args)>1 and args[1] == '--EQE'
+    if not DO_DAEMON:
+        os.execv(sys_argv_0_abspath,['-D',config_abspath]+args)
+    else:
+        worker_creates_deltas(exit_when_queue_empty=f)
+    #### end of stuff for backward compatibility
+    
+elif args[0] in ('backup,queue,worker', 'backup_then_scan_and_queue_deltas'):
+    backup_Packages()
+    scan_backups_queue_deltas()
+    L=lockfile.FileLock(worker_creates_deltas_lockname)
+    D={}
+    if L.is_locked():
+        try:
+            D=pickle.load(open(L.path))
+        except:
+            logger.exception(' while reading lock info %r',L.path)
+        if D.get('exit_when_queue_empty'):
+            #after this time, either it has exited, or it has noted that other deltas have been queued
+            time.sleep(120)
+        else:
+            logger.debug(' backup,queue,worker : a persistent worker is present, exiting')
+    if not L.is_locked():
+        worker_creates_deltas(exit_when_queue_empty=True)
+    
+elif args[0] == 'start_worker':
+    f=len(args)>1 and args[1] == '--EQE'
+    worker_creates_deltas(exit_when_queue_empty=f)
+    
+elif args[0] == 'update_popcon':
+    update_popcon()
+    
+elif args[0] == 'peek_queue':
+    thesqldb=SQL_queue(sqlite3_queue)
+    print thesqldb.queue_peek()
+    
+elif args[0] == 'create_one_delta':
+    create_one_delta()
+    
+elif args[0] == 'daemonize_test':
+    daemon_test('barfoo')
+    
+elif args[0] == 'start_gpg_agent':
+    return_code=start_gpg_agent()
+    
+elif '--help' in args or '-h' in args:
+    print __doc__
+else:
+    sys.stderr.write( 'Command not recognized. Use -h \n')
+    sys.exit(2)
+
+
+if __name__ == '__main__':
+    raise SystemExit(return_code)
