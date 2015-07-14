@@ -3964,7 +3964,7 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
         rmtree(tdir)
 
         if ret == None:
-          continue
+          return
         
         info_delta.append('ServerID: '+HOSTID)
         info_delta.append('ServerBogomips: '+str(BOGOMIPS))
@@ -3973,7 +3973,7 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
             os.unlink(deltatmp)
             if VERBOSE : print ' Warning, too big!'
             open(delta+'-too-big','w').close()
-            continue
+            return
         
         if DO_TEST :
           ##patch test
@@ -3998,7 +3998,7 @@ def do_delta_and_test(old_File, new_File, delta, forensicfile):
               os.unlink(deltatmp)
             open(delta+'-fails','w').close()
           if pret == None:
-            continue
+            return
           
           (newdeb_,p_elaps)=pret
           info_delta.append('PatchTime: %.2f' % p_elaps)
