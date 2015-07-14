@@ -3486,6 +3486,10 @@ def do_deltas(debs):
     else: assert 'lopadf' == 0
   except ImportError:
     raise DebDeltaError('python module "apt_pkg" is missing. Please install python-apt', retriable=True)
+
+  f=my_popen_read('hostname -f')
+  HOSTID=hashlib.md5( f.read() ).hexdigest()
+  f.close()
   
   info_by_pack_arch={}
   
