@@ -415,15 +415,46 @@ class SQL_queue:
             raise
         return x
 
-######
-mirrors_binary_Packages_enum = enum('distribution', '"dists"', 'codename', 'component', 'architecture', 'filename')
+########  Packages files as tuples
+## Packages files are often represented as lists, with 7 elements,
+## whose meaning is described in this enum.
+## We call this representation  LiPa
+## Note that the second argument is always 'dists' and the sixth
+## is always 'Packages' (this makes debug logging more meaningful)
+
+LiPa_enum = enum('distribution', 'dists',\
+ 'codename', 'component', 'architecture', 'filename','extension')
+
+
+def LiPa_find_extension(dirname, li):
+    """ given dirname and a LiPa 'li' (of 6 or 7 elements, if 7 the last is ignored),
+      find an extension such that the package exists in that dirname;
+      returns LiPa with correct extension, or None."""
+    if len(li)==7: li=li[:6]
+    assert len(li) == 6
+    a=join(*li)
+    for e in ('.xz','.bz2','.gz',''):
+        if os.path.isfile(join(dirname,a+e)):
+            return li+[e]
+    logger.warning("No valid extension for LiPa %r in dirname %r" , li, dirname)
+    return None
+
+def LiPa_to_filename(li, ext=None):
+    " Join together a LiPa to provide a filename; optionally with a given extension"
+    assert len(li) == 7
+    return join(*(li[:-1])) +  ( ext if ext else li[-1] )
+
+def LiPa_to_filename_no_ext(li):
+    " Join together a LiPa to provide a filename w/o extension"
+    assert len(li) == 7
+    return join(*(li[:-1]))
+
 
 def mirrors_binary_Packages(mirrorsdir=mirrorsdir,archs=architectures):
     """ returns a nested family of dictionaries, indexed succesively
        distribution, codename, component, architecture
      (note that codename may be 'wheezy/updates' )
-    the last one contains tuples indexed by mirrors_binary_Packages_enum
-      (that when joined together form a path)"""
+    the last one contains the LiPa"""
     distrib={}
     #iterate to list mirrors
     for m in os.listdir(mirrorsdir):
@@ -444,16 +475,13 @@ def mirrors_binary_Packages(mirrorsdir=mirrorsdir,archs=architectures):
             #iterate on components
             for k in components:
                 for a in archs:
-                    md=join(mirrorsdir,m,'dists',d,k,'binary-'+a)
-                    #print 'bin',m,d,k,a,os.path.isdir(md)
-                    if os.path.isdir(md):
-                        for p in ('.xz','.bz2','.gz'):
-                            mdp=join(md,'Packages'+p)
-                            if os.path.isfile(mdp):
-                                if k not in distrib[m][d]:
-                                    distrib[m][d][k] = {}
-                                distrib[m][d][k][a]=m,'dists',d,k,'binary-'+a,'Packages'+p
-                                break
+                    z=LiPa_find_extension(mirrorsdir,\
+                                          [m,'dists',d,k,'binary-'+a,'Packages'])
+                    if z:
+                        if k not in distrib[m][d]:
+                            distrib[m][d][k] = {}
+                        distrib[m][d][k][a]=z
+                        logger.debug(' Found %r', z)
     return distrib
 
 
@@ -464,6 +492,8 @@ def iterate_Packages_in_dict_of_mirrors(distrib,mirrorsdir=mirrorsdir):
                 if k in distrib[m][d]:
                     for a in distrib[m][d][k]:
                         yield distrib[m][d][k][a]
+                else:
+                    logger.debug(" No component %r in %r " % (k , (m,d) ) )
 
 backup_Packages_lockname=join(lock_dir,'backup_Packages')
 def backup_Packages():
@@ -537,15 +567,16 @@ def _backup_Packages(now, where):
 
 
     for p in iterate_Packages_in_dict_of_mirrors( distrib ):
-        os.makedirs(join(where,*(p[:-1])))
+        os.makedirs(join(where,*(p[:-2])))
         m_d = (p[0], p[2])
         linked_p=None
-        m_p = join(mirrorsdir,*p)
-        n_p = join(where,*p)
-        o_p = join(oldwhere,*p) if oldwhere else None
+        fp=LiPa_to_filename(p)
+        m_p = join(mirrorsdir,fp)
+        n_p = join(where,fp)
+        o_p = join(oldwhere,fp) if oldwhere else None
         if oldwhere and os.path.isfile(o_p):
             if debian_deb822 != None and OldRelease[m_d][1] and NewRelease[m_d][1]:
-                B=os.path.splitext(join(*(p[-3:])))[0]
+                B=join(*(p[LiPa_enum.component:-1])) # exclude extension
                 old=[z[thehash] for z in OldRelease[m_d][0] if (z['name'] ==  B )]
                 new=[z[thehash] for z in NewRelease[m_d][0] if (z['name'] ==  B )]
                 if not new:
@@ -579,16 +610,18 @@ def list_backups(bPd=backup_Packages_dir):
 
 
 def scan_packages(packages,label,ibpa):
-    for arg in packages:
-        m=join(mirrorsdir,arg[2])
-        logger.debug (' scan  %r',arg)
-        for a in debdelta.iterate_Packages(join(*arg), use_debian_822=False):
+    " 'packages' is a list of tuples (b,p) where p is LiPa and b is timestamp of backup "
+    for b,p in packages:
+        m=join(mirrorsdir, p[0])
+        fil=join(backup_Packages_dir,b,LiPa_to_filename(p))
+        logger.debug (' scan  %r %r',b,p)
+        for a in debdelta.iterate_Packages(fil, use_debian_822 = False):
             a['Label'] = label
             #cheat, the Packages file is in backup_Packages_dir but
             # the pool is in mirrorsdir
             a['Basepath'] = m
-            a['Packages_file'] = arg  # <- deb822 crashes on this 
-            a['Timestamp'] = arg[1]
+            a['Packages_file'] = p  # <- deb822 crashes on this
+            a['Timestamp'] = b
             if os.path.isfile(join(m,a['Filename'])):
                 debdelta.info_by_pack_arch_add(a,ibpa)
 
@@ -600,10 +633,6 @@ def stat_inode(s):
     return a[stat.ST_INO], a[stat.ST_DEV]
 
 
-packages_path_as_list_enum = enum('backup_dir', 'backup_date', 'distribution', '"dists"', 'codename', 'component', 'architecture', 'filename')
-# this must be synched to mirrors_binary_Packages_enum
-assert mirrors_binary_Packages_enum.filename + 2 ==  packages_path_as_list_enum.filename
-
 def iter_backups_for_deltas(bPd=backup_Packages_dir):
     VersionCompare = debdelta.init_apt_return_VersionCompare()
     lb = list_backups(bPd)
@@ -613,22 +642,21 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
     # iterate on most recent backups of all Packages,
     current_distrib=mirrors_binary_Packages(join(bPd,lb[0]))
     for p in iterate_Packages_in_dict_of_mirrors(current_distrib):
-        # the fields in this list 'latest' are as in 'packages_path_as_list_enum' , and such that,
-        #  if os.path.joined, a valid fullpath is obtained
-        latest=[bPd,lb[0]]+list(p)
-        logger.debug('%s %r',' on ', p)
-        visited_inodes=[stat_inode(join(*latest))]
+        latest=(lb[0], p)
+        logger.debug('now working on %r %r',lb[0],p)
+        latest_filename=join(bPd,lb[0],LiPa_to_filename(p))
+        visited_inodes=[stat_inode(latest_filename)]
         older=[]
         # add some previous version of each Packages file
         bj=1
         while len(older) < max_backups  and bj < len(lb):
                 # the fields in this list 'a' are as in 'packages_path_as_list_enum' , and such that,
                 #  if os.path.joined, a valid fullpath is obtained
-                a=[bPd,lb[bj]] +list(p)
-                if os.path.isfile(join(*a)):
-                    ai=stat_inode(join(*a))
+                af=join(bPd,lb[bj],LiPa_to_filename(p))
+                if os.path.isfile(af):
+                    ai=stat_inode(af)
                     if ai not in visited_inodes:
-                        older.append(a)
+                        older.append((lb[bj],p))
                         visited_inodes.append(ai)
                         logger.debug(' adding to older version %s for %r',lb[bj],p)
                         bj = bj + skip_backups
@@ -645,26 +673,29 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
             q[0]=p[0][:-9]
             if p[2][-8:] == '/updates':
                 q[2] = p[2][:-8]
-            logger.debug('%s %r',' and on as well  ',q)
             for b in (lb[0],): #currently we add only the most recent one
-                a=[bPd,b] +list(q)
-                if os.path.isfile(join(*a)):
-                    older.append(a)
+                a=LiPa_find_extension(join(bPd,b),q)
+                if a:
+                    logger.debug('and on as well %r %r',b,a)
+                    older.append((b,a))
                 else:
-                    logger.warn(' missing %s in %r',b,q)
+                    logger.warn(' missing  %r %r',b,q)
         # todo, for stable-updates we should also add stable
         if older:
             info_by_pack_arch={}
             scan_packages((latest,),'CMDLINE',info_by_pack_arch)
             scan_packages(older,'OLD',info_by_pack_arch)
-            logger.debug(' create list of deltas')
+            logger.debug(' create list of deltas for %r',latest)
             for pa,ar in info_by_pack_arch :
                 info_pack=info_by_pack_arch[ (pa,ar) ]
+                logger.debug('   now create list of deltas for %r %r',pa,ar)
                 assert(info_pack)
                 for z in  debdelta.iter_deltas_one_pack_arch(pa,ar,info_pack, \
                               deltas_www_dir+'/'+p[0]+'-deltas//',\
                               forensic_www_dir+'//', VersionCompare):
                     yield z
+        else:
+            logger.debug(' no older to create list of deltas for %r',latest)
 
 def scan_backups_for_deltas(bPd=backup_Packages_dir):
     for z in iter_backups_for_deltas(bPd):
@@ -682,8 +713,8 @@ class Compute_Priority(object):
             
     def __call__(self, old, new):
         " compute priority . A lower number is an higher priority (with 0 being highest priority)"
-        # todo: add old packag age
-        m= old['Packages_file'][packages_path_as_list_enum.distribution]
+        # todo fixme: add new package
+        m= old['Packages_file'][LiPa_enum.distribution]
         if m not in priority_for_mirrors and m not in self.warned:
             self.warned.append(m)
             logger.warn('mirror %r not in configuration "priority_for_mirrors" ' % m)
