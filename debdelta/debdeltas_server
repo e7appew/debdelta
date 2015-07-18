@@ -513,6 +513,25 @@ def backup_Packages():
         raise
     os.rename(tmpdir, join(backup_Packages_dir,now))
 
+class Release_as_dict(object):
+    def __init__(self, a, thehash):
+        self.thehash = thehash # hash used to deduplicate
+        if debian_deb822 != None and a and os.path.isfile(a):
+            self.rele= { z['name'] : z[self.thehash] \
+                        for z in debian_deb822.Release(open(a))[thehash] }
+            self.filename=a
+            if not self.rele:
+                logger.warn('Could not extract hashes %r from %r ', thehash, a)
+        else:
+            if a: logger.warn('file not found:'+repr(a))
+            self.rele={}
+            self.filename=None
+    def __len__(self): # used for truth value
+            return len(self.rele)
+    def get(self,a,b=None):
+        return self.rele.get(a,b)
+
+
 def _backup_Packages(now, where):
     distrib=mirrors_binary_Packages() 
     
@@ -538,22 +557,16 @@ def _backup_Packages(now, where):
         logger.warn(" please install package 'python-debian' ")
     for m in distrib:
             for d in distrib[m]:
-                OldRelease[(m,d)]=([],None)
-                if oldwhere and debian_deb822 != None:
-                    a=join(oldwhere,m,'dists',d,'Release')
-                    if os.path.isfile(a):
-                        OldRelease[(m,d)]=(debian_deb822.Release(open(a))[thehash],a)
-                    else:
-                        logger.warn('file not found:'+repr(a))
+                # read and copy Release file
+                if oldwhere:
+                    OldRelease[(m,d)]=Release_as_dict(join(oldwhere,m,'dists',d,'Release'),thehash)
+                else:
+                    OldRelease[(m,d)]=Release_as_dict(None,None)
                 b=join(mirrorsdir,m,'dists',d,'Release')
-                NewRelease[(m,d)]=([],None)
-                if os.path.isfile(b):
-                    if  debian_deb822 != None:
-                        NewRelease[(m,d)]=(debian_deb822.Release(open(b))[thehash],b)
+                NewRelease[(m,d)]=Release_as_dict(b,thehash)
+                if NewRelease[(m,d)] :
                     os.makedirs(join(where,m,'dists',d))
                     shutil.copy2( b, join(where,m,'dists',d,'Release') )
-                else:
-                    logger.warn('file not found:'+repr(b))
                 if os.path.isfile(b+'.gpg'):
                     shutil.copy2( b+'.gpg', join(where,m,'dists',d,'Release.gpg') )
                     #check signature. TODO currently if signature fails there is no consequence
@@ -573,17 +586,22 @@ def _backup_Packages(now, where):
         fp=LiPa_to_filename(p)
         m_p = join(mirrorsdir,fp)
         n_p = join(where,fp)
-        o_p = join(oldwhere,fp) if oldwhere else None
-        if oldwhere and os.path.isfile(o_p):
-            if debian_deb822 != None and OldRelease[m_d][1] and NewRelease[m_d][1]:
-                B=join(*(p[LiPa_enum.component:-1])) # exclude extension
-                old=[z[thehash] for z in OldRelease[m_d][0] if (z['name'] ==  B )]
-                new=[z[thehash] for z in NewRelease[m_d][0] if (z['name'] ==  B )]
-                if not new:
-                    logger.warn(' failed to get %r for %r from new Release %r' % (thehash,B,NewRelease[m_d][1]))
-                elif not old :
-                    logger.warn(' failed to get %r for %r from old Release %r' % (thehash,B,OldRelease[m_d][1]))
-                elif old[0] == new[0]:
+        o_p = None
+        B=join(*(p[LiPa_enum.component:-1])) # exclude extension
+        new=NewRelease[m_d].get(B)
+        if new:
+            #save hash in companion file
+            open(os.path.splitext(n_p)[0]+'.'+thehash,'w').write(new)
+        elif NewRelease[m_d]:
+            logger.warn(' failed to get %r for %r from new Release %r' % (thehash,B,NewRelease[m_d].filename))
+        if oldwhere and new:
+            o_p = join(oldwhere,fp)
+            if os.path.isfile(o_p):
+                old=OldRelease[m_d].get(B)
+                if not old :
+                    if OldRelease[m_d]:
+                        logger.warn(' failed to get %r for %r from old Release %r' % (thehash,B,OldRelease[m_d].filename))
+                elif old == new:
                     linked_p=True
                     logger.debug(' by Release os.link  %r %r ', o_p , n_p)
                     os.link(o_p, n_p)
@@ -597,7 +615,7 @@ def _backup_Packages(now, where):
                     os.link(o_p , n_p)
         if linked_p != True:
             shutil.copy2(m_p, n_p)
-        else:
+        elif o_p:
             o_c=debdelta.cache_sequence(o_p)
             n_c=debdelta.cache_sequence(n_p)
             if o_c.exists :
