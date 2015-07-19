@@ -700,6 +700,8 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
                     logger.warn(' missing  %r %r',b,q)
         # todo, for stable-updates we should also add stable
         if older:
+            count = 0
+            logger.debug(' now create list of deltas for %r %r',latest,older)
             info_by_pack_arch={}
             scan_packages((latest,),'CMDLINE',info_by_pack_arch)
             scan_packages(older,'OLD',info_by_pack_arch)
@@ -711,7 +713,9 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
                 for z in  debdelta.iter_deltas_one_pack_arch(pa,ar,info_pack, \
                               deltas_www_dir+'/'+p[0]+'-deltas//',\
                               forensic_www_dir+'//', VersionCompare):
+                    count += 1
                     yield z
+            logger.debug(' yielded %d',count)
         else:
             logger.debug(' no older to create list of deltas for %r',latest)
 
