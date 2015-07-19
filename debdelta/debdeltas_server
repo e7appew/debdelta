@@ -708,7 +708,9 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
             logger.debug(' create list of deltas for %r',latest)
             for pa,ar in info_by_pack_arch :
                 info_pack=info_by_pack_arch[ (pa,ar) ]
-                logger.debug('   now create list of deltas for %r %r',pa,ar)
+                ## absurdely verbose, lists each single package
+                if DEBUG >= 3:
+                    logger.debug('   now create list of deltas for %r %r',pa,ar)
                 assert(info_pack)
                 for z in  debdelta.iter_deltas_one_pack_arch(pa,ar,info_pack, \
                               deltas_www_dir+'/'+p[0]+'-deltas//',\
