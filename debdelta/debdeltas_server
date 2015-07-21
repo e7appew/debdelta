@@ -679,7 +679,8 @@ def iter_backups_for_deltas(bPd=backup_Packages_dir):
                         logger.debug(' adding to older version %s for %r',lb[bj],p)
                         bj = bj + skip_backups
                     else:
-                        logger.debug(' skipping duplicate %s for %r',lb[bj],p)
+                        if DEBUG >= 2:
+                            logger.debug(' skipping duplicate %s for %r',lb[bj],p)
                         bj = bj + 1
                 else:
                     logger.warn(' missing %s for %r',lb[bj],p)
