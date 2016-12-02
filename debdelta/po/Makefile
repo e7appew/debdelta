@@ -1,26 +1,19 @@
+PO_FILES := $(wildcard *.po)
+MO_FILES := $(patsubst %.po,%.mo,$(PO_FILES))
+LANGS := $(patsubst %.po,%,$(PO_FILES))
 
-all : messages.pot it.mo fr.mo
+all : messages.pot $(MO_FILES)
 
 messages.pot: ../debdelta Makefile
 	xgettext -L Python -d debdelta --from-code=UTF-8 -o messages.pot ../debdelta
-	for L in it fr ; do \
+	for L in $(LANGS) ; do \
 		msgmerge --previous -o $$L~new~.po $$L.po messages.pot ; \
 		if ! diff -q  $$L~new~.po $$L.po ; then mv $$L~new~.po  $$L.po ; echo Please edit $$L.po ; else rm  $$L~new~.po ; echo No significant changes ; fi ; done
 
-
-it.mo: it.po
-	msgfmt -c -o it.mo~~~~ it.po && mv it.mo~~~~ it.mo
-
-fr.mo: fr.po
-	msgfmt -c -o fr.mo~~~~ fr.po && mv fr.mo~~~~ fr.mo
-
-
-#perche' diavolo non funziona questo?
 .po.mo :
 	msgfmt -c -o ~~$@~~ $< && mv ~~$@~~ $@
 
-
-
+.SUFFIXES: .po .mo
 
 #lib/po/messages.pot : Makefile lib/EElection/*py  lib/EElection/plugins/*py lib/EBallotbox/*py
 #        xgettext -o lib/po/messages.pot lib/EElection/*py  lib/EElection/plugins/*py lib/EBallotbox/*py
