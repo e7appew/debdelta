@@ -103,7 +103,9 @@ void gz_compress(FILE   *in,    ZFILE out)
 {
     local char buf[BUFLEN];
     int len;
+#ifndef BZIP
     int err;
+#endif
 
     for (;;) {
         len = (int)fread(buf, 1, sizeof(buf), in);
@@ -136,7 +138,9 @@ void gz_uncompress(in, out)
 {
     local char buf[BUFLEN];
     int len;
+#ifndef BZIP
     int err;
+#endif
 
     for (;;) {
 #ifdef BZIP 
