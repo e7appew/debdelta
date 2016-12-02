@@ -1,117 +1,29 @@
 #!/usr/bin/make -f
-# Sample debian/rules file; from GNU Hello,  Copyright 1994,1995 by Ian Jackson.
 
-package = debdelta
+#export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_CFLAGS_MAINT_APPEND = -Wall -pedantic
 
-D = debian/debdelta
-
-docdir = $(D)/usr/share/doc/$(package)
-mandir = $(D)/usr/share/man/man1/
-
-D2 = debian/debdelta-doc
-
-docdir2 = $(D2)/usr/share/doc/$(package)
-docdir2doc = $(D2)/usr/share/doc/$(package)-doc
-
-CC = gcc
-
-INSTALL_PROGRAM = install
-
-CPPFLAGS:=$(shell dpkg-buildflags --get CPPFLAGS)
-CFLAGS:=$(shell dpkg-buildflags --get CFLAGS)
-CXXFLAGS:=$(shell dpkg-buildflags --get CXXFLAGS)
-LDFLAGS:=$(shell dpkg-buildflags --get LDFLAGS)
-
-ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
-  INSTALL_PROGRAM += -s
+# Allow for cross compilation.
+ifeq ($(origin CC),default)
+	CC := $(DEB_HOST_GNU_TYPE)-gcc
 endif
+
+%:
+	dh $@
+
+override_dh_auto_build-arch: minibzip2 minigzip
+	# Force recompilation of *.mo files.
+	touch po/*.po
+	make -C po
+	dh_auto_build -a
+
+override_dh_auto_build-indep:
+	make -C doc
+	dh_auto_build -i
 
 minibzip2: minigzip.c
 	$(CC) -DBZIP $(CFLAGS) $(CPPFLAGS) minigzip.c -o minibzip2  $(LDFLAGS) -lbz2
 
 minigzip: minigzip.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) minigzip.c -o minigzip $(LDFLAGS) -lz
-
-build-arch: minibzip2 minigzip
-	$(checkdir)
-	touch build
-
-build-indep:
-
-build: build-arch build-indep
-
-clean:
-	$(checkdir)
-	rm -f build *~ */*~ debian/files* debian/substvars
-	rm -f minigzip minibzip2
-	rm -rf $(D) $(D2)
-
-binary-indep:	checkroot build
-	$(checkdir)
-	rm -rf $(D2)
-	install -d $(D2)/DEBIAN  $(docdir2)  $(docdir2doc)
-	cp doc/debdelta_suite.pdf debian/copyright debian/changelog $(docdir2doc)
-	cd $(docdir2doc) && gzip -9 changelog
-	cp -r doc/html  $(docdir2doc)
-	ln -s ../debdelta-doc/debdelta_suite.pdf  $(docdir2)
-	ln -s ../debdelta-doc/html  $(docdir2)
-	# build package
-	dpkg-gencontrol -Pdebian/debdelta-doc -pdebdelta-doc
-	chown -R root:root $(D2)
-	dpkg-deb --build $(D2) ..
-
-binary-arch:	checkroot build
-	$(checkdir)
-	rm -rf $(D)
-	# dirs
-	install -d $(D)/DEBIAN $(D)/usr/bin $(docdir) $(mandir) $(D)/usr/lib/debdelta $(D)/usr/share/debdelta $(D)/usr/share/keyrings $(D)/usr/share/locale/it/LC_MESSAGES $(D)/usr/share/locale/fr/LC_MESSAGES
-	# control
-	install -m 755 debian/postrm $(D)/DEBIAN/
-	install -m 755 debian/postinst $(D)/DEBIAN/
-	# /usr/share
-	cp po/it.mo $(D)/usr/share/locale/it/LC_MESSAGES/debdelta.mo
-	cp po/fr.mo $(D)/usr/share/locale/fr/LC_MESSAGES/debdelta.mo
-	install debpatch.sh $(D)/usr/share/debdelta
-	install contrib/debmirror-delta-security $(D)/usr/share/debdelta/
-	install contrib/debmirror-marshal-deltas $(D)/usr/share/debdelta/
-	install contrib/debmarshal_list_useless_debs $(D)/usr/share/debdelta/
-	install contrib/dpkg-sig $(D)/usr/share/debdelta
-	cp contrib/debmirror*trash_option.patch  $(D)/usr/share/debdelta
-	ln -s ../../bin/debdelta  $(D)/usr/share/debdelta/debpatch-url
-	cp keyrings/pub.gpg $(D)/usr/share/keyrings/debian-debdelta-archive-keyring.gpg
-	chmod 0644 $(D)/usr/share/keyrings/debian-debdelta-archive-keyring.gpg
-	# /usr/lib
-	$(INSTALL_PROGRAM)  minigzip $(D)/usr/lib/debdelta/minigzip
-	$(INSTALL_PROGRAM)  minibzip2 $(D)/usr/lib/debdelta/minibzip2
-	# /etc
-	install -d $(D)/etc/debdelta
-	cp etc/sources.conf $(D)/etc/debdelta/sources.conf
-	echo /etc/debdelta/sources.conf >> $(D)/DEBIAN/conffiles
-	# /usr/bin
-	install debdelta $(D)/usr/bin/debdelta
-	ln -s debdelta  $(D)/usr/bin/debpatch
-	ln -s debdelta  $(D)/usr/bin/debdeltas
-	ln -s debdelta  $(D)/usr/bin/debdelta-upgrade
-	# /usr/share/doc
-	cp FAQ README.features debian/copyright debian/changelog $(docdir)
-	cd $(docdir) && gzip -9 changelog FAQ
-	# man
-	cp *.1 $(mandir)
-	gzip -9 $(mandir)/*.1 
-	# build package
-	dpkg-shlibdeps $(D)/usr/lib/debdelta/minigzip  $(D)/usr/lib/debdelta/minibzip2
-	dpkg-gencontrol -Pdebian/debdelta -pdebdelta
-	chown -R root:root $(D)
-	dpkg-deb --build $(D) ..
-
-define checkdir
-	test -f debdelta -a -f debian/rules
-endef
-
-binary: binary-indep binary-arch
-
-checkroot:
-	$(checkdir)
-	test $$(id -u) = 0
-
-.PHONY: binary binary-arch binary-indep clean checkroot

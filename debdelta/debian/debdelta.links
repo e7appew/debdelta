@@ -1,0 +1,4 @@
+usr/bin/debdelta usr/bin/debdeltas
+usr/bin/debdelta usr/bin/debdelta-upgrade
+usr/bin/debdelta usr/bin/debpatch
+usr/bin/debdelta usr/share/debdelta/debpatch-url

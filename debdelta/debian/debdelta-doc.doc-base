@@ -1,0 +1,13 @@
+Document: debdelta
+Title: The debdelta suite
+Author: Andrea C. G. Mennucci
+Abstract: This document provides a detailed overview of the debdelta
+ suite and how it can be used to upgrade Debian packages.
+Section: System/Package Management
+
+Format: HTML
+Index: /usr/share/doc/debdelta-doc/html/index.html
+Files: /usr/share/doc/debdelta-doc/html/*.html
+
+Format: PDF
+Files: /usr/share/doc/debdelta-doc/debdelta_suite.pdf.gz

@@ -1,17 +1,33 @@
 Source: debdelta
 Section: devel
 Priority: optional
-Build-Depends: zlib1g-dev, libbz2-dev
 Maintainer: A Mennucc1 <mennucc1@debian.org>
-Standards-Version: 3.9.6.0
+Build-Depends: debhelper (>= 9),
+               dh-exec,
+               dpkg-dev (>= 1.16.2),
+               gettext,
+               libbz2-dev,
+               zlib1g-dev
+Build-Depends-Indep: docbook-utils, docbook-xml, pdftk
+Standards-Version: 3.9.8
 Homepage: http://debdelta.debian.net
-Vcs-git: git://anonscm.debian.org/collab-maint/debdelta.git
+Vcs-Git: https://anonscm.debian.org/collab-maint/debdelta.git
+Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/debdelta.git
 
 Package: debdelta
 Architecture: any
-Depends: python, bzip2, binutils, ${shlibs:Depends}
-Recommends: python-apt, xdelta3, xdelta, lzma, xz-utils, xdelta, bsdiff, gnupg2, gnupg-agent, python-debian
-Conflicts: xdelta3 (<< 0y.dfsg-1)
+Depends: binutils, bzip2, python:any, ${misc:Depends}, ${shlibs:Depends}
+Recommends: bsdiff,
+            gnupg-agent,
+            gnupg2,
+            lzma,
+            python-apt,
+            python-debian,
+            xdelta,
+            xdelta3 (>= 0y.dfsg-1),
+            xz-utils
+Breaks: xdelta3 (<< 0y.dfsg-1)
+Replaces: xdelta3 (<< 0y.dfsg-1)
 Enhances: cupt
 Suggests: debdelta-doc
 Description: diff and patch utilities which work with Debian packages
@@ -31,8 +47,10 @@ Description: diff and patch utilities which work with Debian packages
 Package: debdelta-doc
 Section: doc
 Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}
 Recommends: debdelta
-Description: diff and patch utilities which work with Debian packages
+Description: documentation for the debdelta suite
  debdelta is a program suite designed to compute changes between
  Debian packages. These changes (deltas) are similar to the output of the
  "diff" program in that they may be used to store and transmit only the

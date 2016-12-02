@@ -1,0 +1,14 @@
+#!/usr/bin/dh-exec
+debdelta usr/bin
+minibzip2 minigzip usr/lib/debdelta
+etc/sources.conf etc/debdelta
+contrib/debmarshal_list_useless_debs usr/share/debdelta
+contrib/debmirror-delta-security usr/share/debdelta
+contrib/debmirror-marshal-deltas usr/share/debdelta
+contrib/debmirror*trash_option.patch usr/share/debdelta
+contrib/dpkg-sig usr/share/debdelta
+debpatch.sh usr/share/debdelta
+keyrings/pub.gpg => usr/share/keyrings/debian-debdelta-archive-keyring.gpg
+po/fr.mo => usr/share/locale/fr/LC_MESSAGES/debdelta.mo
+po/it.mo => usr/share/locale/it/LC_MESSAGES/debdelta.mo
+po/pt.mo => usr/share/locale/pt/LC_MESSAGES/debdelta.mo
