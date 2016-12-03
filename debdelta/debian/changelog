@@ -1,3 +1,27 @@
+debdelta (0.55+nmu1) unstable; urgency=medium
+
+  [ Carlos Maddela ]
+  * Non-maintainer upload.
+  * Fix i386 debdelta URLs output by debpatch-url on amd64 system.
+    (Closes: #740552)
+  * Fix guessing of xz parameters for files compressed in parallel.
+    (Closes: #845173)
+  * Conform to Standards Version 3.9.8.
+    By converting the build process to use debhelper and include rules to
+    create the documentation and language support files, we can guarantee
+    that the builds are completely reproducible. (Closes: #777730, #793004)
+  * Include a sample APT conf snippet for debdelta integration with APT.
+    Thanks to Ritesh Raj Sarraf <rrs@debian.org> (Closes: #817140)
+
+  [ Colin Watson ]
+  * Allow applying patches to unpacked .debs in locations other than /.
+    (Closes: #710398)
+
+  [ Mert Dirik ]
+  * Add timeout option to debdelta-upgrade. (Closes: #735142)
+
+ -- Carlos Maddela <e7appew@gmail.com>  Sun, 04 Dec 2016 02:38:46 +1100
+
 debdelta (0.55) unstable; urgency=medium
 
   * update git location
