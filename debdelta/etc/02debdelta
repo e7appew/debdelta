@@ -1,0 +1,5 @@
+# This configuration snippet shows how debdelta can be integrated
+# with apt if stored in /etc/apt/apt.conf.d/.
+
+APT::Periodic::Download-Upgradeable-Packages-Debdelta "1";
+#  - Use debdelta-upgrade to download updates if available (0=disable)
